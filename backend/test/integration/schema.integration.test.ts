@@ -3,6 +3,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const url = process.env.TEST_DATABASE_URL;
 
+const EXTENSION_TABLES = ['admin_audit_log'];
+
 const CORE_TABLES = [
   'ai_recommendations',
   'classification_labels',
@@ -32,12 +34,13 @@ describe.skipIf(!url)('core schema (integration)', () => {
     await prisma.$disconnect();
   });
 
-  it('creates exactly the eleven core tables', async () => {
+  it('creates exactly the eleven core tables plus the documented extension tables', async () => {
     const rows = await prisma.$queryRaw<{ table_name: string }[]>`
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public' AND table_name <> '_prisma_migrations'
       ORDER BY table_name`;
-    expect(rows.map((r) => r.table_name)).toEqual(CORE_TABLES);
+    // Extensions are recorded in docs/database/deviations.md (admin_audit_log: SD-017).
+    expect(rows.map((r) => r.table_name)).toEqual([...CORE_TABLES, ...EXTENSION_TABLES].sort());
   });
 
   it('uses composite or shared primary keys where specified', async () => {

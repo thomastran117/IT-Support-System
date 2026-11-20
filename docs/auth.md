@@ -109,3 +109,51 @@ restricted to administration endpoints.
   persisted). Playwright runs on desktop and mobile against an in-browser mock of `/api/auth/*`, so
   CI never depends on the backend: three roles landing, reload, logout, forbidden routes, revoked
   sessions, network failure, rate limiting, validation, keyboard use and token leakage checks.
+
+## Administration (SD-017)
+
+All endpoints are under `/api/admin` and are ADMIN-only (401 anonymous, 403 for everyone else).
+
+| Endpoint                         | Behaviour                                                                                    |
+| -------------------------------- | -------------------------------------------------------------------------------------------- |
+| `GET /users`                     | Paginated list. Filters: `role`, `active`, `q` (email or name), `limit` (max 200), `offset`. |
+| `POST /users`                    | `{email, displayName, role}`. Returns 201 with the user and a one-time `temporaryPassword`.  |
+| `PATCH /users/:id/role`          | `{role}`. Revokes the user's tokens and is audited.                                          |
+| `POST /users/:id/deactivate`     | Deactivates (never deletes) and revokes tokens. Idempotent.                                  |
+| `POST /users/:id/activate`       | Reactivates. Idempotent.                                                                     |
+| `POST /users/:id/reset-password` | Generates a new one-time password, replaces the credential and revokes tokens.               |
+| `GET /audit-log`                 | Newest first: action, actor, target and non-sensitive details.                               |
+
+The `/admin` page is the UI for these endpoints: user table with role selector and activate/deactivate/reset
+actions (confirmations for the destructive ones, self-targeting controls disabled), an "Add a user" form, the
+one-time password panel and the recent audit entries. The server enforces every rule independently.
+
+Rules:
+
+- **Emails** are trimmed and lowercased, so uniqueness is case-insensitive; a duplicate is 409. Roles are an
+  allow-list, and unknown body fields are rejected (no mass assignment).
+- **No self-service escalation.** An administrator cannot change their own role, deactivate
+  themselves or reset their own password (403).
+- **Last administrator.** A role change or deactivation that would leave no active administrator is refused
+  (409). The check runs in a transaction that locks every active administrator row, so two administrators
+  removing each other at the same moment cannot both succeed.
+- **Revocation.** Deactivation, role change and password reset bump `token_version`, which signs the user out
+  everywhere. This is the only revocation lever in the stateless design. A reactivated user simply signs in
+  again with their existing password.
+- **History is preserved.** Accounts are deactivated, never deleted, so tickets keep their requester,
+  assignee and event actor references (all foreign keys are `ON DELETE RESTRICT`).
+- **Responses never contain** password hashes or `token_version`. The audit table is append-only (a trigger
+  rejects UPDATE and DELETE) and never stores credentials.
+
+### Onboarding credentials, expiry and rotation
+
+New accounts get a server-generated random password (20 URL-safe characters, about 120 bits) that is returned
+**once** in the create or reset response (`Cache-Control: no-store`) and stored only as an Argon2id hash. The
+administrator passes it to the user out of band.
+
+- **Rotation:** an administrator can issue a fresh one-time password at any time (`reset-password`); the old
+  password and all existing tokens stop working immediately.
+- **Expiry:** passwords do not expire, and there is no forced change at first login. The MVP has no
+  self-service change-password endpoint, so the temporary password remains the account password until an
+  administrator rotates it. Treat that as a demo-scope limitation; a change-password flow with a
+  `must_change_password` flag is the natural follow-up.

@@ -45,3 +45,40 @@ export interface AuthSession {
   expiresIn: number;
   user: AuthUser;
 }
+
+// --- Administration (SD-017) ---------------------------------------------------------------
+
+/** An account as an administrator sees it. Never contains credentials or token state. */
+export interface AdminUser extends AuthUser {
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface CreateUserRequest {
+  email: string;
+  displayName: string;
+  role: Role;
+}
+
+/** Create and password-reset responses. The temporary password is shown exactly once. */
+export interface UserWithTemporaryPassword {
+  user: AdminUser;
+  temporaryPassword: string;
+}
+
+export interface AdminUserList {
+  items: AdminUser[];
+  total: number;
+}
+
+export type AdminAuditAction =
+  'USER_CREATED' | 'USER_ACTIVATED' | 'USER_DEACTIVATED' | 'ROLE_CHANGED' | 'PASSWORD_RESET';
+
+export interface AdminAuditEntry {
+  id: string;
+  action: AdminAuditAction;
+  actor: { id: string; email: string };
+  target: { id: string; email: string };
+  details: Record<string, unknown>;
+  createdAt: string;
+}

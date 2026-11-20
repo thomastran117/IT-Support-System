@@ -107,12 +107,13 @@ triage, work and resolve a ticket when the AI provider is down. Unrouted tickets
 
 ## Runtime extensions to the 11-table baseline
 
-Deployed: credentials (SD-013, migration `0003_auth_credentials`: two columns on `users`, see `deviations.md` #5). Planned additions, each to be added by its own migration and recorded here and in
+Deployed: credentials (SD-013, migration `0003_auth_credentials`: two columns on `users`, see `deviations.md` #5) and the admin audit trail (SD-017, migration `0004_admin_audit_log`: table `admin_audit_log`, see `deviations.md` #6). Planned additions, each to be added by its own migration and recorded here and in
 `deviations.md` without altering the eleven baseline tables:
 
 | Extension                    | Issue | Purpose                                                       |
 | ---------------------------- | ----- | ------------------------------------------------------------- |
 | ~~Credentials and sessions~~ | #25   | done as two `users` columns; no session table (stateless JWT) |
+| ~~Admin audit trail~~        | #29   | done as the append-only `admin_audit_log` table               |
 | Durable AI analysis jobs     | #47   | idempotent job records for the worker                         |
 | Notifications                | #52   | employee notification records                                 |
 

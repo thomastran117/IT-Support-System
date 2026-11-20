@@ -1074,6 +1074,103 @@
           "unique": false
         }
       ]
+    },
+    {
+      "name": "admin_audit_log",
+      "area": "Identity",
+      "description": "Append-only audit trail of administrator account actions (SD-017): create, activate, deactivate, role change, password reset. UPDATE and DELETE are rejected by a trigger. Never holds credentials.",
+      "columns": [
+        {
+          "name": "audit_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "meaning": "Primary key."
+        },
+        {
+          "name": "actor_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "meaning": "Administrator who performed the action."
+        },
+        {
+          "name": "target_user_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "meaning": "Account the action was applied to."
+        },
+        {
+          "name": "action",
+          "type": "character varying(32)",
+          "nullable": false,
+          "default": null,
+          "meaning": "USER_CREATED, USER_ACTIVATED, USER_DEACTIVATED, ROLE_CHANGED or PASSWORD_RESET."
+        },
+        {
+          "name": "details",
+          "type": "jsonb",
+          "nullable": false,
+          "default": "'{}'::jsonb",
+          "meaning": "JSON object with non-sensitive context, for example the previous and new role. Never a password, hash or token."
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp(6) with time zone",
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP",
+          "meaning": "When the action happened (UTC), database clock."
+        }
+      ],
+      "primaryKey": ["audit_id"],
+      "foreignKeys": [
+        {
+          "name": "admin_audit_log_actor_id_fkey",
+          "columns": ["actor_id"],
+          "references": {
+            "table": "users",
+            "columns": ["user_id"]
+          },
+          "onDelete": "RESTRICT"
+        },
+        {
+          "name": "admin_audit_log_target_user_id_fkey",
+          "columns": ["target_user_id"],
+          "references": {
+            "table": "users",
+            "columns": ["user_id"]
+          },
+          "onDelete": "RESTRICT"
+        }
+      ],
+      "checks": [
+        {
+          "name": "ck_admin_audit_action",
+          "rule": "((action)::text = ANY ((ARRAY['USER_CREATED'::character varying, 'USER_ACTIVATED'::character varying, 'USER_DEACTIVATED'::character varying, 'ROLE_CHANGED'::character varying, 'PASSWORD_RESET'::character varying])::text[]))"
+        },
+        {
+          "name": "ck_admin_audit_details_object",
+          "rule": "(jsonb_typeof(details) = 'object'::text)"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "admin_audit_log_pkey",
+          "columns": ["audit_id"],
+          "unique": true
+        },
+        {
+          "name": "idx_admin_audit_created",
+          "columns": ["created_at", "audit_id"],
+          "unique": false
+        },
+        {
+          "name": "idx_admin_audit_target",
+          "columns": ["target_user_id", "created_at"],
+          "unique": false
+        }
+      ]
     }
   ]
 }

@@ -35,6 +35,8 @@ model User {
   events               TicketEvent[]
   reviewedRecs         AiRecommendation[]
   classificationLabels ClassificationLabel[]
+  auditActions         AdminAuditLog[]        @relation("AuditActor")
+  auditedChanges       AdminAuditLog[]        @relation("AuditTarget")
 
   @@map("users")
 }
@@ -213,4 +215,21 @@ model ClassificationLabel {
 
   @@index([referenceCategoryId], map: "idx_classification_labels_category")
   @@map("classification_labels")
+}
+
+/// Append-only record of administrator account actions (SD-017). Never holds credentials.
+model AdminAuditLog {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @map("audit_id") @db.Uuid
+  actorId      String   @map("actor_id") @db.Uuid
+  targetUserId String   @map("target_user_id") @db.Uuid
+  action       String   @db.VarChar(32)
+  details      Json     @default("{}") @db.JsonB
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  actor  User @relation("AuditActor", fields: [actorId], references: [id], onDelete: Restrict)
+  target User @relation("AuditTarget", fields: [targetUserId], references: [id], onDelete: Restrict)
+
+  @@index([createdAt(sort: Desc), id], map: "idx_admin_audit_created")
+  @@index([targetUserId, createdAt(sort: Desc)], map: "idx_admin_audit_target")
+  @@map("admin_audit_log")
 }

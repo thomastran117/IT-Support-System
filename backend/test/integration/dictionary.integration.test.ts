@@ -19,7 +19,7 @@ describe('documentation is generated from the spec', () => {
     expect(read('data-dictionary.md')).toBe(renderDictionary(spec));
   });
 
-  it('documents all eleven core entities', () => {
+  it('documents the eleven core entities plus the admin audit extension', () => {
     expect(spec.tables.map((t) => t.name)).toEqual([
       'users',
       'support_teams',
@@ -32,6 +32,8 @@ describe('documentation is generated from the spec', () => {
       'knowledge_articles',
       'recommendation_articles',
       'classification_labels',
+      // Extension table added by SD-017 (docs/database/deviations.md #6).
+      'admin_audit_log',
     ]);
     for (const table of spec.tables) expect(read('erd.md')).toContain(`  ${table.name} {`);
   });

@@ -8,6 +8,7 @@ import type { Env } from './config/env.js';
 import type { DbCheck, PrismaClient } from '@smartdesk/db';
 import { createAuthGuards } from './auth/guard.js';
 import { TokenService } from './auth/tokens.js';
+import { adminRoutes } from './modules/admin/routes.js';
 import { authRoutes } from './modules/auth/routes.js';
 import { registerErrorHandling } from './plugins/errors.js';
 import { healthRoutes } from './modules/health/routes.js';
@@ -47,7 +48,11 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     requestIdHeader: 'x-request-id',
   });
 
-  await app.register(cors, { origin: opts.env.frontendOrigin, credentials: true });
+  await app.register(cors, {
+    origin: opts.env.frontendOrigin,
+    credentials: true,
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  });
   await app.register(cookie);
   await app.register(rateLimit, { global: false });
   registerErrorHandling(app);
@@ -70,6 +75,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
       }),
       { prefix: `${API_PREFIX}/auth` },
     );
+    await app.register(adminRoutes(opts.prisma), { prefix: `${API_PREFIX}/admin` });
   }
   if (opts.extraRoutes) {
     await app.register(
