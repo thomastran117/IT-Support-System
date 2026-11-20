@@ -1,10 +1,10 @@
 import { buildApp } from './app.js';
 import { loadEnv } from './config/env.js';
-import { createPool, poolCheck } from './db/pool.js';
+import { createPrisma, prismaCheck } from '@smartdesk/db';
 
 const env = loadEnv();
-const pool = createPool(env.databaseUrl);
-const app = await buildApp({ env, checkDb: poolCheck(pool) });
+const prisma = createPrisma(env.databaseUrl);
+const app = await buildApp({ env, checkDb: prismaCheck(prisma) });
 
 let closing = false;
 async function shutdown(signal: string): Promise<void> {
@@ -13,7 +13,7 @@ async function shutdown(signal: string): Promise<void> {
   app.log.info({ signal }, 'shutting down');
   try {
     await app.close();
-    await pool.end();
+    await prisma.$disconnect();
     process.exit(0);
   } catch (err) {
     app.log.error({ err }, 'error during shutdown');

@@ -1,19 +1,15 @@
-import pg from 'pg';
+import { createPrisma } from '@smartdesk/db';
 import { loadWorkerEnv } from './config.js';
 
 const env = loadWorkerEnv();
-const pool = new pg.Pool({
-  connectionString: env.databaseUrl,
-  max: 2,
-  connectionTimeoutMillis: 3000,
-});
+const prisma = createPrisma(env.databaseUrl);
 
 let stopping = false;
 let timer: NodeJS.Timeout | undefined;
 
 async function tick(): Promise<void> {
   try {
-    await pool.query('SELECT 1');
+    await prisma.$queryRaw`SELECT 1`;
     console.log(JSON.stringify({ level: 'info', msg: 'worker tick', db: 'ok' }));
   } catch (err) {
     console.error(
@@ -28,7 +24,7 @@ async function shutdown(signal: string): Promise<void> {
   stopping = true;
   console.log(JSON.stringify({ level: 'info', msg: 'worker shutting down', signal }));
   if (timer) clearTimeout(timer);
-  await pool.end();
+  await prisma.$disconnect();
   process.exit(0);
 }
 process.on('SIGINT', () => void shutdown('SIGINT'));

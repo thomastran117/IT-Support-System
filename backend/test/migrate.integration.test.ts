@@ -1,20 +1,21 @@
-import pg from 'pg';
-import { describe, expect, it } from 'vitest';
-import { migrate } from '../src/db/migrate.js';
+import { createPrisma, prismaCheck } from '@smartdesk/db';
+import { afterAll, describe, expect, it } from 'vitest';
 
 const url = process.env.TEST_DATABASE_URL;
 
-// Runs only when a database is provided (CI, or locally via TEST_DATABASE_URL).
-describe.skipIf(!url)('migrations (integration)', () => {
-  it('applies on a fresh database and is idempotent', async () => {
-    const first = await migrate(url!);
-    const second = await migrate(url!);
-    expect(second).toEqual([]);
-    expect(first.length === 0 || first.includes('0000_init.sql')).toBe(true);
-    const client = new pg.Client({ connectionString: url });
-    await client.connect();
-    const { rows } = await client.query('SELECT count(*)::int AS n FROM schema_migrations');
-    await client.end();
-    expect(rows[0].n).toBeGreaterThan(0);
+// Runs only when a migrated database is provided (CI runs `npm run migrate` first).
+describe.skipIf(!url)('database (integration)', () => {
+  const prisma = createPrisma(url!);
+  afterAll(() => prisma.$disconnect());
+
+  it('is reachable through Prisma', async () => {
+    expect(await prismaCheck(prisma)()).toBe(true);
+  });
+
+  it('has the baseline Prisma migration applied', async () => {
+    const rows = await prisma.$queryRaw<
+      { migration_name: string }[]
+    >`SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL`;
+    expect(rows.map((r) => r.migration_name)).toContain('0000_init');
   });
 });

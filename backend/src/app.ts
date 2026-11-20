@@ -3,7 +3,7 @@ import cors from '@fastify/cors';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { API_PREFIX } from '@smartdesk/contracts';
 import type { Env } from './config/env.js';
-import type { DbCheck } from './db/pool.js';
+import type { DbCheck } from '@smartdesk/db';
 import { registerErrorHandling } from './plugins/errors.js';
 import { healthRoutes } from './modules/health/routes.js';
 import { pingRoutes } from './modules/ping.js';

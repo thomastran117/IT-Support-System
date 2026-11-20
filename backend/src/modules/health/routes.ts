@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import type { LiveHealth, ReadyHealth } from '@smartdesk/contracts';
-import type { DbCheck } from '../../db/pool.js';
+import type { DbCheck } from '@smartdesk/db';
 
 export const healthRoutes =
   (checkDb: DbCheck): FastifyPluginAsync =>

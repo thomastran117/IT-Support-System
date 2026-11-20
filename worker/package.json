@@ -13,9 +13,6 @@
   },
   "dependencies": {
     "@smartdesk/contracts": "^0.0.0",
-    "pg": "^8.23.1"
-  },
-  "devDependencies": {
-    "@types/pg": "^8.23.1"
+    "@smartdesk/db": "^0.0.0"
   }
 }

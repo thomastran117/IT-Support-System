@@ -10,16 +10,13 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src test",
     "test": "vitest run",
-    "migrate": "tsx src/db/migrate.ts",
+    "migrate": "npm run migrate -w @smartdesk/db",
     "seed": "tsx src/db/seed.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.4.3",
     "@smartdesk/contracts": "^0.0.0",
-    "fastify": "^5.12.8",
-    "pg": "^8.23.1"
-  },
-  "devDependencies": {
-    "@types/pg": "^8.23.1"
+    "@smartdesk/db": "^0.0.0",
+    "fastify": "^5.12.8"
   }
 }
