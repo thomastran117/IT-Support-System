@@ -6,6 +6,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { API_PREFIX } from '@smartdesk/contracts';
 import type { Env } from './config/env.js';
 import type { DbCheck, PrismaClient } from '@smartdesk/db';
+import { createAuthGuards } from './auth/guard.js';
 import { TokenService } from './auth/tokens.js';
 import { authRoutes } from './modules/auth/routes.js';
 import { registerErrorHandling } from './plugins/errors.js';
@@ -59,6 +60,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await app.register(pingRoutes, { prefix: API_PREFIX });
   if (opts.prisma) {
     const tokens = new TokenService(opts.env);
+    app.decorate('authGuards', createAuthGuards(opts.prisma, tokens));
     await app.register(
       authRoutes({
         prisma: opts.prisma,
