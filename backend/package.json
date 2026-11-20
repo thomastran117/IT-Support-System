@@ -10,15 +10,21 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src test",
     "test": "npm run test:unit && npm run test:integration",
-    "migrate": "npm run migrate -w @smartdesk/db",
+    "migrate": "prisma migrate deploy",
     "seed": "tsx src/db/seed.ts",
     "test:unit": "vitest run test/unit",
-    "test:integration": "vitest run test/integration"
+    "test:integration": "vitest run test/integration",
+    "generate": "prisma generate",
+    "migrate:dev": "prisma migrate dev",
+    "migrate:status": "prisma migrate status"
   },
   "dependencies": {
     "@fastify/cors": "^11.4.3",
     "@smartdesk/contracts": "^0.0.0",
     "@smartdesk/db": "^0.0.0",
     "fastify": "^5.12.8"
+  },
+  "devDependencies": {
+    "prisma": "^7.10.1"
   }
 }
