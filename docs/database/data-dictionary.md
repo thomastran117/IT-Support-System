@@ -208,3 +208,21 @@ _AI and evaluation._ Independent reference category per ticket, used only to mea
 | `reference_category_id` | `uuid` | NOT NULL |  | FK → ticket_categories.category_id |  | `idx_classification_labels_category` | Correct category as judged by the evaluator. |
 | `labelled_by` | `uuid` | NOT NULL |  | FK → users.user_id |  |  | Evaluator (user) who assigned the label. |
 | `labelled_at` | `timestamp(6) with time zone` | NOT NULL | `CURRENT_TIMESTAMP` |  |  |  | Labelling time (UTC). |
+
+## `admin_audit_log`
+
+_Identity._ Append-only audit trail of administrator account actions (SD-017): create, activate, deactivate, role change, password reset. UPDATE and DELETE are rejected by a trigger. Never holds credentials.
+
+| Column | Type | Null | Default | Key | Unique | Indexes | Meaning |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `audit_id` | `uuid` | NOT NULL | `gen_random_uuid()` | PK |  | `idx_admin_audit_created` | Primary key. |
+| `actor_id` | `uuid` | NOT NULL |  | FK → users.user_id |  |  | Administrator who performed the action. |
+| `target_user_id` | `uuid` | NOT NULL |  | FK → users.user_id |  | `idx_admin_audit_target` | Account the action was applied to. |
+| `action` | `character varying(32)` | NOT NULL |  |  |  |  | USER_CREATED, USER_ACTIVATED, USER_DEACTIVATED, ROLE_CHANGED or PASSWORD_RESET. |
+| `details` | `jsonb` | NOT NULL | `'{}'::jsonb` |  |  |  | JSON object with non-sensitive context, for example the previous and new role. Never a password, hash or token. |
+| `created_at` | `timestamp(6) with time zone` | NOT NULL | `CURRENT_TIMESTAMP` |  |  | `idx_admin_audit_created`, `idx_admin_audit_target` | When the action happened (UTC), database clock. |
+
+**CHECK constraints**
+
+- `ck_admin_audit_action`: `((action)::text = ANY ((ARRAY['USER_CREATED'::character varying, 'USER_ACTIVATED'::character varying, 'USER_DEACTIVATED'::character varying, 'ROLE_CHANGED'::character varying, 'PASSWORD_RESET'::character varying])::text[]))`
+- `ck_admin_audit_details_object`: `(jsonb_typeof(details) = 'object'::text)`

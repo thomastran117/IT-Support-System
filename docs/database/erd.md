@@ -101,6 +101,14 @@ erDiagram
     uuid labelled_by FK
     timestamptz labelled_at
   }
+  admin_audit_log {
+    uuid audit_id PK
+    uuid actor_id FK
+    uuid target_user_id FK
+    varchar action
+    jsonb details
+    timestamptz created_at
+  }
   support_teams ||--o{ team_members : "team_id"
   users ||--o{ team_members : "user_id"
   team_members |o--o{ tickets : "assigned_team_id, assignee_id"
@@ -122,6 +130,8 @@ erDiagram
   users ||--o{ classification_labels : "labelled_by"
   ticket_categories ||--o{ classification_labels : "reference_category_id"
   tickets ||--o| classification_labels : "ticket_id"
+  users ||--o{ admin_audit_log : "actor_id"
+  users ||--o{ admin_audit_log : "target_user_id"
 ```
 
 ## Relationships
@@ -154,3 +164,5 @@ the assigned team.
 | `classification_labels` | `labelled_by` | `users` (`user_id`) | 1 : N | required | RESTRICT |
 | `classification_labels` | `reference_category_id` | `ticket_categories` (`category_id`) | 1 : N | required | RESTRICT |
 | `classification_labels` | `ticket_id` | `tickets` (`ticket_id`) | 1 : 0..1 | required | RESTRICT |
+| `admin_audit_log` | `actor_id` | `users` (`user_id`) | 1 : N | required | RESTRICT |
+| `admin_audit_log` | `target_user_id` | `users` (`user_id`) | 1 : N | required | RESTRICT |
