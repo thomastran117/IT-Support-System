@@ -1,5 +1,7 @@
+import { TICKET_DESCRIPTION_MAX, TICKET_TITLE_MAX } from '@smartdesk/contracts';
 import type { PrismaClient, TransactionClient } from '@smartdesk/db';
 import {
+  DbError,
   forbiddenError,
   lifecycleError,
   notFoundError,
@@ -16,6 +18,7 @@ import { insertComment } from '../repositories/ticketComments.js';
 import { appendEvent } from '../repositories/ticketEvents.js';
 import { findCategory, findTeam, findUser, isMember } from '../repositories/teamMembers.js';
 import {
+  findByIdempotencyKey,
   findTicket,
   insertTicket,
   markResolved,
@@ -195,21 +198,78 @@ export interface CreateTicketInput {
   requesterId: string;
   title: string;
   description: string;
+  /** Optional client key: a retry with the same key and payload returns the original ticket. */
+  idempotencyKey?: string;
+}
+
+export interface SubmittedTicket {
+  ticket: TicketRow;
+  /** `false` when the key matched an earlier submission and nothing new was written. */
+  created: boolean;
+}
+
+/** Create an OPEN/UNSET ticket plus its CREATED event, or replay an idempotent submission. */
+export function submitTicket(
+  prisma: PrismaClient,
+  input: CreateTicketInput,
+): Promise<SubmittedTicket> {
+  // Input is validated synchronously, before any database work starts.
+  const title = input.title.trim();
+  const description = input.description.trim();
+  const key = input.idempotencyKey;
+  if (!title || title.length > TICKET_TITLE_MAX) {
+    throw validationError(`Title must be 1-${TICKET_TITLE_MAX} characters`);
+  }
+  if (!description) throw validationError('Description is required');
+  if (description.length > TICKET_DESCRIPTION_MAX) {
+    throw validationError(`Description must be at most ${TICKET_DESCRIPTION_MAX} characters`);
+  }
+
+  const replay = (existing: TicketRow): SubmittedTicket => {
+    if (existing.title !== title || existing.description !== description) {
+      throw new DbError(
+        'CONFLICT',
+        409,
+        'This Idempotency-Key was already used for a different ticket',
+      );
+    }
+    return { ticket: existing, created: false };
+  };
+
+  return run();
+
+  async function run(): Promise<SubmittedTicket> {
+    try {
+      return await withTransaction(prisma, async (tx) => {
+        const actor = await loadActor(tx, input.requesterId);
+        if (key) {
+          const existing = await findByIdempotencyKey(tx, actor.id, key);
+          if (existing) return replay(existing);
+        }
+        const ticket = await insertTicket(tx, {
+          requesterId: actor.id,
+          title,
+          description,
+          idempotencyKey: key ?? null,
+        });
+        await appendEvent(tx, { ticketId: ticket.id, actorId: actor.id, type: 'CREATED' });
+        return { ticket, created: true };
+      });
+    } catch (err) {
+      // Optimistic path: two requests with one key race to insert; the loser hits the unique index
+      // (the whole transaction rolled back, so it left nothing behind) and resolves to the winner.
+      if (key && err instanceof DbError && err.code === 'CONFLICT') {
+        const existing = await findByIdempotencyKey(prisma, input.requesterId, key);
+        if (existing) return replay(existing);
+      }
+      throw err;
+    }
+  }
 }
 
 /** Create an OPEN/UNSET ticket plus its CREATED event. */
 export function createTicket(prisma: PrismaClient, input: CreateTicketInput) {
-  const title = input.title.trim();
-  const description = input.description.trim();
-  if (!title || title.length > 150) throw validationError('Title must be 1-150 characters');
-  if (!description) throw validationError('Description is required');
-
-  return withTransaction(prisma, async (tx) => {
-    const actor = await loadActor(tx, input.requesterId);
-    const ticket = await insertTicket(tx, { requesterId: actor.id, title, description });
-    await appendEvent(tx, { ticketId: ticket.id, actorId: actor.id, type: 'CREATED' });
-    return ticket;
-  });
+  return submitTicket(prisma, input).then((r) => r.ticket);
 }
 
 export interface ApproveRoutingInput extends RoutingChange {

@@ -98,6 +98,10 @@ model Ticket {
   updatedAt         DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
   resolvedAt        DateTime? @map("resolved_at") @db.Timestamptz(6)
   resolutionSummary String?   @map("resolution_summary")
+  /// Optimistic concurrency token: incremented by every mutation.
+  version           Int       @default(1)
+  /// Client-chosen key that makes a retried submission resolve to the original ticket.
+  idempotencyKey    String?   @map("idempotency_key") @db.VarChar(100)
 
   requester User            @relation("TicketRequester", fields: [requesterId], references: [id], onDelete: Restrict)
   team      SupportTeam?    @relation(fields: [assignedTeamId], references: [id], onDelete: Restrict)
@@ -115,6 +119,7 @@ model Ticket {
   @@index([requesterId, createdAt(sort: Desc)], map: "idx_tickets_requester_created")
   @@index([assignedTeamId, status, createdAt], map: "idx_tickets_team_status_created")
   @@index([categoryId, createdAt], map: "idx_tickets_category_created")
+  @@unique([requesterId, idempotencyKey], map: "uq_tickets_requester_idempotency")
   @@map("tickets")
 }
 

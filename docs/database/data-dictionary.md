@@ -76,7 +76,7 @@ _Tickets._ The support request and its technician-approved routing. AI proposals
 | Column | Type | Null | Default | Key | Unique | Indexes | Meaning |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `ticket_id` | `uuid` | NOT NULL | `gen_random_uuid()` | PK |  |  | Primary key and tracking identifier. |
-| `requester_id` | `uuid` | NOT NULL |  | FK → users.user_id |  | `idx_tickets_requester_created` | Employee who raised the ticket. |
+| `requester_id` | `uuid` | NOT NULL |  | FK → users.user_id | with idempotency_key | `idx_tickets_requester_created`, `uq_tickets_requester_idempotency` | Employee who raised the ticket. |
 | `assigned_team_id` | `uuid` | NULL |  | FK → team_members(team_id, user_id) composite; FK → support_teams.team_id |  | `idx_tickets_team_status_created` | Approved team; NULL until a technician routes the ticket. |
 | `assignee_id` | `uuid` | NULL |  | FK → team_members(team_id, user_id) composite; FK → users.user_id |  |  | Approved technician; must belong to assigned_team_id (composite FK); NULL when unassigned. |
 | `category_id` | `uuid` | NULL |  | FK → ticket_categories.category_id |  | `idx_tickets_category_created` | Approved category; NULL until triaged. |
@@ -88,11 +88,14 @@ _Tickets._ The support request and its technician-approved routing. AI proposals
 | `updated_at` | `timestamp(6) with time zone` | NOT NULL | `CURRENT_TIMESTAMP` |  |  |  | Last mutation time, set by the service. |
 | `resolved_at` | `timestamp(6) with time zone` | NULL |  |  |  |  | Latest resolution time; NULL unless RESOLVED/CLOSED; cleared on reopen. |
 | `resolution_summary` | `text` | NULL |  |  |  |  | Latest resolution text; required when RESOLVED/CLOSED; cleared on reopen. |
+| `version` | `integer` | NOT NULL | `1` |  |  |  | Optimistic concurrency token; incremented by every mutation, checked by writers. |
+| `idempotency_key` | `character varying(100)` | NULL |  |  | with requester_id | `uq_tickets_requester_idempotency` | Optional client key (Idempotency-Key header); unique per requester so a retried submission returns the original ticket. |
 
 **CHECK constraints**
 
 - `ck_tickets_assignee_requires_team`: `((assignee_id IS NULL) OR (assigned_team_id IS NOT NULL))`
 - `ck_tickets_description_nonblank`: `(btrim(description) <> ''::text)`
+- `ck_tickets_idempotency_key_nonblank`: `((idempotency_key IS NULL) OR (length(btrim((idempotency_key)::text)) > 0))`
 - `ck_tickets_no_stale_resolution`: `(((status)::text = ANY ((ARRAY['RESOLVED'::character varying, 'CLOSED'::character varying])::text[])) OR ((resolved_at IS NULL) AND (resolution_summary IS NULL)))`
 - `ck_tickets_priority`: `((priority)::text = ANY ((ARRAY['UNSET'::character varying, 'LOW'::character varying, 'MEDIUM'::character varying, 'HIGH'::character varying, 'CRITICAL'::character varying])::text[]))`
 - `ck_tickets_resolution_required`: `(((status)::text <> ALL ((ARRAY['RESOLVED'::character varying, 'CLOSED'::character varying])::text[])) OR ((resolved_at IS NOT NULL) AND (resolution_summary IS NOT NULL) AND (btrim(resolution_summary) <> ''::text)))`
@@ -100,6 +103,7 @@ _Tickets._ The support request and its technician-approved routing. AI proposals
 - `ck_tickets_status`: `((status)::text = ANY ((ARRAY['OPEN'::character varying, 'TRIAGED'::character varying, 'IN_PROGRESS'::character varying, 'RESOLVED'::character varying, 'CLOSED'::character varying])::text[]))`
 - `ck_tickets_title_nonblank`: `(btrim((title)::text) <> ''::text)`
 - `ck_tickets_triaged_requirements`: `(((status)::text <> ALL ((ARRAY['TRIAGED'::character varying, 'IN_PROGRESS'::character varying])::text[])) OR ((category_id IS NOT NULL) AND ((priority)::text <> 'UNSET'::text) AND (assigned_team_id IS NOT NULL)))`
+- `ck_tickets_version_positive`: `(version >= 1)`
 
 ## `ticket_comments`
 

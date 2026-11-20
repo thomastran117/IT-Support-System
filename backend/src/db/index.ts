@@ -6,6 +6,7 @@ export {
   addComment,
   approveRouting,
   createTicket,
+  submitTicket,
   reviewRecommendation,
   transitionTicket,
 } from './services/ticketService.js';
