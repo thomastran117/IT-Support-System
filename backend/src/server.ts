@@ -5,7 +5,7 @@ import { closePrisma, initPrisma } from './db/client.js';
 
 const env = loadEnv();
 const prisma = initPrisma(env.databaseUrl);
-const app = await buildApp({ env, checkDb: prismaCheck(prisma) });
+const app = await buildApp({ env, prisma, checkDb: prismaCheck(prisma) });
 
 let closing = false;
 async function shutdown(signal: string): Promise<void> {

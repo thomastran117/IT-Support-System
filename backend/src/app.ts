@@ -1,9 +1,13 @@
 import { randomUUID } from 'node:crypto';
+import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
+import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { API_PREFIX } from '@smartdesk/contracts';
 import type { Env } from './config/env.js';
-import type { DbCheck } from '@smartdesk/db';
+import type { DbCheck, PrismaClient } from '@smartdesk/db';
+import { TokenService } from './auth/tokens.js';
+import { authRoutes } from './modules/auth/routes.js';
 import { registerErrorHandling } from './plugins/errors.js';
 import { healthRoutes } from './modules/health/routes.js';
 import { pingRoutes } from './modules/ping.js';
@@ -11,6 +15,10 @@ import { pingRoutes } from './modules/ping.js';
 export interface AppOptions {
   env: Env;
   checkDb: DbCheck;
+  /** Database client; the auth routes are only mounted when provided. */
+  prisma?: PrismaClient;
+  /** Per-IP request budgets for the auth endpoints (tests lower these). */
+  authRateLimit?: { login: number; refresh: number; windowMs: number };
   /** Pass `false` to silence logs, or a pino options object (tests). */
   logger?: boolean | object;
   /** Extra routes registered under /api (used by tests). */
@@ -24,6 +32,8 @@ export const REDACT_PATHS = [
   'req.body.password',
   'req.body.content',
   '*.password',
+  '*.accessToken',
+  'req.cookies',
 ];
 
 export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
@@ -37,6 +47,8 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   });
 
   await app.register(cors, { origin: opts.env.frontendOrigin, credentials: true });
+  await app.register(cookie);
+  await app.register(rateLimit, { global: false });
   registerErrorHandling(app);
 
   app.addHook('onSend', async (req, reply) => {
@@ -45,6 +57,18 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
 
   await app.register(healthRoutes(opts.checkDb));
   await app.register(pingRoutes, { prefix: API_PREFIX });
+  if (opts.prisma) {
+    const tokens = new TokenService(opts.env);
+    await app.register(
+      authRoutes({
+        prisma: opts.prisma,
+        env: opts.env,
+        tokens,
+        rateLimit: opts.authRateLimit ?? { login: 10, refresh: 30, windowMs: 60_000 },
+      }),
+      { prefix: `${API_PREFIX}/auth` },
+    );
+  }
   if (opts.extraRoutes) {
     await app.register(
       async (scope) => {
