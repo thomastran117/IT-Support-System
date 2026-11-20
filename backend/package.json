@@ -25,6 +25,7 @@
     "@fastify/cors": "^11.4.3",
     "@smartdesk/contracts": "^0.0.0",
     "@smartdesk/db": "^0.0.0",
+    "argon2": "^0.45.2",
     "fastify": "^5.12.8"
   },
   "devDependencies": {

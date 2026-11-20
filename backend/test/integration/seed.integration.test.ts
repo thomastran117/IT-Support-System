@@ -147,12 +147,15 @@ describe.skipIf(!testDatabaseUrl)('seed fixtures (integration)', () => {
     expect(rows.filter((r) => !r.same)).toHaveLength(2);
   });
 
-  it('contains no credentials or secrets', async () => {
+  it('contains no plaintext credentials or secrets (only Argon2id password hashes)', async () => {
     await seed('test');
     const columns = await prisma.$queryRaw<{ column_name: string }[]>`
       SELECT column_name FROM information_schema.columns
       WHERE table_schema = 'public' AND column_name ~* '(password|secret|token_hash|api_key)'`;
-    expect(columns).toEqual([]);
+    expect(columns).toEqual([{ column_name: 'password_hash' }]);
+    const [{ bad }] = await prisma.$queryRaw<{ bad: bigint }[]>`
+      SELECT COUNT(*) AS bad FROM users WHERE password_hash NOT LIKE '$argon2id$%'`;
+    expect(Number(bad)).toBe(0);
     expect(USERS.admin).toBeDefined();
   });
 

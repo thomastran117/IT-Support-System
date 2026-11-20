@@ -24,6 +24,12 @@ export const uuid = (kind: keyof typeof KINDS, n: number): string =>
 
 export const at = (iso: string): Date => new Date(iso);
 
+/**
+ * Shared password for every seeded account (demo and test profiles). It is synthetic and public by
+ * design; override with SEED_DEMO_PASSWORD. Only its Argon2id hash is ever stored.
+ */
+export const DEMO_PASSWORD = 'SmartDesk-Demo-1!';
+
 // --- Identity ---------------------------------------------------------------------------------
 
 export const USERS = {
