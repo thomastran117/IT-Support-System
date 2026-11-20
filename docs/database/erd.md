@@ -49,6 +49,8 @@ erDiagram
     timestamptz updated_at
     timestamptz resolved_at
     text resolution_summary
+    int version
+    varchar idempotency_key
   }
   ticket_comments {
     uuid comment_id PK

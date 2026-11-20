@@ -374,6 +374,20 @@
           "nullable": true,
           "default": null,
           "meaning": "Latest resolution text; required when RESOLVED/CLOSED; cleared on reopen."
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "nullable": false,
+          "default": "1",
+          "meaning": "Optimistic concurrency token; incremented by every mutation, checked by writers."
+        },
+        {
+          "name": "idempotency_key",
+          "type": "character varying(100)",
+          "nullable": true,
+          "default": null,
+          "meaning": "Optional client key (Idempotency-Key header); unique per requester so a retried submission returns the original ticket."
         }
       ],
       "primaryKey": ["ticket_id"],
@@ -434,6 +448,10 @@
           "rule": "(btrim(description) <> ''::text)"
         },
         {
+          "name": "ck_tickets_idempotency_key_nonblank",
+          "rule": "((idempotency_key IS NULL) OR (length(btrim((idempotency_key)::text)) > 0))"
+        },
+        {
           "name": "ck_tickets_no_stale_resolution",
           "rule": "(((status)::text = ANY ((ARRAY['RESOLVED'::character varying, 'CLOSED'::character varying])::text[])) OR ((resolved_at IS NULL) AND (resolution_summary IS NULL)))"
         },
@@ -460,6 +478,10 @@
         {
           "name": "ck_tickets_triaged_requirements",
           "rule": "(((status)::text <> ALL ((ARRAY['TRIAGED'::character varying, 'IN_PROGRESS'::character varying])::text[])) OR ((category_id IS NOT NULL) AND ((priority)::text <> 'UNSET'::text) AND (assigned_team_id IS NOT NULL)))"
+        },
+        {
+          "name": "ck_tickets_version_positive",
+          "rule": "(version >= 1)"
         }
       ],
       "indexes": [
@@ -481,6 +503,11 @@
         {
           "name": "tickets_pkey",
           "columns": ["ticket_id"],
+          "unique": true
+        },
+        {
+          "name": "uq_tickets_requester_idempotency",
+          "columns": ["requester_id", "idempotency_key"],
           "unique": true
         }
       ]

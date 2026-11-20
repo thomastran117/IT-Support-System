@@ -1,7 +1,8 @@
 import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 import type { PrismaClient } from '@smartdesk/db';
 import { z } from 'zod';
-import { HttpError, envelope } from '../../plugins/errors.js';
+import { envelope } from '../../plugins/errors.js';
+import { parse } from '../../plugins/validate.js';
 import { createUserService } from './userService.js';
 
 const RoleSchema = z.enum(['EMPLOYEE', 'TECHNICIAN', 'ADMIN']);
@@ -26,14 +27,6 @@ const ListQuery = z.object({
   offset: z.coerce.number().int().min(0).default(0),
 });
 const AuditQuery = z.object({ limit: z.coerce.number().int().min(1).max(200).default(50) });
-
-function parse<S extends z.ZodType>(schema: S, value: unknown): z.output<S> {
-  const result = schema.safeParse(value);
-  if (!result.success) {
-    throw new HttpError(400, 'Validation failed', z.flattenError(result.error).fieldErrors);
-  }
-  return result.data;
-}
 
 const noStore = (reply: FastifyReply) => reply.header('cache-control', 'no-store');
 

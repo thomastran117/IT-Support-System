@@ -82,3 +82,42 @@ export interface AdminAuditEntry {
   details: Record<string, unknown>;
   createdAt: string;
 }
+
+// --- Tickets (SD-018) ----------------------------------------------------------------------
+
+export const TICKET_TITLE_MAX = 150;
+export const TICKET_DESCRIPTION_MAX = 5000;
+/** Header a client may send so that a retried submission returns the original ticket. */
+export const IDEMPOTENCY_KEY_HEADER = 'idempotency-key';
+
+export type TicketStatus = 'OPEN' | 'TRIAGED' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+export type TicketPriority = 'UNSET' | 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+
+/** Body of POST /api/tickets. Nothing else is accepted; the requester comes from the session. */
+export interface CreateTicketRequest {
+  title: string;
+  description: string;
+}
+
+/**
+ * A ticket as returned by the API. `version` is the optimistic concurrency token: mutating
+ * endpoints take the version the client last read and answer 409 when it is stale.
+ */
+export interface TicketDto {
+  id: string;
+  /** The tracking ID shown to people; identical to `id`. */
+  trackingId: string;
+  title: string;
+  description: string;
+  status: TicketStatus;
+  priority: TicketPriority;
+  categoryId: string | null;
+  teamId: string | null;
+  assigneeId: string | null;
+  requesterId: string;
+  resolutionSummary: string | null;
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt: string | null;
+  version: number;
+}

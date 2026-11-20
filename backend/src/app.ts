@@ -13,6 +13,7 @@ import { authRoutes } from './modules/auth/routes.js';
 import { registerErrorHandling } from './plugins/errors.js';
 import { healthRoutes } from './modules/health/routes.js';
 import { pingRoutes } from './modules/ping.js';
+import { ticketRoutes } from './modules/tickets/routes.js';
 
 export interface AppOptions {
   env: Env;
@@ -76,6 +77,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
       { prefix: `${API_PREFIX}/auth` },
     );
     await app.register(adminRoutes(opts.prisma), { prefix: `${API_PREFIX}/admin` });
+    await app.register(ticketRoutes(opts.prisma), { prefix: `${API_PREFIX}/tickets` });
   }
   if (opts.extraRoutes) {
     await app.register(

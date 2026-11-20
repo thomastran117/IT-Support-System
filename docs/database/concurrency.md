@@ -21,13 +21,13 @@ and `backend/test/unit/db/errors.test.ts`.
 
 Services in `services/ticketService.ts`, each a single transaction:
 
-| Operation              | Writes that commit together                                                                    |
-| ---------------------- | ---------------------------------------------------------------------------------------------- |
-| `createTicket`         | `tickets` (OPEN/UNSET) + `CREATED` event                                                       |
-| `approveRouting`       | approved category/priority/team/assignee (+ OPEN→TRIAGED when complete) + one event per change |
-| `reviewRecommendation` | review metadata + approved ticket values + routing events + `AI_REVIEWED`                      |
-| `addComment`           | comment + `COMMENT_ADDED` (details carry ids only, never the text)                             |
-| `transitionTicket`     | status/resolution fields + `STATUS_CHANGED` / `RESOLVED` / `REOPENED`                          |
+| Operation                       | Writes that commit together                                                                    |
+| ------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `createTicket` / `submitTicket` | `tickets` (OPEN/UNSET, optional idempotency key) + `CREATED` event                             |
+| `approveRouting`                | approved category/priority/team/assignee (+ OPEN→TRIAGED when complete) + one event per change |
+| `reviewRecommendation`          | review metadata + approved ticket values + routing events + `AI_REVIEWED`                      |
+| `addComment`                    | comment + `COMMENT_ADDED` (details carry ids only, never the text)                             |
+| `transitionTicket`              | status/resolution fields + `STATUS_CHANGED` / `RESOLVED` / `REOPENED`                          |
 
 Notification intent (item e of the issue) is added with SD-040 inside the same boundary.
 
@@ -41,13 +41,27 @@ even with clock skew between app and database.
 
 ## Concurrency strategy
 
-Pessimistic row locks, plus an optional optimistic precondition:
+**Direction (SD-018 onwards): optimistic concurrency.** Prefer a version check over holding locks.
+
+- `tickets.version` starts at 1 and every ticket mutation increments it (`patchTicket`,
+  `markResolved`). The API returns it as `version` on every ticket payload.
+- A writer sends the version it read. The write is a conditional `UPDATE ... WHERE version = $n`;
+  zero matching rows means someone else changed the ticket, and the caller gets a 409 to reload and
+  retry. Nothing is silently overwritten. The state-machine endpoint (SD-020) is the first to take
+  `expectedVersion`; it replaces `expectedUpdatedAt` below.
+- Duplicate submits use the same idea: `tickets(requester_id, idempotency_key)` is unique, so two
+  racing requests with one key cannot both insert. The loser's transaction rolls back and it returns
+  the winner's ticket (`submitTicket`). No lock is taken.
+
+**Existing services (not yet converted):** `approveRouting`, `transitionTicket` and
+`reviewRecommendation` still use the earlier scheme, which SD-020 migrates:
 
 1. Every mutation locks the ticket with `SELECT … FOR UPDATE` (`lockRow`) before reading it, so
    concurrent writers to one ticket run one after another and each sees the previous commit.
    Lock order is always **ticket, then recommendation**, so reviews cannot deadlock.
 2. Callers may pass `expectedUpdatedAt` (the version they last read). If the locked row differs, the
-   operation fails with `STALE_WRITE` (HTTP 409) instead of silently overwriting.
+   operation fails with `STALE_WRITE` (HTTP 409) instead of silently overwriting. Millisecond
+   JavaScript dates can differ from the microsecond column, which is why `version` replaces it.
 3. A recommendation that is no longer `PENDING` when its lock is acquired also fails with
    `STALE_WRITE`, so two reviewers cannot both decide it.
 
