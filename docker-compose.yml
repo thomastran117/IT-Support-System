@@ -28,7 +28,9 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-smartdesk}:${POSTGRES_PASSWORD:-smartdesk}@postgres:5432/${POSTGRES_DB:-smartdesk}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      JWT_SECRET: ${JWT_SECRET:-change-me-dev-only}
+      JWT_SECRET: ${JWT_SECRET:-change-me-dev-only-change-me-dev-only}
+      JWT_ISSUER: ${JWT_ISSUER:-smartdesk-api}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-smartdesk-web}
       AI_PROVIDER: ${AI_PROVIDER:-none}
       AI_API_KEY: ${AI_API_KEY:-}
     ports:
