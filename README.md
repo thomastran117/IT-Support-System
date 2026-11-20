@@ -51,13 +51,13 @@ docker compose down              # stop, keep data (named volume `pgdata`)
 
 - Frontend: <http://localhost:3000> · API: <http://localhost:4000> (`/health/live`, `/health/ready`)
 - PostgreSQL sits on an isolated internal network and is not published on the host. Backend/worker reach it as `postgres:5432`. Ad-hoc access: `docker compose exec postgres psql -U smartdesk`.
-- The backend applies migrations on start. Re-run manually: `docker compose exec backend npm run migrate -w backend`; seed demo data: `docker compose exec backend npm run seed -w backend`.
+- The backend applies migrations on start. Re-run manually: `docker compose exec backend npm run migrate -w backend`; seed demo data: `docker compose exec backend npm run db:seed -w backend`.
 - **Destructive reset** (deletes all data, rebuilds schema and seed):
 
   ```bash
   docker compose down -v
   docker compose up --build -d
-  docker compose exec backend npm run seed -w backend
+  docker compose exec backend npm run db:seed -w backend
   ```
 
 ## Continuous integration
