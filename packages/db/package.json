@@ -1,0 +1,31 @@
+{
+  "name": "@smartdesk/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "generate": "prisma generate",
+    "build": "prisma generate && tsc -p tsconfig.json",
+    "typecheck": "prisma generate && tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run --passWithNoTests",
+    "migrate": "prisma migrate deploy",
+    "migrate:dev": "prisma migrate dev",
+    "migrate:status": "prisma migrate status"
+  },
+  "devDependencies": {
+    "prisma": "^7.10.1"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.10.1",
+    "@prisma/client": "^7.10.1"
+  }
+}
