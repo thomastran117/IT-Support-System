@@ -1,7 +1,10 @@
 import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient } from './generated/client.js';
+import { Prisma, PrismaClient } from './generated/client.js';
 
-export { PrismaClient };
+export { Prisma, PrismaClient };
+
+/** The client handed to `$transaction` callbacks. */
+export type TransactionClient = Prisma.TransactionClient;
 
 export const DEFAULT_DATABASE_URL = 'postgresql://smartdesk:smartdesk@localhost:5432/smartdesk';
 
