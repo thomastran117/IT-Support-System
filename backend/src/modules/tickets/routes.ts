@@ -3,13 +3,24 @@ import type { PrismaClient } from '@smartdesk/db';
 import {
   IDEMPOTENCY_KEY_HEADER,
   TICKET_DESCRIPTION_MAX,
+  TICKET_PAGE_SIZE_DEFAULT,
+  TICKET_PAGE_SIZE_MAX,
   TICKET_TITLE_MAX,
 } from '@smartdesk/contracts';
 import { z } from 'zod';
+import { authorizeTicket } from '../../auth/ticketAccess.js';
 import { submitTicket } from '../../db/services/ticketService.js';
-import { envelope } from '../../plugins/errors.js';
+import { HttpError, envelope } from '../../plugins/errors.js';
 import { parse } from '../../plugins/validate.js';
 import { toTicketDto } from './dto.js';
+import { getTicketDetail, listTickets } from './queries.js';
+
+const ListQuery = z.strictObject({
+  status: z.enum(['OPEN', 'TRIAGED', 'IN_PROGRESS', 'RESOLVED', 'CLOSED']).optional(),
+  priority: z.enum(['UNSET', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).optional(),
+  limit: z.coerce.number().int().min(1).max(TICKET_PAGE_SIZE_MAX).default(TICKET_PAGE_SIZE_DEFAULT),
+  offset: z.coerce.number().int().min(0).default(0),
+});
 
 /**
  * Strict: unknown fields (role, requesterId, status, assignee, team...) are rejected rather than
@@ -50,5 +61,18 @@ export const ticketRoutes =
         return reply.code(200).send(envelope('Ticket already submitted', toTicketDto(ticket)));
       }
       return reply.code(201).send(envelope('Ticket created', toTicketDto(ticket)));
+    });
+
+    app.get('/', auth, async (req) =>
+      envelope('Tickets', await listTickets(prisma, req.principal!, parse(ListQuery, req.query))),
+    );
+
+    app.get('/:id', auth, async (req) => {
+      const { id } = req.params as { id: string };
+      // 404 for unknown, malformed and unreadable ids alike, so ids cannot be probed.
+      const scope = await authorizeTicket(prisma, req.principal!, id, 'read');
+      const detail = await getTicketDetail(prisma, req.principal!, scope);
+      if (!detail) throw new HttpError(404, 'Ticket not found');
+      return envelope('Ticket', detail);
     });
   };
