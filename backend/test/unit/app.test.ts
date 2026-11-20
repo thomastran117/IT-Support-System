@@ -1,8 +1,8 @@
 import { Writable } from 'node:stream';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { buildApp, REDACT_PATHS } from '../src/app.js';
-import { loadEnv } from '../src/config/env.js';
+import { buildApp, REDACT_PATHS } from '../../src/app.js';
+import { loadEnv } from '../../src/config/env.js';
 
 const env = loadEnv({ FRONTEND_ORIGIN: 'http://app.test' });
 const up = async () => true;

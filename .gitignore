@@ -10,3 +10,5 @@ coverage/
 .DS_Store
 next-env.d.ts
 packages/db/src/generated/
+playwright-report/
+test-results/

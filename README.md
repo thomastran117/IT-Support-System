@@ -62,15 +62,18 @@ docker compose down              # stop, keep data (named volume `pgdata`)
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs on every push to `main` and every pull request, using the Node version from `.nvmrc` with npm caching. Job `verify` runs, in order:
+Two GitHub Actions workflows run on every push to `main` and every pull request, using the Node version from `.nvmrc` with npm caching. Both start with `npm ci` and `npm run format:check`.
 
-`npm ci` → `npm run format:check` → `npm run lint` → `npm run typecheck` → `npm run build` → `npm run migrate -w backend` (`prisma migrate deploy`, fresh PostgreSQL 16 service) → `npm test` (including the migration integration test).
+| Workflow (`.github/workflows/`) | Required check      | Steps after install                                                                                                                                                                                                                                                                   |
+| ------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `backend.yml`                   | `backend / verify`  | build contracts + Prisma client, lint, typecheck, build (backend, worker, db, contracts); **unit tests** (`npm run test:unit -w backend`); worker tests; `npm run migrate -w backend` on a fresh PostgreSQL 16 service; **integration tests** (`npm run test:integration -w backend`) |
+| `frontend.yml`                  | `frontend / verify` | lint, typecheck, **unit tests** (`npm run test:unit -w frontend`), Playwright browser install, **end-to-end tests** (`npm run test:e2e -w frontend`, builds and serves the app; desktop and mobile Chromium)                                                                          |
 
-Environment variables (all CI-only, non-secret, set in the workflow): `DATABASE_URL`, `TEST_DATABASE_URL`, `FRONTEND_ORIGIN`, `NEXT_PUBLIC_API_URL`. No repository secrets are used. Logs are uploaded as the `ci-logs` artifact on failure.
+Environment variables (CI-only, non-secret, set in the workflows): `DATABASE_URL`, `TEST_DATABASE_URL`, `FRONTEND_ORIGIN` (backend); `NEXT_PUBLIC_API_URL` (frontend). No repository secrets are used. Logs (and the Playwright report) are uploaded as artifacts on failure.
 
-**Required before merge:** the `verify` check (configure it as a required status check in branch protection for `main`).
+Mark both `backend / verify` and `frontend / verify` as required status checks in branch protection for `main`. The workflows have no path filters so required checks always report.
 
-Reproduce locally against a database: `TEST_DATABASE_URL=postgres://… npm test`.
+Test layout: `backend/test/unit` (no external services), `backend/test/integration` (needs `TEST_DATABASE_URL`, skipped without it), `frontend/test/unit` (Vitest), `frontend/e2e` (Playwright). Locally: `npx playwright install chromium` once, then `npm run test:e2e -w frontend`. Root `npm test` runs unit/integration suites but not Playwright.
 
 ## Conventions
 

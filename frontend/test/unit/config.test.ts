@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { apiUrl, getApiOrigin } from '../src/lib/config';
+import { apiUrl, getApiOrigin } from '../../src/lib/config';
 
 describe('api config', () => {
   it('normalises the origin', () => {
