@@ -1,0 +1,82 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        # Explicit bash enables `pipefail`, so `| tee` never masks a failing step.
+        shell: bash
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: smartdesk_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d smartdesk_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # CI-only, non-secret values pointing at the throwaway service container.
+      DATABASE_URL: postgres://ci:ci-only-password@localhost:5432/smartdesk_test
+      TEST_DATABASE_URL: postgres://ci:ci-only-password@localhost:5432/smartdesk_test
+      FRONTEND_ORIGIN: http://localhost:3000
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+      NEXT_TELEMETRY_DISABLED: '1'
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint 2>&1 | tee ci-lint.log
+
+      - name: Typecheck
+        run: npm run typecheck 2>&1 | tee ci-typecheck.log
+
+      - name: Build
+        run: npm run build 2>&1 | tee ci-build.log
+
+      - name: Migrate fresh database
+        run: npm run migrate -w backend 2>&1 | tee ci-migrate.log
+
+      - name: Test
+        run: npm test 2>&1 | tee ci-test.log
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-logs
+          path: ci-*.log
+          if-no-files-found: ignore
+          retention-days: 7
