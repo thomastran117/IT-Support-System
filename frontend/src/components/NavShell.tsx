@@ -1,14 +1,20 @@
-import Link from 'next/link';
-import type { ReactNode } from 'react';
+'use client';
 
-const links = [
-  { href: '/login', label: 'Sign in' },
-  { href: '/employee', label: 'Employee' },
-  { href: '/technician', label: 'Technician' },
-  { href: '/admin', label: 'Admin' },
-];
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import type { ReactNode } from 'react';
+import { useAuth } from '@/lib/auth/AuthProvider';
+import { portalFor, ROLE_LABEL } from '@/lib/auth/roles';
 
 export function NavShell({ children }: { children: ReactNode }) {
+  const { status, user, signOut } = useAuth();
+  const router = useRouter();
+
+  async function onSignOut() {
+    await signOut();
+    router.replace('/login');
+  }
+
   return (
     <>
       <a
@@ -25,15 +31,35 @@ export function NavShell({ children }: { children: ReactNode }) {
           <Link href="/" className="font-semibold">
             SmartDesk
           </Link>
-          <ul className="flex flex-wrap gap-3 text-sm">
-            {links.map((l) => (
-              <li key={l.href}>
-                <Link href={l.href} className="rounded px-2 py-1 hover:bg-slate-100">
-                  {l.label}
+          <ul className="flex flex-wrap items-center gap-3 text-sm">
+            {user ? (
+              <li>
+                <Link href={portalFor(user.role)} className="rounded px-2 py-1 hover:bg-slate-100">
+                  {ROLE_LABEL[user.role]}
                 </Link>
               </li>
-            ))}
+            ) : (
+              status !== 'loading' && (
+                <li>
+                  <Link href="/login" className="rounded px-2 py-1 hover:bg-slate-100">
+                    Sign in
+                  </Link>
+                </li>
+              )
+            )}
           </ul>
+          {user && (
+            <div className="ml-auto flex items-center gap-3 text-sm">
+              <span data-testid="current-user">{user.displayName}</span>
+              <button
+                type="button"
+                onClick={onSignOut}
+                className="rounded border border-slate-300 px-3 py-1 hover:bg-slate-100"
+              >
+                Sign out
+              </button>
+            </div>
+          )}
         </nav>
       </header>
       <main id="main" className="mx-auto max-w-5xl px-4 py-8">

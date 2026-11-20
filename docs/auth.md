@@ -84,3 +84,28 @@ an employee, but cannot work it outside their scope.
 
 Admins are deliberately given read and edit access to all tickets for oversight; they are not
 restricted to administration endpoints.
+
+## Frontend session handling (SD-016)
+
+- **Access token in memory only.** It lives inside the API client's closure (`frontend/src/lib/auth/client.ts`):
+  never in localStorage, sessionStorage, cookies or URLs. A reload loses it, so the app calls
+  `POST /api/auth/refresh` on load; the HttpOnly cookie (invisible to scripts) restores the session
+  and the response carries the profile.
+- **One refresh per failure.** An authenticated call that gets a 401 triggers exactly one refresh
+  (concurrent callers share it) and one retry. If either fails the session is ended and the user is
+  sent to `/login` with "Your session has ended". There is no retry loop and no redirect loop.
+- **Revoked or disabled accounts** are noticed when the browser tab becomes visible again
+  (`/api/auth/me` is re-checked), and on the next reload (refresh is refused).
+- **Routing.** `RequireRole` guards each portal layout: anonymous users go to `/login`, and a user
+  who opens another role's portal is redirected to their own (`/employee`, `/technician`, `/admin`).
+  This is a usability layer only; the API authorizes every request independently (SD-015).
+- **Messages** are generic: wrong password, unknown account and disabled account all read "Invalid
+  email or password."; network failures and rate limiting have their own plain messages.
+- **Deployment requirement.** The browser calls the API directly (CORS with credentials), and the
+  refresh cookie is `SameSite=Strict`, so the frontend and API must be the same site (for example
+  `app.example.com` and `api.example.com`, or `localhost` on different ports). Different registrable
+  domains would need a same-origin proxy instead.
+- **Tests.** Unit tests cover the client (refresh-once, no loops, shared refresh, token never
+  persisted). Playwright runs on desktop and mobile against an in-browser mock of `/api/auth/*`, so
+  CI never depends on the backend: three roles landing, reload, logout, forbidden routes, revoked
+  sessions, network failure, rate limiting, validation, keyboard use and token leakage checks.
