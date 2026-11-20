@@ -11,12 +11,13 @@
     "lint": "eslint src test",
     "test": "npm run test:unit && npm run test:integration",
     "migrate": "prisma migrate deploy",
-    "seed": "tsx src/db/seed.ts",
+    "seed": "npm run db:seed",
     "test:unit": "vitest run test/unit",
     "test:integration": "vitest run test/integration --no-file-parallelism",
     "generate": "prisma generate",
     "migrate:dev": "prisma migrate dev",
-    "migrate:status": "prisma migrate status"
+    "migrate:status": "prisma migrate status",
+    "db:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.4.3",
