@@ -3,7 +3,7 @@ import type { PrismaClient } from '@smartdesk/db';
 import type { AuthSession } from '@smartdesk/contracts';
 import { z } from 'zod';
 import type { Env } from '../../config/env.js';
-import { createRequireAuth, loadValidUser, toAuthUser } from '../../auth/guard.js';
+import { loadValidUser, toAuthUser } from '../../auth/guard.js';
 import { verifyDummy, verifyPassword } from '../../auth/password.js';
 import type { TokenService } from '../../auth/tokens.js';
 import { envelope, HttpError } from '../../plugins/errors.js';
@@ -34,7 +34,7 @@ const INVALID_SESSION = () => new HttpError(401, 'Session is invalid or expired'
 export const authRoutes =
   ({ prisma, env, tokens, rateLimit }: AuthRouteOptions): FastifyPluginAsync =>
   async (app) => {
-    const requireAuth = createRequireAuth(prisma, tokens);
+    const { requireAuth } = app.authGuards;
 
     const setRefreshCookie = (reply: FastifyReply, token: string) =>
       reply.setCookie(REFRESH_COOKIE, token, {
@@ -111,6 +111,6 @@ export const authRoutes =
 
     app.get('/me', { preHandler: requireAuth }, async (req, reply) => {
       reply.header('cache-control', 'no-store');
-      return envelope('Current user', req.auth);
+      return envelope('Current user', toAuthUser(req.principal!));
     });
   };

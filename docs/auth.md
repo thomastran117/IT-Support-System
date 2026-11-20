@@ -50,3 +50,37 @@ Hardening:
 `npm run db:seed` creates an admin, employees and technicians (see `docs/database/fixtures.md`). All
 share the synthetic demo password `SmartDesk-Demo-1!` (override with `SEED_DEMO_PASSWORD`). It is
 public by design and must never be used outside a demo or test database.
+
+## Authorization (SD-015)
+
+Every protected route is guarded by `app.authGuards` (`backend/src/auth/guard.ts`):
+
+- `requireAuth` verifies the access token, then loads the user from the database. The request's
+  `principal` (id, role, active team ids) always comes from the database, never from the client or
+  the token, so role, team and activation changes apply on the very next request.
+- `requireRole('ADMIN', ...)` runs `requireAuth` and then returns 403 for any other role.
+- Record-level rules live only in `backend/src/auth/policies.ts` (pure functions) and
+  `backend/src/auth/ticketAccess.ts`. Routes call `authorizeTicket(prisma, principal, id, 'read' | 'edit')`
+  for a single ticket and use `ticketReadFilter(principal)` for lists, so pagination and counts stay
+  inside the caller's scope. A test asserts the filter and `canReadTicket` agree for every seeded user
+  and ticket.
+- A ticket the caller cannot read is a 404, identical to a missing or malformed id (no probing by id).
+  A ticket they can read but not modify is a 403.
+
+### Matrix
+
+| Operation                                                                                 | Employee          | Technician                                      | Admin |
+| ----------------------------------------------------------------------------------------- | ----------------- | ----------------------------------------------- | ----- |
+| List / read ticket                                                                        | own tickets only  | own, assigned to my active teams, or unrouted\* | all   |
+| Edit, approve routing, assign, change status                                              | no (403 on own)   | same scope as read, except tickets I requested  | all   |
+| Comment publicly                                                                          | on tickets I read | on tickets I read                               | all   |
+| Read or author internal notes                                                             | never             | within my edit scope                            | all   |
+| Raw ticket audit events (`ticket_events`)                                                 | never (own: 403)  | within my edit scope                            | all   |
+| Accounts, classification labels, analytics, teams, categories, knowledge base maintenance | no (403)          | no (403)                                        | yes   |
+
+\*Unrouted tickets (no team yet) form the shared triage backlog. A technician sees and can triage it
+only while they belong to at least one active team. A technician who raised a ticket can read it like
+an employee, but cannot work it outside their scope.
+
+Admins are deliberately given read and edit access to all tickets for oversight; they are not
+restricted to administration endpoints.
