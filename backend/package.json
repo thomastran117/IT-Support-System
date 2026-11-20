@@ -1,0 +1,25 @@
+{
+  "name": "@smartdesk/backend",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src test",
+    "test": "vitest run",
+    "migrate": "tsx src/db/migrate.ts",
+    "seed": "tsx src/db/seed.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.4.3",
+    "@smartdesk/contracts": "^0.0.0",
+    "fastify": "^5.12.8",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1"
+  }
+}
