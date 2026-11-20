@@ -107,14 +107,14 @@ triage, work and resolve a ticket when the AI provider is down. Unrouted tickets
 
 ## Runtime extensions to the 11-table baseline
 
-None are deployed yet. Planned additions, each to be added by its own migration and recorded here and in
+Deployed: credentials (SD-013, migration `0003_auth_credentials`: two columns on `users`, see `deviations.md` #5). Planned additions, each to be added by its own migration and recorded here and in
 `deviations.md` without altering the eleven baseline tables:
 
-| Extension                | Issue | Purpose                               |
-| ------------------------ | ----- | ------------------------------------- |
-| Credentials and sessions | #25   | password hashes, refresh sessions     |
-| Durable AI analysis jobs | #47   | idempotent job records for the worker |
-| Notifications            | #52   | employee notification records         |
+| Extension                    | Issue | Purpose                                                       |
+| ---------------------------- | ----- | ------------------------------------------------------------- |
+| ~~Credentials and sessions~~ | #25   | done as two `users` columns; no session table (stateless JWT) |
+| Durable AI analysis jobs     | #47   | idempotent job records for the worker                         |
+| Notifications                | #52   | employee notification records                                 |
 
 ## Running it (npm workspaces only)
 

@@ -24,6 +24,9 @@ model User {
   role        String   @db.VarChar(16)
   isActive    Boolean  @default(true) @map("is_active")
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  passwordHash String? @map("password_hash") @db.VarChar(255)
+  /// Bumped to invalidate every outstanding JWT for this user (stateless revocation).
+  tokenVersion Int     @default(0) @map("token_version")
 
   teamMemberships      TeamMember[]
   requestedTickets     Ticket[]               @relation("TicketRequester")

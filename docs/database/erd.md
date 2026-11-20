@@ -14,6 +14,8 @@ erDiagram
     varchar role
     bool is_active
     timestamptz created_at
+    varchar password_hash
+    int token_version
   }
   support_teams {
     uuid team_id PK

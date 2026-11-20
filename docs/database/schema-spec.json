@@ -4,7 +4,7 @@
     {
       "name": "users",
       "area": "Identity",
-      "description": "Every person who signs in: employees raising tickets, technicians working them, administrators.",
+      "description": "Every person who signs in: employees raising tickets, technicians and administrators. Also holds the Argon2id credential and the JWT revocation counter (SD-013).",
       "columns": [
         {
           "name": "user_id",
@@ -47,6 +47,20 @@
           "nullable": false,
           "default": "CURRENT_TIMESTAMP",
           "meaning": "When the account was created (UTC)."
+        },
+        {
+          "name": "password_hash",
+          "type": "character varying(255)",
+          "nullable": true,
+          "default": null,
+          "meaning": "Argon2id PHC string (salt and parameters embedded); NULL until a credential is provisioned, which blocks login. Never plaintext, never returned by the API."
+        },
+        {
+          "name": "token_version",
+          "type": "integer",
+          "nullable": false,
+          "default": "0",
+          "meaning": "Carried in every JWT. Incrementing it invalidates all of the user’s outstanding tokens (stateless revocation)."
         }
       ],
       "primaryKey": ["user_id"],
@@ -61,8 +75,16 @@
           "rule": "(((email)::text = lower((email)::text)) AND (btrim((email)::text) <> ''::text))"
         },
         {
+          "name": "ck_users_password_hash_argon2id",
+          "rule": "((password_hash IS NULL) OR ((password_hash)::text ~~ '$argon2id$%'::text))"
+        },
+        {
           "name": "ck_users_role",
           "rule": "((role)::text = ANY ((ARRAY['EMPLOYEE'::character varying, 'TECHNICIAN'::character varying, 'ADMIN'::character varying])::text[]))"
+        },
+        {
+          "name": "ck_users_token_version_nonnegative",
+          "rule": "(token_version >= 0)"
         }
       ],
       "indexes": [

@@ -7,7 +7,7 @@ Types are PostgreSQL types (`timestamp(6) with time zone` is `TIMESTAMPTZ`; all 
 
 ## `users`
 
-_Identity._ Every person who signs in: employees raising tickets, technicians working them, administrators.
+_Identity._ Every person who signs in: employees raising tickets, technicians and administrators. Also holds the Argon2id credential and the JWT revocation counter (SD-013).
 
 | Column | Type | Null | Default | Key | Unique | Indexes | Meaning |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -17,12 +17,16 @@ _Identity._ Every person who signs in: employees raising tickets, technicians wo
 | `role` | `character varying(16)` | NOT NULL |  |  |  |  | EMPLOYEE, TECHNICIAN or ADMIN; drives authorization. |
 | `is_active` | `boolean` | NOT NULL | `true` |  |  |  | FALSE deactivates the account without deleting history. |
 | `created_at` | `timestamp(6) with time zone` | NOT NULL | `CURRENT_TIMESTAMP` |  |  |  | When the account was created (UTC). |
+| `password_hash` | `character varying(255)` | NULL |  |  |  |  | Argon2id PHC string (salt and parameters embedded); NULL until a credential is provisioned, which blocks login. Never plaintext, never returned by the API. |
+| `token_version` | `integer` | NOT NULL | `0` |  |  |  | Carried in every JWT. Incrementing it invalidates all of the user’s outstanding tokens (stateless revocation). |
 
 **CHECK constraints**
 
 - `ck_users_display_name_nonblank`: `(btrim((display_name)::text) <> ''::text)`
 - `ck_users_email_normalized`: `(((email)::text = lower((email)::text)) AND (btrim((email)::text) <> ''::text))`
+- `ck_users_password_hash_argon2id`: `((password_hash IS NULL) OR ((password_hash)::text ~~ '$argon2id$%'::text))`
 - `ck_users_role`: `((role)::text = ANY ((ARRAY['EMPLOYEE'::character varying, 'TECHNICIAN'::character varying, 'ADMIN'::character varying])::text[]))`
+- `ck_users_token_version_nonnegative`: `(token_version >= 0)`
 
 ## `support_teams`
 

@@ -1,7 +1,7 @@
 # Seed fixtures
 
-Deterministic synthetic data for all eleven core tables (SD-009). No real people, passwords, tokens
-or API secrets. Source: `backend/src/db/seed/fixtures.ts`; entry point `backend/prisma/seed.ts`.
+Deterministic synthetic data for all eleven core tables (SD-009). No real people, tokens or API secrets;
+the only passwords are the synthetic demo one below, stored as Argon2id hashes. Source: `backend/src/db/seed/fixtures.ts`; entry point `backend/prisma/seed.ts`.
 
 ## Commands (npm workspaces)
 
@@ -17,7 +17,7 @@ npm run db:seed -w backend -- --profile test --reset      # empty a *test* datab
   `ticket_events` is append-only.
 - `--reset` is refused unless the database name contains `test`.
 - Docker: `docker compose exec backend npm run db:seed -w backend`.
-- Demo credentials are not seeded; hashed credentials arrive with the auth schema (SD-013, #25).
+- Every seeded account (including the two inactive ones) gets an Argon2id `password_hash` for the shared synthetic demo password `SmartDesk-Demo-1!` (override with `SEED_DEMO_PASSWORD`). Salts are random, so hashes differ per run. Re-seeding never replaces an existing hash; it only fills a missing one.
 
 ## Profiles
 

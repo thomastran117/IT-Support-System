@@ -1,5 +1,16 @@
 import type { PrismaClient } from '@smartdesk/db';
-import { buildFixtures, type Profile } from './fixtures.js';
+import { hashPassword } from '../../auth/password.js';
+import { buildFixtures, DEMO_PASSWORD, type Profile } from './fixtures.js';
+
+// Hashing is deliberately slow, so hash each fixture user once per process. Salts are random, so
+// hashes differ between runs; re-seeding never overwrites an existing row (ON CONFLICT DO NOTHING).
+const hashCache = new Map<string, Promise<string>>();
+const demoHash = (userId: string): Promise<string> => {
+  let h = hashCache.get(userId);
+  if (!h)
+    hashCache.set(userId, (h = hashPassword(process.env.SEED_DEMO_PASSWORD ?? DEMO_PASSWORD)));
+  return h;
+};
 
 const TABLES = [
   'ai_recommendations',
@@ -53,10 +64,20 @@ export async function seedDatabase(
   }
 
   const f = buildFixtures(options.profile);
+  const users = await Promise.all(
+    f.users.map(async (u) => ({ ...u, passwordHash: await demoHash(u.id as string) })),
+  );
   const opts = { skipDuplicates: true } as const;
 
   await prisma.$transaction(async (tx) => {
-    await tx.user.createMany({ data: f.users, ...opts });
+    await tx.user.createMany({ data: users, ...opts });
+    // Databases seeded before credentials existed: fill only missing hashes, never replace one.
+    for (const u of users) {
+      await tx.user.updateMany({
+        where: { id: u.id, passwordHash: null },
+        data: { passwordHash: u.passwordHash },
+      });
+    }
     await tx.supportTeam.createMany({ data: f.teams, ...opts });
     await tx.teamMember.createMany({ data: f.teamMembers, ...opts });
     await tx.ticketCategory.createMany({ data: f.categories, ...opts });
