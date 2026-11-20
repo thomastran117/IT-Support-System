@@ -81,4 +81,5 @@ Test layout: `backend/test/unit` (no external services), `backend/test/integrati
 - API responses use the envelope `{ message, error, details, data }`.
 - Feature code never hardcodes API hosts; the frontend reads `NEXT_PUBLIC_API_URL` via `frontend/src/lib/config.ts`.
 - Database access goes through Prisma (`@smartdesk/db` exports the client; the schema and migrations live in `backend/prisma/`). Edit `backend/prisma/schema.prisma`, then `npm run migrate:dev -w backend -- --name <change>` to create a migration; commit the generated SQL. Constraints Prisma cannot express go in hand-written SQL migrations. The generated client (`packages/db/src/generated`) is not committed. Deviations from the Deliverable 2 design are recorded in `docs/database/deviations.md`.
+- **Database docs, seed and tests:** see [docs/database/](docs/database/README.md) (ERD, data dictionary, query catalogue, fixtures). Common commands: `npm run db:migrate`, `npm run db:seed`, `TEST_DATABASE_URL=� npm run test:db` (fresh isolated database per run), `npm run docs:db` (regenerate the ERD and dictionary from `docs/database/schema-spec.json`).
 - Never commit `.env` files or build output.

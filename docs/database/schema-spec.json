@@ -1,0 +1,1057 @@
+{
+  "$comment": "Machine-readable description of the migrated schema. Verified against PostgreSQL by dictionary.integration.test.ts; data-dictionary.md is generated from it (npm run docs:db -w backend).",
+  "tables": [
+    {
+      "name": "users",
+      "area": "Identity",
+      "description": "Every person who signs in: employees raising tickets, technicians working them, administrators.",
+      "columns": [
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "meaning": "Primary key."
+        },
+        {
+          "name": "email",
+          "type": "character varying(255)",
+          "nullable": false,
+          "default": null,
+          "meaning": "Login identity, stored lowercase (CHECK) and unique."
+        },
+        {
+          "name": "display_name",
+          "type": "character varying(120)",
+          "nullable": false,
+          "default": null,
+          "meaning": "Name shown in audit history and ticket screens; nonblank."
+        },
+        {
+          "name": "role",
+          "type": "character varying(16)",
+          "nullable": false,
+          "default": null,
+          "meaning": "EMPLOYEE, TECHNICIAN or ADMIN; drives authorization."
+        },
+        {
+          "name": "is_active",
+          "type": "boolean",
+          "nullable": false,
+          "default": "true",
+          "meaning": "FALSE deactivates the account without deleting history."
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp(6) with time zone",
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP",
+          "meaning": "When the account was created (UTC)."
+        }
+      ],
+      "primaryKey": ["user_id"],
+      "foreignKeys": [],
+      "checks": [
+        {
+          "name": "ck_users_display_name_nonblank",
+          "rule": "(btrim((display_name)::text) <> ''::text)"
+        },
+        {
+          "name": "ck_users_email_normalized",
+          "rule": "(((email)::text = lower((email)::text)) AND (btrim((email)::text) <> ''::text))"
+        },
+        {
+          "name": "ck_users_role",
+          "rule": "((role)::text = ANY ((ARRAY['EMPLOYEE'::character varying, 'TECHNICIAN'::character varying, 'ADMIN'::character varying])::text[]))"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "users_email_key",
+          "columns": ["email"],
+          "unique": true
+        },
+        {
+          "name": "users_pkey",
+          "columns": ["user_id"],
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "support_teams",
+      "area": "Identity",
+      "description": "Technician groups that tickets are routed to.",
+      "columns": [
+        {
+          "name": "team_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "meaning": "Primary key."
+        },
+        {
+          "name": "name",
+          "type": "character varying(100)",
+          "nullable": false,
+          "default": null,
+          "meaning": "Unique nonblank team name."
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "meaning": "Optional description of the team's responsibilities."
+        },
+        {
+          "name": "is_active",
+          "type": "boolean",
+          "nullable": false,
+          "default": "true",
+          "meaning": "FALSE retires a team; old tickets keep their link."
+        }
+      ],
+      "primaryKey": ["team_id"],
+      "foreignKeys": [],
+      "checks": [
+        {
+          "name": "ck_support_teams_name_nonblank",
+          "rule": "(btrim((name)::text) <> ''::text)"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "support_teams_name_key",
+          "columns": ["name"],
+          "unique": true
+        },
+        {
+          "name": "support_teams_pkey",
+          "columns": ["team_id"],
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "team_members",
+      "area": "Identity",
+      "description": "Membership of users in support teams (many-to-many). Its key is the target of the tickets assignee composite FK.",
+      "columns": [
+        {
+          "name": "team_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "meaning": "Part of the primary key; the team."
+        },
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "meaning": "Part of the primary key; the member."
+        },
+        {
+          "name": "joined_at",
+          "type": "timestamp(6) with time zone",
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP",
+          "meaning": "When the user joined the team."
+        }
+      ],
+      "primaryKey": ["team_id", "user_id"],
+      "foreignKeys": [
+        {
+          "name": "team_members_team_id_fkey",
+          "columns": ["team_id"],
+          "references": {
+            "table": "support_teams",
+            "columns": ["team_id"]
+          },
+          "onDelete": "RESTRICT"
+        },
+        {
+          "name": "team_members_user_id_fkey",
+          "columns": ["user_id"],
+          "references": {
+            "table": "users",
+            "columns": ["user_id"]
+          },
+          "onDelete": "RESTRICT"
+        }
+      ],
+      "checks": [],
+      "indexes": [
+        {
+          "name": "idx_team_members_user",
+          "columns": ["user_id"],
+          "unique": false
+        },
+        {
+          "name": "team_members_pkey",
+          "columns": ["team_id", "user_id"],
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "ticket_categories",
+      "area": "Identity",
+      "description": "Approved categories used for triage, knowledge articles and evaluation labels.",
+      "columns": [
+        {
+          "name": "category_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "meaning": "Primary key."
+        },
+        {
+          "name": "name",
+          "type": "character varying(100)",
+          "nullable": false,
+          "default": null,
+          "meaning": "Unique nonblank category name."
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "meaning": "Optional description."
+        },
+        {
+          "name": "is_active",
+          "type": "boolean",
+          "nullable": false,
+          "default": "true",
+          "meaning": "FALSE retires a category without changing history."
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp(6) with time zone",
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP",
+          "meaning": "Creation time (UTC)."
+        }
+      ],
+      "primaryKey": ["category_id"],
+      "foreignKeys": [],
+      "checks": [
+        {
+          "name": "ck_ticket_categories_name_nonblank",
+          "rule": "(btrim((name)::text) <> ''::text)"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ticket_categories_name_key",
+          "columns": ["name"],
+          "unique": true
+        },
+        {
+          "name": "ticket_categories_pkey",
+          "columns": ["category_id"],
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "tickets",
+      "area": "Tickets",
+      "description": "The support request and its technician-approved routing. AI proposals are stored separately in ai_recommendations.",
+      "columns": [
+        {
+          "name": "ticket_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "meaning": "Primary key and tracking identifier."
+        },
+        {
+          "name": "requester_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "meaning": "Employee who raised the ticket."
+        },
+        {
+          "name": "assigned_team_id",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "meaning": "Approved team; NULL until a technician routes the ticket."
+        },
+        {
+          "name": "assignee_id",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "meaning": "Approved technician; must belong to assigned_team_id (composite FK); NULL when unassigned."
+        },
+        {
+          "name": "category_id",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "meaning": "Approved category; NULL until triaged."
+        },
+        {
+          "name": "title",
+          "type": "character varying(150)",
+          "nullable": false,
+          "default": null,
+          "meaning": "Short summary (max 150), nonblank."
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "meaning": "Problem details, nonblank."
+        },
+        {
+          "name": "status",
+          "type": "character varying(16)",
+          "nullable": false,
+          "default": "'OPEN'::character varying",
+          "meaning": "OPEN, TRIAGED, IN_PROGRESS, RESOLVED or CLOSED."
+        },
+        {
+          "name": "priority",
+          "type": "character varying(10)",
+          "nullable": false,
+          "default": "'UNSET'::character varying",
+          "meaning": "UNSET, LOW, MEDIUM, HIGH or CRITICAL; approved by a technician."
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp(6) with time zone",
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP",
+          "meaning": "Submission time (UTC)."
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp(6) with time zone",
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP",
+          "meaning": "Last mutation time, set by the service."
+        },
+        {
+          "name": "resolved_at",
+          "type": "timestamp(6) with time zone",
+          "nullable": true,
+          "default": null,
+          "meaning": "Latest resolution time; NULL unless RESOLVED/CLOSED; cleared on reopen."
+        },
+        {
+          "name": "resolution_summary",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "meaning": "Latest resolution text; required when RESOLVED/CLOSED; cleared on reopen."
+        }
+      ],
+      "primaryKey": ["ticket_id"],
+      "foreignKeys": [
+        {
+          "name": "tickets_assigned_team_id_assignee_id_fkey",
+          "columns": ["assigned_team_id", "assignee_id"],
+          "references": {
+            "table": "team_members",
+            "columns": ["team_id", "user_id"]
+          },
+          "onDelete": "RESTRICT"
+        },
+        {
+          "name": "tickets_assigned_team_id_fkey",
+          "columns": ["assigned_team_id"],
+          "references": {
+            "table": "support_teams",
+            "columns": ["team_id"]
+          },
+          "onDelete": "RESTRICT"
+        },
+        {
+          "name": "tickets_assignee_id_fkey",
+          "columns": ["assignee_id"],
+          "references": {
+            "table": "users",
+            "columns": ["user_id"]
+          },
+          "onDelete": "RESTRICT"
+        },
+        {
+          "name": "tickets_category_id_fkey",
+          "columns": ["category_id"],
+          "references": {
+            "table": "ticket_categories",
+            "columns": ["category_id"]
+          },
+          "onDelete": "RESTRICT"
+        },
+        {
+          "name": "tickets_requester_id_fkey",
+          "columns": ["requester_id"],
+          "references": {
+            "table": "users",
+            "columns": ["user_id"]
+          },
+          "onDelete": "RESTRICT"
+        }
+      ],
+      "checks": [
+        {
+          "name": "ck_tickets_assignee_requires_team",
+          "rule": "((assignee_id IS NULL) OR (assigned_team_id IS NOT NULL))"
+        },
+        {
+          "name": "ck_tickets_description_nonblank",
+          "rule": "(btrim(description) <> ''::text)"
+        },
+        {
+          "name": "ck_tickets_no_stale_resolution",
+          "rule": "(((status)::text = ANY ((ARRAY['RESOLVED'::character varying, 'CLOSED'::character varying])::text[])) OR ((resolved_at IS NULL) AND (resolution_summary IS NULL)))"
+        },
+        {
+          "name": "ck_tickets_priority",
+          "rule": "((priority)::text = ANY ((ARRAY['UNSET'::character varying, 'LOW'::character varying, 'MEDIUM'::character varying, 'HIGH'::character varying, 'CRITICAL'::character varying])::text[]))"
+        },
+        {
+          "name": "ck_tickets_resolution_required",
+          "rule": "(((status)::text <> ALL ((ARRAY['RESOLVED'::character varying, 'CLOSED'::character varying])::text[])) OR ((resolved_at IS NOT NULL) AND (resolution_summary IS NOT NULL) AND (btrim(resolution_summary) <> ''::text)))"
+        },
+        {
+          "name": "ck_tickets_resolved_after_created",
+          "rule": "((resolved_at IS NULL) OR (resolved_at >= created_at))"
+        },
+        {
+          "name": "ck_tickets_status",
+          "rule": "((status)::text = ANY ((ARRAY['OPEN'::character varying, 'TRIAGED'::character varying, 'IN_PROGRESS'::character varying, 'RESOLVED'::character varying, 'CLOSED'::character varying])::text[]))"
+        },
+        {
+          "name": "ck_tickets_title_nonblank",
+          "rule": "(btrim((title)::text) <> ''::text)"
+        },
+        {
+          "name": "ck_tickets_triaged_requirements",
+          "rule": "(((status)::text <> ALL ((ARRAY['TRIAGED'::character varying, 'IN_PROGRESS'::character varying])::text[])) OR ((category_id IS NOT NULL) AND ((priority)::text <> 'UNSET'::text) AND (assigned_team_id IS NOT NULL)))"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_tickets_category_created",
+          "columns": ["category_id", "created_at"],
+          "unique": false
+        },
+        {
+          "name": "idx_tickets_requester_created",
+          "columns": ["requester_id", "created_at"],
+          "unique": false
+        },
+        {
+          "name": "idx_tickets_team_status_created",
+          "columns": ["assigned_team_id", "status", "created_at"],
+          "unique": false
+        },
+        {
+          "name": "tickets_pkey",
+          "columns": ["ticket_id"],
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "ticket_comments",
+      "area": "Tickets",
+      "description": "Public replies and technician-only internal notes on a ticket.",
+      "columns": [
+        {
+          "name": "comment_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "meaning": "Primary key."
+        },
+        {
+          "name": "ticket_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "meaning": "Ticket commented on."
+        },
+        {
+          "name": "author_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "meaning": "User who wrote the comment."
+        },
+        {
+          "name": "body",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "meaning": "Comment text, nonblank."
+        },
+        {
+          "name": "is_internal",
+          "type": "boolean",
+          "nullable": false,
+          "default": "false",
+          "meaning": "TRUE for technician-only notes, never shown to the requester."
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp(6) with time zone",
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP",
+          "meaning": "Posting time (UTC)."
+        }
+      ],
+      "primaryKey": ["comment_id"],
+      "foreignKeys": [
+        {
+          "name": "ticket_comments_author_id_fkey",
+          "columns": ["author_id"],
+          "references": {
+            "table": "users",
+            "columns": ["user_id"]
+          },
+          "onDelete": "RESTRICT"
+        },
+        {
+          "name": "ticket_comments_ticket_id_fkey",
+          "columns": ["ticket_id"],
+          "references": {
+            "table": "tickets",
+            "columns": ["ticket_id"]
+          },
+          "onDelete": "RESTRICT"
+        }
+      ],
+      "checks": [
+        {
+          "name": "ck_ticket_comments_body_nonblank",
+          "rule": "(btrim(body) <> ''::text)"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_ticket_comments_ticket_created",
+          "columns": ["ticket_id", "created_at"],
+          "unique": false
+        },
+        {
+          "name": "ticket_comments_pkey",
+          "columns": ["comment_id"],
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "ticket_events",
+      "area": "Tickets",
+      "description": "Append-only audit trail: every mutation writes an event in the same transaction. UPDATE and DELETE are rejected by a trigger.",
+      "columns": [
+        {
+          "name": "event_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "meaning": "Primary key; tie-breaker for equal timestamps."
+        },
+        {
+          "name": "ticket_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "meaning": "Ticket the event belongs to."
+        },
+        {
+          "name": "actor_id",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "meaning": "Acting user; NULL means a system actor."
+        },
+        {
+          "name": "event_type",
+          "type": "character varying(32)",
+          "nullable": false,
+          "default": null,
+          "meaning": "One of the approved event codes (see event catalogue)."
+        },
+        {
+          "name": "details",
+          "type": "jsonb",
+          "nullable": false,
+          "default": "'{}'::jsonb",
+          "meaning": "JSON object with sanitized context (ids and values, never comment text or secrets)."
+        },
+        {
+          "name": "occurred_at",
+          "type": "timestamp(6) with time zone",
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP",
+          "meaning": "Event time (UTC), database clock."
+        }
+      ],
+      "primaryKey": ["event_id"],
+      "foreignKeys": [
+        {
+          "name": "ticket_events_actor_id_fkey",
+          "columns": ["actor_id"],
+          "references": {
+            "table": "users",
+            "columns": ["user_id"]
+          },
+          "onDelete": "RESTRICT"
+        },
+        {
+          "name": "ticket_events_ticket_id_fkey",
+          "columns": ["ticket_id"],
+          "references": {
+            "table": "tickets",
+            "columns": ["ticket_id"]
+          },
+          "onDelete": "RESTRICT"
+        }
+      ],
+      "checks": [
+        {
+          "name": "ck_ticket_events_details_object",
+          "rule": "(jsonb_typeof(details) = 'object'::text)"
+        },
+        {
+          "name": "ck_ticket_events_type",
+          "rule": "((event_type)::text = ANY ((ARRAY['CREATED'::character varying, 'STATUS_CHANGED'::character varying, 'TEAM_ASSIGNED'::character varying, 'TEAM_REASSIGNED'::character varying, 'COMMENT_ADDED'::character varying, 'AI_REVIEWED'::character varying, 'RESOLVED'::character varying, 'REOPENED'::character varying, 'CATEGORY_UPDATED'::character varying, 'PRIORITY_UPDATED'::character varying, 'ASSIGNEE_UPDATED'::character varying])::text[]))"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_ticket_events_ticket_occurred",
+          "columns": ["ticket_id", "occurred_at", "event_id"],
+          "unique": false
+        },
+        {
+          "name": "ticket_events_pkey",
+          "columns": ["event_id"],
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "ai_recommendations",
+      "area": "AI and evaluation",
+      "description": "Immutable AI proposals plus the human review outcome. Proposals never overwrite approved ticket values.",
+      "columns": [
+        {
+          "name": "recommendation_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "meaning": "Primary key."
+        },
+        {
+          "name": "ticket_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "meaning": "Ticket analysed."
+        },
+        {
+          "name": "proposed_category_id",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "meaning": "AI-proposed category (original, never edited)."
+        },
+        {
+          "name": "proposed_team_id",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "meaning": "AI-proposed team (original)."
+        },
+        {
+          "name": "proposed_priority",
+          "type": "character varying(10)",
+          "nullable": true,
+          "default": null,
+          "meaning": "AI-proposed priority LOW..CRITICAL (original)."
+        },
+        {
+          "name": "suggestion",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "meaning": "AI troubleshooting suggestion text."
+        },
+        {
+          "name": "confidence",
+          "type": "numeric(4,3)",
+          "nullable": true,
+          "default": null,
+          "meaning": "Model confidence 0..1, NUMERIC(4,3); not a calibrated probability."
+        },
+        {
+          "name": "model_version",
+          "type": "character varying(100)",
+          "nullable": false,
+          "default": null,
+          "meaning": "Model/prompt version that produced it; nonblank."
+        },
+        {
+          "name": "review_status",
+          "type": "character varying(12)",
+          "nullable": false,
+          "default": "'PENDING'::character varying",
+          "meaning": "PENDING, ACCEPTED, OVERRIDDEN or REJECTED."
+        },
+        {
+          "name": "reviewer_id",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "meaning": "Technician who reviewed; required once reviewed, NULL while PENDING."
+        },
+        {
+          "name": "reviewed_at",
+          "type": "timestamp(6) with time zone",
+          "nullable": true,
+          "default": null,
+          "meaning": "Review time; required once reviewed, never before created_at."
+        },
+        {
+          "name": "review_notes",
+          "type": "text",
+          "nullable": true,
+          "default": null,
+          "meaning": "Optional reviewer comment."
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp(6) with time zone",
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP",
+          "meaning": "When the proposal was saved (UTC)."
+        }
+      ],
+      "primaryKey": ["recommendation_id"],
+      "foreignKeys": [
+        {
+          "name": "ai_recommendations_proposed_category_id_fkey",
+          "columns": ["proposed_category_id"],
+          "references": {
+            "table": "ticket_categories",
+            "columns": ["category_id"]
+          },
+          "onDelete": "RESTRICT"
+        },
+        {
+          "name": "ai_recommendations_proposed_team_id_fkey",
+          "columns": ["proposed_team_id"],
+          "references": {
+            "table": "support_teams",
+            "columns": ["team_id"]
+          },
+          "onDelete": "RESTRICT"
+        },
+        {
+          "name": "ai_recommendations_reviewer_id_fkey",
+          "columns": ["reviewer_id"],
+          "references": {
+            "table": "users",
+            "columns": ["user_id"]
+          },
+          "onDelete": "RESTRICT"
+        },
+        {
+          "name": "ai_recommendations_ticket_id_fkey",
+          "columns": ["ticket_id"],
+          "references": {
+            "table": "tickets",
+            "columns": ["ticket_id"]
+          },
+          "onDelete": "RESTRICT"
+        }
+      ],
+      "checks": [
+        {
+          "name": "ck_ai_recommendations_confidence",
+          "rule": "((confidence IS NULL) OR ((confidence >= (0)::numeric) AND (confidence <= (1)::numeric)))"
+        },
+        {
+          "name": "ck_ai_recommendations_model_version_nonblank",
+          "rule": "(btrim((model_version)::text) <> ''::text)"
+        },
+        {
+          "name": "ck_ai_recommendations_priority",
+          "rule": "((proposed_priority IS NULL) OR ((proposed_priority)::text = ANY ((ARRAY['LOW'::character varying, 'MEDIUM'::character varying, 'HIGH'::character varying, 'CRITICAL'::character varying])::text[])))"
+        },
+        {
+          "name": "ck_ai_recommendations_review_complete",
+          "rule": "((((review_status)::text = 'PENDING'::text) AND (reviewer_id IS NULL) AND (reviewed_at IS NULL)) OR (((review_status)::text <> 'PENDING'::text) AND (reviewer_id IS NOT NULL) AND (reviewed_at IS NOT NULL)))"
+        },
+        {
+          "name": "ck_ai_recommendations_review_status",
+          "rule": "((review_status)::text = ANY ((ARRAY['PENDING'::character varying, 'ACCEPTED'::character varying, 'OVERRIDDEN'::character varying, 'REJECTED'::character varying])::text[]))"
+        },
+        {
+          "name": "ck_ai_recommendations_reviewed_after_created",
+          "rule": "((reviewed_at IS NULL) OR (reviewed_at >= created_at))"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ai_recommendations_pkey",
+          "columns": ["recommendation_id"],
+          "unique": true
+        },
+        {
+          "name": "idx_ai_recommendations_ticket_created",
+          "columns": ["ticket_id", "created_at", "recommendation_id"],
+          "unique": false
+        }
+      ]
+    },
+    {
+      "name": "knowledge_articles",
+      "area": "AI and evaluation",
+      "description": "Troubleshooting articles searched by employees and linked from recommendations.",
+      "columns": [
+        {
+          "name": "article_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "meaning": "Primary key."
+        },
+        {
+          "name": "category_id",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "meaning": "Optional category."
+        },
+        {
+          "name": "title",
+          "type": "character varying(200)",
+          "nullable": false,
+          "default": null,
+          "meaning": "Article title (max 200), nonblank."
+        },
+        {
+          "name": "body",
+          "type": "text",
+          "nullable": false,
+          "default": null,
+          "meaning": "Article text, nonblank."
+        },
+        {
+          "name": "is_published",
+          "type": "boolean",
+          "nullable": false,
+          "default": "false",
+          "meaning": "Only published articles are visible to employees."
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp(6) with time zone",
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP",
+          "meaning": "Creation time (UTC)."
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp(6) with time zone",
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP",
+          "meaning": "Last edit time, set by the service."
+        }
+      ],
+      "primaryKey": ["article_id"],
+      "foreignKeys": [
+        {
+          "name": "knowledge_articles_category_id_fkey",
+          "columns": ["category_id"],
+          "references": {
+            "table": "ticket_categories",
+            "columns": ["category_id"]
+          },
+          "onDelete": "RESTRICT"
+        }
+      ],
+      "checks": [
+        {
+          "name": "ck_knowledge_articles_body_nonblank",
+          "rule": "(btrim(body) <> ''::text)"
+        },
+        {
+          "name": "ck_knowledge_articles_title_nonblank",
+          "rule": "(btrim((title)::text) <> ''::text)"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "knowledge_articles_pkey",
+          "columns": ["article_id"],
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "recommendation_articles",
+      "area": "AI and evaluation",
+      "description": "Ranked knowledge articles attached to a recommendation (many-to-many).",
+      "columns": [
+        {
+          "name": "recommendation_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "meaning": "Part of the primary key."
+        },
+        {
+          "name": "article_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "meaning": "Part of the primary key."
+        },
+        {
+          "name": "relevance_rank",
+          "type": "integer",
+          "nullable": false,
+          "default": null,
+          "meaning": "Display order, 1 is most relevant; > 0 and unique per recommendation."
+        }
+      ],
+      "primaryKey": ["recommendation_id", "article_id"],
+      "foreignKeys": [
+        {
+          "name": "recommendation_articles_article_id_fkey",
+          "columns": ["article_id"],
+          "references": {
+            "table": "knowledge_articles",
+            "columns": ["article_id"]
+          },
+          "onDelete": "RESTRICT"
+        },
+        {
+          "name": "recommendation_articles_recommendation_id_fkey",
+          "columns": ["recommendation_id"],
+          "references": {
+            "table": "ai_recommendations",
+            "columns": ["recommendation_id"]
+          },
+          "onDelete": "RESTRICT"
+        }
+      ],
+      "checks": [
+        {
+          "name": "ck_recommendation_articles_rank_positive",
+          "rule": "(relevance_rank > 0)"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_recommendation_articles_article",
+          "columns": ["article_id"],
+          "unique": false
+        },
+        {
+          "name": "recommendation_articles_pkey",
+          "columns": ["recommendation_id", "article_id"],
+          "unique": true
+        },
+        {
+          "name": "uq_recommendation_articles_rank",
+          "columns": ["recommendation_id", "relevance_rank"],
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "classification_labels",
+      "area": "AI and evaluation",
+      "description": "Independent reference category per ticket, used only to measure AI accuracy; never copied from AI output.",
+      "columns": [
+        {
+          "name": "ticket_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "meaning": "Primary key and foreign key: at most one label per ticket."
+        },
+        {
+          "name": "reference_category_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "meaning": "Correct category as judged by the evaluator."
+        },
+        {
+          "name": "labelled_by",
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "meaning": "Evaluator (user) who assigned the label."
+        },
+        {
+          "name": "labelled_at",
+          "type": "timestamp(6) with time zone",
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP",
+          "meaning": "Labelling time (UTC)."
+        }
+      ],
+      "primaryKey": ["ticket_id"],
+      "foreignKeys": [
+        {
+          "name": "classification_labels_labelled_by_fkey",
+          "columns": ["labelled_by"],
+          "references": {
+            "table": "users",
+            "columns": ["user_id"]
+          },
+          "onDelete": "RESTRICT"
+        },
+        {
+          "name": "classification_labels_reference_category_id_fkey",
+          "columns": ["reference_category_id"],
+          "references": {
+            "table": "ticket_categories",
+            "columns": ["category_id"]
+          },
+          "onDelete": "RESTRICT"
+        },
+        {
+          "name": "classification_labels_ticket_id_fkey",
+          "columns": ["ticket_id"],
+          "references": {
+            "table": "tickets",
+            "columns": ["ticket_id"]
+          },
+          "onDelete": "RESTRICT"
+        }
+      ],
+      "checks": [],
+      "indexes": [
+        {
+          "name": "classification_labels_pkey",
+          "columns": ["ticket_id"],
+          "unique": true
+        },
+        {
+          "name": "idx_classification_labels_category",
+          "columns": ["reference_category_id"],
+          "unique": false
+        }
+      ]
+    }
+  ]
+}

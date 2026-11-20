@@ -20,7 +20,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "db:migrate": "npm run migrate -w backend",
-    "db:seed": "npm run db:seed -w backend"
+    "db:seed": "npm run db:seed -w backend",
+    "test:db": "npm run test:db -w backend",
+    "docs:db": "npm run docs:db -w backend"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

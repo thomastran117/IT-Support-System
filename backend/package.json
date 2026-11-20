@@ -8,7 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "eslint src test",
+    "lint": "eslint src test scripts prisma",
     "test": "npm run test:unit && npm run test:integration",
     "migrate": "prisma migrate deploy",
     "seed": "npm run db:seed",
@@ -17,7 +17,9 @@
     "generate": "prisma generate",
     "migrate:dev": "prisma migrate dev",
     "migrate:status": "prisma migrate status",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "docs:db": "tsx scripts/generate-database-docs.ts",
+    "test:db": "tsx scripts/test-db.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.4.3",
