@@ -13,7 +13,7 @@
     "migrate": "prisma migrate deploy",
     "seed": "tsx src/db/seed.ts",
     "test:unit": "vitest run test/unit",
-    "test:integration": "vitest run test/integration",
+    "test:integration": "vitest run test/integration --no-file-parallelism",
     "generate": "prisma generate",
     "migrate:dev": "prisma migrate dev",
     "migrate:status": "prisma migrate status"

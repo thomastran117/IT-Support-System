@@ -57,7 +57,10 @@ model TeamMember {
   team SupportTeam @relation(fields: [teamId], references: [id], onDelete: Restrict)
   user User        @relation(fields: [userId], references: [id], onDelete: Restrict)
 
+  assignedTickets Ticket[] @relation("TicketAssigneeMembership")
+
   @@id([teamId, userId])
+  @@index([userId], map: "idx_team_members_user")
   @@map("team_members")
 }
 
@@ -95,12 +98,18 @@ model Ticket {
   team      SupportTeam?    @relation(fields: [assignedTeamId], references: [id], onDelete: Restrict)
   assignee  User?           @relation("TicketAssignee", fields: [assigneeId], references: [id], onDelete: Restrict)
   category  TicketCategory? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  // Composite FK (assigned_team_id, assignee_id) -> team_members: an assignee must belong to the team.
+  // MATCH SIMPLE: not checked when either column is NULL (see CHECK tickets_assignee_requires_team).
+  assigneeMembership TeamMember? @relation("TicketAssigneeMembership", fields: [assignedTeamId, assigneeId], references: [teamId, userId], onDelete: Restrict)
 
   comments        TicketComment[]
   events          TicketEvent[]
   recommendations AiRecommendation[]
   label           ClassificationLabel?
 
+  @@index([requesterId, createdAt(sort: Desc)], map: "idx_tickets_requester_created")
+  @@index([assignedTeamId, status, createdAt], map: "idx_tickets_team_status_created")
+  @@index([categoryId, createdAt], map: "idx_tickets_category_created")
   @@map("tickets")
 }
 
@@ -115,6 +124,7 @@ model TicketComment {
   ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Restrict)
   author User   @relation(fields: [authorId], references: [id], onDelete: Restrict)
 
+  @@index([ticketId, createdAt], map: "idx_ticket_comments_ticket_created")
   @@map("ticket_comments")
 }
 
@@ -129,6 +139,7 @@ model TicketEvent {
   ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Restrict)
   actor  User?  @relation(fields: [actorId], references: [id], onDelete: Restrict)
 
+  @@index([ticketId, occurredAt, id], map: "idx_ticket_events_ticket_occurred")
   @@map("ticket_events")
 }
 
@@ -154,6 +165,7 @@ model AiRecommendation {
 
   articles RecommendationArticle[]
 
+  @@index([ticketId, createdAt, id], map: "idx_ai_recommendations_ticket_created")
   @@map("ai_recommendations")
 }
 
@@ -181,6 +193,8 @@ model RecommendationArticle {
   article        KnowledgeArticle @relation(fields: [articleId], references: [id], onDelete: Restrict)
 
   @@id([recommendationId, articleId])
+  @@unique([recommendationId, relevanceRank], map: "uq_recommendation_articles_rank")
+  @@index([articleId], map: "idx_recommendation_articles_article")
   @@map("recommendation_articles")
 }
 
@@ -194,5 +208,6 @@ model ClassificationLabel {
   referenceCategory TicketCategory @relation(fields: [referenceCategoryId], references: [id], onDelete: Restrict)
   labeller          User           @relation(fields: [labelledBy], references: [id], onDelete: Restrict)
 
+  @@index([referenceCategoryId], map: "idx_classification_labels_category")
   @@map("classification_labels")
 }
