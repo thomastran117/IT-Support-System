@@ -20,3 +20,6 @@ export const activeTeamIds = async (db: Db, userId: string): Promise<string[]> =
       select: { teamId: true },
     })
   ).map((m) => m.teamId);
+
+export const removeMember = (db: Db, teamId: string, userId: string) =>
+  db.teamMember.delete({ where: { teamId_userId: { teamId, userId } } });

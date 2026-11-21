@@ -84,6 +84,60 @@ export interface AdminAuditEntry {
   createdAt: string;
 }
 
+// --- Support teams (SD-024) ----------------------------------------------------------------
+
+export const TEAM_NAME_MAX = 100;
+export const TEAM_DESCRIPTION_MAX = 1000;
+
+/** What staff assignment forms need: a team's identity and nothing else. */
+export interface TeamRefDto {
+  id: string;
+  name: string;
+  description: string | null;
+}
+
+/** A category offered to technicians when approving routing. */
+export interface CategoryRefDto {
+  id: string;
+  name: string;
+  description: string | null;
+}
+
+/** A team member as an assignment dropdown needs them: no email, role or account state. */
+export interface TeamMemberRefDto {
+  id: string;
+  displayName: string;
+}
+
+/** A team as an administrator manages it. */
+export interface AdminTeamDto extends TeamRefDto {
+  isActive: boolean;
+  memberCount: number;
+}
+
+/** A team member as an administrator sees them. */
+export interface AdminTeamMemberDto extends TeamMemberRefDto {
+  email: string;
+  isActive: boolean;
+  joinedAt: string;
+  /** Tickets (any status) currently assigned to this member within this team. */
+  assignedTicketCount: number;
+}
+
+export interface CreateTeamRequest {
+  name: string;
+  description?: string | null;
+}
+
+export interface UpdateTeamRequest {
+  name?: string;
+  description?: string | null;
+}
+
+export interface AddTeamMemberRequest {
+  userId: string;
+}
+
 // --- Tickets (SD-018) ----------------------------------------------------------------------
 
 export const TICKET_TITLE_MAX = 150;
@@ -265,3 +319,19 @@ export const createCommentSchema = z.strictObject({
   body: z.string().trim().min(1).max(TICKET_COMMENT_MAX),
   isInternal: z.boolean().default(false),
 });
+
+export const createTeamSchema = z.strictObject({
+  name: z.string().trim().min(1).max(TEAM_NAME_MAX),
+  description: z.string().trim().max(TEAM_DESCRIPTION_MAX).nullish(),
+});
+
+export const updateTeamSchema = z
+  .strictObject({
+    name: z.string().trim().min(1).max(TEAM_NAME_MAX).optional(),
+    description: z.string().trim().max(TEAM_DESCRIPTION_MAX).nullable().optional(),
+  })
+  .refine((v) => v.name !== undefined || v.description !== undefined, {
+    message: 'Provide a name or a description',
+  });
+
+export const addTeamMemberSchema = z.strictObject({ userId: z.uuid() });

@@ -103,6 +103,46 @@ All `/api/admin` endpoints require the `ADMIN` role.
 User listing accepts `role`, `active`, `q`, `limit` (maximum 200), and `offset`. The server prevents
 self-demotion, self-deactivation, self-password-reset, and removal of the last active administrator.
 
+## Support teams and reference data
+
+Staff (`TECHNICIAN` or `ADMIN`) can read the reference lists that assignment forms need. Employees
+receive `403`. These responses carry only what a dropdown needs: no emails, roles or account state.
+
+| Method | Path                     | Purpose                                                    |
+| ------ | ------------------------ | ---------------------------------------------------------- |
+| GET    | `/api/teams`             | Active teams (`id`, `name`, `description`)                 |
+| GET    | `/api/teams/:id/members` | Active technicians of an active team (`id`, `displayName`) |
+| GET    | `/api/categories`        | Active ticket categories (`id`, `name`, `description`)     |
+
+An inactive or unknown team returns `404` from the members list.
+
+All `/api/admin/teams` endpoints require the `ADMIN` role.
+
+| Method | Path                                   | Purpose                                                     |
+| ------ | -------------------------------------- | ----------------------------------------------------------- |
+| GET    | `/api/admin/teams`                     | All teams, inactive included, with member counts            |
+| POST   | `/api/admin/teams`                     | Create a team (`name`, optional `description`)              |
+| GET    | `/api/admin/teams/:id`                 | One team                                                    |
+| PATCH  | `/api/admin/teams/:id`                 | Rename or change the description                            |
+| POST   | `/api/admin/teams/:id/activate`        | Make the team assignable again (idempotent)                 |
+| POST   | `/api/admin/teams/:id/deactivate`      | Stop offering the team; keeps members and ticket history    |
+| GET    | `/api/admin/teams/:id/members`         | Members with email, account state and assigned-ticket count |
+| POST   | `/api/admin/teams/:id/members`         | Add a member (`{ "userId": "<uuid>" }`)                     |
+| DELETE | `/api/admin/teams/:id/members/:userId` | Remove a member                                             |
+
+Rules:
+
+- Teams are deactivated, never deleted, so historical tickets keep their team.
+- Only an **active `TECHNICIAN`** can be added, and only to an **active team**; anything else is `409`.
+  Adding an existing member is also `409`.
+- A member **cannot be removed while any ticket (of any status) is assigned to them within that
+  team**: the ticket's team/assignee pair references the membership. The `409` includes
+  `details.assignedTicketCount`; reassign those tickets first.
+- A technician **may belong to several teams**. Their working scope is the union of those teams'
+  queues plus the shared unassigned backlog (see `docs/authentication.md`). Removing them from one
+  team does not affect the others.
+- Deactivating a team does not alter tickets already routed to it.
+
 ## Common status codes
 
 - `400`: malformed or unexpected input.
