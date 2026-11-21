@@ -33,11 +33,26 @@ export function NavShell({ children }: { children: ReactNode }) {
           </Link>
           <ul className="flex flex-wrap items-center gap-3 text-sm">
             {user ? (
-              <li>
-                <Link href={portalFor(user.role)} className="rounded px-2 py-1 hover:bg-slate-100">
-                  {ROLE_LABEL[user.role]}
-                </Link>
-              </li>
+              <>
+                <li>
+                  <Link
+                    href={portalFor(user.role)}
+                    className="rounded px-2 py-1 hover:bg-slate-100"
+                  >
+                    {user.role === 'EMPLOYEE' ? 'My tickets' : ROLE_LABEL[user.role]}
+                  </Link>
+                </li>
+                {user.role === 'EMPLOYEE' && (
+                  <li>
+                    <Link
+                      href="/employee/tickets/new"
+                      className="rounded px-2 py-1 hover:bg-slate-100"
+                    >
+                      New ticket
+                    </Link>
+                  </li>
+                )}
+              </>
             ) : (
               status !== 'loading' && (
                 <li>

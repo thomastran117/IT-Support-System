@@ -1,4 +1,5 @@
 // Browser-safe shared contracts. Do not import server-only code (node:*, pg, fastify) here.
+import { z } from 'zod';
 
 /** Consistent JSON envelope returned by every API response. */
 export interface ApiEnvelope<T = unknown> {
@@ -247,3 +248,20 @@ export interface CreateCommentRequest {
   body: string;
   isInternal?: boolean;
 }
+
+// --- Shared request validation (SD-023) -------------------------------------------------------
+
+/**
+ * The one definition of what a valid ticket or comment is. The API validates requests with these
+ * schemas and the web forms validate with the very same objects, so client and server cannot
+ * disagree about limits. Strict: unknown fields are rejected, never ignored.
+ */
+export const createTicketSchema = z.strictObject({
+  title: z.string().trim().min(1).max(TICKET_TITLE_MAX),
+  description: z.string().trim().min(1).max(TICKET_DESCRIPTION_MAX),
+});
+
+export const createCommentSchema = z.strictObject({
+  body: z.string().trim().min(1).max(TICKET_COMMENT_MAX),
+  isInternal: z.boolean().default(false),
+});

@@ -111,7 +111,7 @@ test('sign out clears state and blocks protected routes', async ({ page }) => {
 
   await page.goto('/employee');
   await expect(page).toHaveURL(/\/login$/);
-  await expect(page.getByRole('heading', { name: 'Employee area' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'My tickets' })).toHaveCount(0);
 });
 
 test('anonymous visitors are sent to sign in from every portal', async ({ page }) => {

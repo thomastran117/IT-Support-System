@@ -3,12 +3,11 @@ import type { PrismaClient } from '@smartdesk/db';
 import type { TicketCommentDto, TicketStatus } from '@smartdesk/contracts';
 import {
   IDEMPOTENCY_KEY_HEADER,
-  TICKET_DESCRIPTION_MAX,
-  TICKET_COMMENT_MAX,
+  createCommentSchema,
+  createTicketSchema,
   TICKET_PAGE_SIZE_DEFAULT,
   TICKET_PAGE_SIZE_MAX,
   TICKET_RESOLUTION_MAX,
-  TICKET_TITLE_MAX,
 } from '@smartdesk/contracts';
 import { z } from 'zod';
 import { authorizeTicket } from '../../auth/ticketAccess.js';
@@ -27,10 +26,7 @@ const ListQuery = z.strictObject({
 });
 
 /** Strict: author and timestamps are server-assigned, never accepted from the client. */
-const CommentBody = z.strictObject({
-  body: z.string().trim().min(1).max(TICKET_COMMENT_MAX),
-  isInternal: z.boolean().default(false),
-});
+const CommentBody = createCommentSchema;
 
 /** Strict, and `expectedVersion` is mandatory: a transition is always made against a known view. */
 const TransitionBody = z.strictObject({
@@ -43,10 +39,7 @@ const TransitionBody = z.strictObject({
  * Strict: unknown fields (role, requesterId, status, assignee, team...) are rejected rather than
  * ignored, so an employee cannot smuggle in routing or ownership.
  */
-const CreateBody = z.strictObject({
-  title: z.string().trim().min(1).max(TICKET_TITLE_MAX),
-  description: z.string().trim().min(1).max(TICKET_DESCRIPTION_MAX),
-});
+const CreateBody = createTicketSchema;
 
 /** Printable ASCII, 8-100 chars (UUIDs and similar random tokens). */
 const IdempotencyKey = z
