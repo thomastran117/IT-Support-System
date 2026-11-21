@@ -1214,6 +1214,156 @@
           "unique": false
         }
       ]
+    },
+    {
+      "name": "ai_analysis_jobs",
+      "area": "AI and evaluation",
+      "description": "Durable queue for AI ticket analysis (SD-035), a transactional outbox. A job is inserted in the same transaction as its ticket; workers claim rows with FOR UPDATE SKIP LOCKED and a time-limited lease, so work survives worker restarts and is never lost between ticket commit and dispatch. (ticket_id, request_id) is the idempotency key. Holds reason codes only, never ticket text, provider messages or secrets.",
+      "columns": [
+        {
+          "name": "job_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "meaning": "Primary key."
+        },
+        {
+          "name": "ticket_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "meaning": "Ticket being analysed."
+        },
+        {
+          "name": "request_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "meaning": "Analysis request identifier; with ticket_id it makes enqueueing idempotent. A re-analysis uses a new one."
+        },
+        {
+          "name": "state",
+          "type": "character varying(10)",
+          "nullable": false,
+          "default": "'QUEUED'::character varying",
+          "meaning": "QUEUED, RUNNING, COMPLETED or FAILED."
+        },
+        {
+          "name": "attempts",
+          "type": "integer",
+          "nullable": false,
+          "default": "0",
+          "meaning": "Number of times the job has been claimed."
+        },
+        {
+          "name": "max_attempts",
+          "type": "integer",
+          "nullable": false,
+          "default": "3",
+          "meaning": "Claims allowed before the job fails terminally."
+        },
+        {
+          "name": "run_after",
+          "type": "timestamp(6) with time zone",
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP",
+          "meaning": "Earliest time the job may be claimed (retry backoff)."
+        },
+        {
+          "name": "lease_token",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "meaning": "Rotated on every claim; only the holder may complete or fail the job. NULL unless RUNNING."
+        },
+        {
+          "name": "locked_until",
+          "type": "timestamp(6) with time zone",
+          "nullable": true,
+          "default": null,
+          "meaning": "Lease expiry. A RUNNING job past this time is re-claimed. NULL unless RUNNING."
+        },
+        {
+          "name": "error_kind",
+          "type": "character varying(24)",
+          "nullable": true,
+          "default": null,
+          "meaning": "Reason code of the latest failed attempt (for example timeout, rate_limited, malformed, internal, worker_lost). Never message text."
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp(6) with time zone",
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP",
+          "meaning": "When the job was queued."
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp(6) with time zone",
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP",
+          "meaning": "Last state change."
+        },
+        {
+          "name": "completed_at",
+          "type": "timestamp(6) with time zone",
+          "nullable": true,
+          "default": null,
+          "meaning": "When the job reached COMPLETED or FAILED; NULL otherwise."
+        }
+      ],
+      "primaryKey": ["job_id"],
+      "foreignKeys": [
+        {
+          "name": "ai_analysis_jobs_ticket_id_fkey",
+          "columns": ["ticket_id"],
+          "references": {
+            "table": "tickets",
+            "columns": ["ticket_id"]
+          },
+          "onDelete": "RESTRICT"
+        }
+      ],
+      "checks": [
+        {
+          "name": "ck_ai_jobs_attempts",
+          "rule": "((attempts >= 0) AND (max_attempts > 0))"
+        },
+        {
+          "name": "ck_ai_jobs_lease",
+          "rule": "(((state)::text = 'RUNNING'::text) = ((lease_token IS NOT NULL) AND (locked_until IS NOT NULL)))"
+        },
+        {
+          "name": "ck_ai_jobs_state",
+          "rule": "((state)::text = ANY ((ARRAY['QUEUED'::character varying, 'RUNNING'::character varying, 'COMPLETED'::character varying, 'FAILED'::character varying])::text[]))"
+        },
+        {
+          "name": "ck_ai_jobs_terminal",
+          "rule": "(((state)::text = ANY ((ARRAY['COMPLETED'::character varying, 'FAILED'::character varying])::text[])) = (completed_at IS NOT NULL))"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "ai_analysis_jobs_pkey",
+          "columns": ["job_id"],
+          "unique": true
+        },
+        {
+          "name": "idx_ai_jobs_claim",
+          "columns": ["state", "run_after"],
+          "unique": false
+        },
+        {
+          "name": "idx_ai_jobs_ticket",
+          "columns": ["ticket_id", "created_at"],
+          "unique": false
+        },
+        {
+          "name": "uq_ai_analysis_jobs_ticket_request",
+          "columns": ["ticket_id", "request_id"],
+          "unique": true
+        }
+      ]
     }
   ]
 }

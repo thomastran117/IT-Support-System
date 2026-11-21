@@ -19,7 +19,7 @@ describe('documentation is generated from the spec', () => {
     expect(read('data-dictionary.md')).toBe(renderDictionary(spec));
   });
 
-  it('documents the eleven core entities plus the admin audit extension', () => {
+  it('documents the eleven core entities plus the runtime extensions', () => {
     expect(spec.tables.map((t) => t.name)).toEqual([
       'users',
       'support_teams',
@@ -34,6 +34,7 @@ describe('documentation is generated from the spec', () => {
       'classification_labels',
       // Runtime extension to the original ticketing schema.
       'admin_audit_log',
+      'ai_analysis_jobs',
     ]);
     for (const table of spec.tables) expect(read('erd.md')).toContain(`  ${table.name} {`);
   });

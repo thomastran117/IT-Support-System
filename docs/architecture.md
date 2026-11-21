@@ -15,8 +15,10 @@ Browser -> frontend (Next.js) -> backend (Fastify) -> PostgreSQL
   API at `NEXT_PUBLIC_API_URL`; the frontend does not connect to PostgreSQL.
 - **Backend** owns HTTP authentication, authorization, validation, ticket workflows, database
   migrations, and seed/documentation commands.
-- **Worker** is the host for asynchronous work. It shares database and contract packages with the
-  API and remains functional when the optional AI provider is disabled.
+- **Worker** is the host for asynchronous work: the Compose `worker` service runs the backend's
+  `src/worker.ts` entrypoint (see Analysis queue and worker). It remains functional when the
+  optional AI provider is disabled. The `worker/` package is a leftover heartbeat stub that Compose
+  no longer starts.
 - **PostgreSQL** is reachable only on Compose's internal network. Only the frontend and backend
   publish host ports.
 
@@ -58,7 +60,7 @@ instead of overwriting. If a change hands a ticket to a team the technician does
 page explains that it can no longer be opened. Manual triage never depends on AI. The AI suggestion
 card (accept, override, reject) arrives with the recommendation endpoints (SD-027, SD-036, SD-038).
 
-## AI provider (backend/worker only)
+## AI provider (backend and worker only)
 
 `backend/src/modules/ai/` defines the advisory AI boundary. `AIProvider.analyse()` takes the ticket text, the active category/team allowlists and retrieved knowledge articles and returns a `ValidatedProposal`, or throws a classified `ProviderError` (`disabled`, `timeout`, `rate_limited`, `unavailable`, `malformed`, `invalid_reference`; the first four transient kinds are marked retryable).
 
@@ -78,6 +80,20 @@ card (accept, override, reject) arrives with the recommendation endpoints (SD-02
 Ticket text and article text are untrusted: the prompt serialises them as one JSON document and tells the model to treat them as data. The real defence is structural, since output that is not a valid, allowlisted proposal is rejected and nothing else is acted on.
 
 **Redaction limits.** `redact.ts` is pattern based. It removes emails, credentials in URLs, bearer/JWT/API-key style tokens, `password: ...` style assignments, long hex/base64 strings, card-like and SSN-like numbers and private-key blocks. It cannot recognise names, addresses, free-form passphrases or secrets written in prose, so users should not paste credentials into tickets. Retrieval query text is redacted too, and nothing in this module logs ticket or article text.
+
+### Analysis queue and worker (SD-035)
+
+Analysis never runs inside the ticket request. When `AI_PROVIDER` is not `none`, `POST /api/tickets` inserts a row into `ai_analysis_jobs` **in the same transaction as the ticket**, so a job exists if and only if the ticket does and dispatch cannot be lost between commit and queueing. The response returns 201 without calling the provider. An idempotent replay of a submission queues nothing new.
+
+The worker is a second entrypoint of the backend package (`src/worker.ts`, `npm run start:worker`; Compose service `worker`). It is a separate process, shares the AI and repository code, and never imports Fastify.
+
+- **Claiming:** `FOR UPDATE SKIP LOCKED` with a lease and a rotating `lease_token`. Several workers can run at once and never take the same job. `AI_WORKER_CONCURRENCY` caps parallel analyses per process.
+- **Idempotency:** `(ticket_id, request_id)` is unique, so enqueueing the same request twice gives one job; a re-analysis uses a new request id.
+- **Retries:** each claim counts as an attempt (`AI_JOB_MAX_ATTEMPTS`, default 3). Retryable failures (`timeout`, `rate_limited`, `unavailable`, unexpected errors) go back to `QUEUED` after `AI_JOB_BACKOFF_MS * 2^(attempt-1)`, capped at 15 minutes. Non-retryable ones (`malformed`, `invalid_reference`, `disabled`, `ticket_missing`) and exhausted jobs become `FAILED` with an `error_kind` reason code, never message text.
+- **Crash recovery:** a worker that dies leaves a `RUNNING` row whose lease expires; another worker re-claims it. A job that keeps killing its worker ends as `FAILED(worker_lost)`.
+- **Exactly-once effect:** completing a job, and any write that must happen once (the recommendation, SD-036), run in one transaction guarded by the lease token. A stale worker that finishes late finds its token gone and its result is discarded, so duplicate delivery cannot create a second result.
+- **Shutdown:** on SIGTERM the worker stops claiming and lets in-flight analyses finish (bounded by their timeout); anything unfinished is retried via lease expiry.
+- **Logging:** structured lines with job, ticket and request ids, attempt, state and reason code only.
 
 ## Development and validation
 

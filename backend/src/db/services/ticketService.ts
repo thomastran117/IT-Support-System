@@ -24,6 +24,7 @@ import {
   markReviewed,
   type ReviewDecision,
 } from '../repositories/aiRecommendations.js';
+import { enqueueAnalysis } from '../repositories/aiAnalysisJobs.js';
 import { insertComment, recordFirstResponse } from '../repositories/ticketComments.js';
 import { appendEvent } from '../repositories/ticketEvents.js';
 import {
@@ -259,6 +260,11 @@ export interface CreateTicketInput {
   description: string;
   /** Optional client key: a retry with the same key and payload returns the original ticket. */
   idempotencyKey?: string;
+  /**
+   * Queue an AI analysis in the same transaction as the ticket (SD-035). Never waits for the
+   * provider; omit it when AI is disabled so no job is created.
+   */
+  enqueueAnalysis?: { maxAttempts: number };
 }
 
 export interface SubmittedTicket {
@@ -312,6 +318,12 @@ export function submitTicket(
           idempotencyKey: key ?? null,
         });
         await appendEvent(tx, { ticketId: ticket.id, actorId: actor.id, type: 'CREATED' });
+        if (input.enqueueAnalysis) {
+          await enqueueAnalysis(tx, {
+            ticketId: ticket.id,
+            maxAttempts: input.enqueueAnalysis.maxAttempts,
+          });
+        }
         return { ticket, created: true };
       });
     } catch (err) {

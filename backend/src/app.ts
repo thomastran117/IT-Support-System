@@ -88,7 +88,15 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     await app.register(teamRoutes(opts.prisma), { prefix: `${API_PREFIX}/teams` });
     await app.register(categoryRoutes(opts.prisma), { prefix: `${API_PREFIX}/categories` });
     await app.register(technicianRoutes(opts.prisma), { prefix: `${API_PREFIX}/technician` });
-    await app.register(ticketRoutes(opts.prisma), { prefix: `${API_PREFIX}/tickets` });
+    await app.register(
+      ticketRoutes(
+        opts.prisma,
+        opts.env.ai.provider === 'none'
+          ? undefined
+          : { maxAttempts: opts.env.ai.worker.maxAttempts },
+      ),
+      { prefix: `${API_PREFIX}/tickets` },
+    );
   }
   if (opts.extraRoutes) {
     await app.register(

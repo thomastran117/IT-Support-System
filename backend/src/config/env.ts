@@ -25,6 +25,13 @@ export interface AiConfig {
   timeoutMs: number;
   maxOutputTokens: number;
   maxInputChars: number;
+  /** Background analysis worker (SD-035). */
+  worker: {
+    concurrency: number;
+    pollIntervalMs: number;
+    maxAttempts: number;
+    backoffBaseMs: number;
+  };
 }
 
 const AI_PROVIDERS: readonly AiProviderName[] = ['none', 'fake', 'openai'];
@@ -45,6 +52,12 @@ function loadAiConfig(source: NodeJS.ProcessEnv): AiConfig {
     timeoutMs: positiveInt(source, 'AI_TIMEOUT_MS', 20_000),
     maxOutputTokens: positiveInt(source, 'AI_MAX_OUTPUT_TOKENS', 1000),
     maxInputChars: positiveInt(source, 'AI_MAX_INPUT_CHARS', 20_000),
+    worker: {
+      concurrency: positiveInt(source, 'AI_WORKER_CONCURRENCY', 2),
+      pollIntervalMs: positiveInt(source, 'WORKER_POLL_INTERVAL_MS', 5000),
+      maxAttempts: positiveInt(source, 'AI_JOB_MAX_ATTEMPTS', 3),
+      backoffBaseMs: positiveInt(source, 'AI_JOB_BACKOFF_MS', 5000),
+    },
   };
 }
 
