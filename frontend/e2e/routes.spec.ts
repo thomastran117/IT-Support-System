@@ -37,15 +37,11 @@ for (const key of ['employee', 'technician', 'admin'] as const) {
   });
 }
 
-test('landing page links lead anonymous visitors to sign in', async ({ page }) => {
+test('root sends anonymous visitors to the sign-in workspace', async ({ page }) => {
   await installMockApi(page);
   await page.goto('/');
-  await expect(page.getByRole('heading', { level: 1, name: 'SmartDesk' })).toBeVisible();
-  await page
-    .getByRole('main')
-    .getByRole('link', { name: /Technician/ })
-    .click();
   await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByRole('heading', { level: 1, name: 'Sign in' })).toBeVisible();
 });
 
 test('unknown route shows the 404 page', async ({ page }) => {
@@ -56,7 +52,7 @@ test('unknown route shows the 404 page', async ({ page }) => {
 
 test('keyboard: skip link is first focusable element and works', async ({ page, isMobile }) => {
   test.skip(isMobile, 'keyboard navigation is a desktop concern');
-  await page.goto('/');
+  await page.goto('/login');
   await page.keyboard.press('Tab');
   const skip = page.getByRole('link', { name: 'Skip to content' });
   await expect(skip).toBeFocused();

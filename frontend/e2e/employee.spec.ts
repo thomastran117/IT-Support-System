@@ -39,7 +39,7 @@ test('employee journey: submit, find, open, reply and see the technician update'
   await expect(page.getByTestId('timeline-entry')).toHaveText([/Ticket submitted/]);
 
   // It is findable from the list.
-  await page.getByRole('link', { name: '← My tickets' }).click();
+  await page.getByRole('article').getByRole('link', { name: 'My tickets', exact: true }).click();
   const row = page.getByRole('row').filter({ hasText: 'VPN drops every hour' });
   await expect(row).toContainText('Open');
   await expect(row).toContainText('Not set yet');

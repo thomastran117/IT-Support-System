@@ -100,10 +100,11 @@ test('access token never reaches storage, cookies or the URL', async ({ page }) 
   expect(leaked).toEqual([]);
 });
 
-test('sign out clears state and blocks protected routes', async ({ page }) => {
+test('sign out clears state and blocks protected routes', async ({ page, isMobile }) => {
   const api = await installMockApi(page);
   await signIn(page, ACCOUNTS.employee.email);
   await expect(page).toHaveURL(/\/employee$/);
+  if (isMobile) await page.getByRole('button', { name: 'Open navigation' }).click();
   await page.getByRole('button', { name: 'Sign out' }).click();
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByTestId('current-user')).toHaveCount(0);

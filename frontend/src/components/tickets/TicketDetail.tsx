@@ -1,6 +1,7 @@
 'use client';
 
 import type { TicketDetailDto, TicketStatus } from '@smartdesk/contracts';
+import { MessageSquareText, Send } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
@@ -31,12 +32,12 @@ function Stepper({ status }: { status: TicketStatus }) {
           <li
             key={s}
             aria-current={state === 'current' ? 'step' : undefined}
-            className={`rounded border p-2 text-sm ${
+            className={`rounded-xl border p-3 text-sm ${
               state === 'current'
-                ? 'border-blue-600 bg-blue-50 font-semibold'
+                ? 'border-blue-300 bg-blue-50 font-semibold text-blue-900 shadow-sm'
                 : state === 'done'
-                  ? 'border-emerald-500 bg-emerald-50'
-                  : 'border-slate-200 bg-white text-slate-600'
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                  : 'border-slate-200 bg-white text-slate-500'
             }`}
           >
             <span className="block">{STATUS_LABEL[s]}</span>
@@ -164,10 +165,10 @@ export function TicketDetail() {
   const done = ticket.status === 'RESOLVED' || ticket.status === 'CLOSED';
 
   return (
-    <article aria-labelledby="page-title" className="space-y-8">
+    <article aria-labelledby="page-title" className="space-y-6">
       <p className="text-sm">
-        <Link href="/employee" className="underline">
-          ← My tickets
+        <Link href="/employee" className="app-button-quiet min-h-9 px-2 py-1.5">
+          My tickets
         </Link>
       </p>
 
@@ -177,7 +178,10 @@ export function TicketDetail() {
       </p>
 
       {created && (
-        <div role="status" className="rounded border border-emerald-400 bg-emerald-50 p-4">
+        <div
+          role="status"
+          className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950"
+        >
           <p className="font-semibold">Your ticket was submitted.</p>
           <p className="mt-1">
             Your tracking ID is{' '}
@@ -190,7 +194,10 @@ export function TicketDetail() {
       )}
 
       {refreshFailed && (
-        <p role="status" className="rounded border border-amber-300 bg-amber-50 p-3 text-sm">
+        <p
+          role="status"
+          className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"
+        >
           Unable to check for updates right now. What you see may be out of date.{' '}
           <button type="button" className="underline" onClick={() => void load(true)}>
             Check again
@@ -198,8 +205,11 @@ export function TicketDetail() {
         </p>
       )}
 
-      <header className="space-y-3">
-        <h1 id="page-title" className="text-2xl font-semibold">
+      <header className="app-card space-y-3 p-5 sm:p-6">
+        <h1
+          id="page-title"
+          className="text-2xl font-bold tracking-[-0.025em] text-slate-950 sm:text-3xl"
+        >
           {ticket.title}
         </h1>
         <p className="flex flex-wrap items-center gap-3 text-sm">
@@ -213,8 +223,8 @@ export function TicketDetail() {
 
       <Stepper status={ticket.status} />
 
-      <section aria-labelledby="details-title" className="space-y-3">
-        <h2 id="details-title" className="text-xl font-semibold">
+      <section aria-labelledby="details-title" className="app-card space-y-4 p-5 sm:p-6">
+        <h2 id="details-title" className="text-lg font-bold text-slate-950">
           Details
         </h2>
         <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
@@ -245,22 +255,26 @@ export function TicketDetail() {
         </dl>
         <div>
           <h3 className="font-medium">Your description</h3>
-          <p className="mt-1 whitespace-pre-wrap rounded border border-slate-200 bg-white p-3">
+          <p className="mt-2 whitespace-pre-wrap rounded-xl bg-slate-50 p-4 text-slate-700 ring-1 ring-slate-200">
             {ticket.description}
           </p>
         </div>
         {done && ticket.resolutionSummary && (
           <div>
             <h3 className="font-medium">Resolution</h3>
-            <p className="mt-1 whitespace-pre-wrap rounded border border-emerald-300 bg-emerald-50 p-3">
+            <p className="mt-2 whitespace-pre-wrap rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950">
               {ticket.resolutionSummary}
             </p>
           </div>
         )}
       </section>
 
-      <section aria-labelledby="conversation-title" className="space-y-4">
-        <h2 id="conversation-title" className="text-xl font-semibold">
+      <section aria-labelledby="conversation-title" className="app-card space-y-4 p-5 sm:p-6">
+        <h2
+          id="conversation-title"
+          className="flex items-center gap-2 text-lg font-bold text-slate-950"
+        >
+          <MessageSquareText aria-hidden="true" size={19} className="text-blue-700" />
           Conversation
         </h2>
         {ticket.comments.length === 0 ? (
@@ -271,7 +285,7 @@ export function TicketDetail() {
               <li
                 key={c.id}
                 data-testid="comment"
-                className={`rounded border p-3 ${
+                className={`rounded-xl border p-4 ${
                   c.author.id === user?.id
                     ? 'border-blue-200 bg-blue-50'
                     : 'border-slate-200 bg-white'
@@ -291,7 +305,7 @@ export function TicketDetail() {
 
         <form onSubmit={onReply} noValidate className="space-y-3" aria-busy={sending}>
           <div>
-            <label htmlFor="reply" className="block font-medium">
+            <label htmlFor="reply" className="app-label">
               Reply
             </label>
             <textarea
@@ -311,13 +325,14 @@ export function TicketDetail() {
             <Counter id="reply-count" length={reply.trim().length} max={LIMITS.reply} />
           </div>
           <button type="submit" disabled={sending} className={primaryButton}>
+            <Send aria-hidden="true" size={16} />
             {sending ? 'Sending…' : 'Send reply'}
           </button>
         </form>
       </section>
 
-      <section aria-labelledby="history-title" className="space-y-3">
-        <h2 id="history-title" className="text-xl font-semibold">
+      <section aria-labelledby="history-title" className="app-card space-y-4 p-5 sm:p-6">
+        <h2 id="history-title" className="text-lg font-bold text-slate-950">
           History
         </h2>
         <ol className="space-y-2 border-l-2 border-slate-300 pl-4">

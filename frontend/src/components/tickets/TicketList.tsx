@@ -1,6 +1,7 @@
 'use client';
 
 import type { TicketPage, TicketPriority, TicketStatus } from '@smartdesk/contracts';
+import { Plus, RotateCcw, SlidersHorizontal } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/lib/auth/AuthProvider';
@@ -13,6 +14,7 @@ import {
   formatDateTime,
   shortId,
 } from '@/lib/tickets/format';
+import { EmptyState, ErrorState, LoadingState, PageHeader } from '@/components/ui';
 import { inputClass, primaryButton, secondaryButton, StatusBadge } from './ui';
 
 const PAGE_SIZE = 10;
@@ -21,7 +23,6 @@ const PRIORITIES = Object.keys(PRIORITY_LABEL) as TicketPriority[];
 export function TicketList() {
   const { api } = useAuth();
   const tickets = useMemo(() => ticketsApi(api), [api]);
-
   const [status, setStatus] = useState<TicketStatus | ''>('');
   const [priority, setPriority] = useState<TicketPriority | ''>('');
   const [offset, setOffset] = useState(0);
@@ -40,7 +41,7 @@ export function TicketList() {
         limit: PAGE_SIZE,
         offset,
       });
-      if (request !== latest.current) return; // a newer request superseded this one
+      if (request !== latest.current) return;
       setPage(result);
       setError(null);
     } catch (err) {
@@ -51,159 +52,187 @@ export function TicketList() {
     }
   }, [tickets, status, priority, offset]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useEffect(() => void load(), [load]);
 
   const filtered = status !== '' || priority !== '';
   const first = page && page.items.length > 0 ? page.offset + 1 : 0;
   const last = page ? page.offset + page.items.length : 0;
+  const resetFilters = () => {
+    setStatus('');
+    setPriority('');
+    setOffset(0);
+  };
 
   return (
     <section aria-labelledby="page-title" className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 id="page-title" className="text-2xl font-semibold">
-          My tickets
-        </h1>
-        <Link href="/employee/tickets/new" className={primaryButton}>
-          New ticket
-        </Link>
-      </div>
+      <PageHeader
+        eyebrow="Employee workspace"
+        title="My tickets"
+        description="Track every request, response, and resolution in one place."
+        actions={
+          <Link href="/employee/tickets/new" className={primaryButton}>
+            <Plus aria-hidden="true" size={17} />
+            New ticket
+          </Link>
+        }
+      />
 
       <form
         aria-label="Filter tickets"
-        className="flex flex-wrap items-end gap-4"
-        onSubmit={(e) => e.preventDefault()}
+        className="app-card p-4 sm:p-5"
+        onSubmit={(event) => event.preventDefault()}
       >
-        <div>
-          <label htmlFor="filter-status" className="block text-sm font-medium">
-            Status
-          </label>
-          <select
-            id="filter-status"
-            value={status}
-            onChange={(e) => {
-              setStatus(e.target.value as TicketStatus | '');
-              setOffset(0);
-            }}
-            className={inputClass}
-          >
-            <option value="">All statuses</option>
-            {STATUS_ORDER.map((s) => (
-              <option key={s} value={s}>
-                {STATUS_LABEL[s]}
-              </option>
-            ))}
-          </select>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+            <SlidersHorizontal aria-hidden="true" size={17} className="text-blue-700" />
+            Filter tickets
+          </div>
+          {filtered && (
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="app-button-quiet min-h-9 px-2.5 py-1.5"
+            >
+              <RotateCcw aria-hidden="true" size={14} />
+              Clear
+            </button>
+          )}
         </div>
-        <div>
-          <label htmlFor="filter-priority" className="block text-sm font-medium">
-            Priority
-          </label>
-          <select
-            id="filter-priority"
-            value={priority}
-            onChange={(e) => {
-              setPriority(e.target.value as TicketPriority | '');
-              setOffset(0);
-            }}
-            className={inputClass}
-          >
-            <option value="">All priorities</option>
-            {PRIORITIES.map((p) => (
-              <option key={p} value={p}>
-                {PRIORITY_LABEL[p]}
-              </option>
-            ))}
-          </select>
+        <div className="grid gap-4 sm:grid-cols-2 lg:max-w-xl">
+          <div>
+            <label htmlFor="filter-status" className="app-label">
+              Status
+            </label>
+            <select
+              id="filter-status"
+              value={status}
+              onChange={(event) => {
+                setStatus(event.target.value as TicketStatus | '');
+                setOffset(0);
+              }}
+              className={inputClass}
+            >
+              <option value="">All statuses</option>
+              {STATUS_ORDER.map((item) => (
+                <option key={item} value={item}>
+                  {STATUS_LABEL[item]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="filter-priority" className="app-label">
+              Priority
+            </label>
+            <select
+              id="filter-priority"
+              value={priority}
+              onChange={(event) => {
+                setPriority(event.target.value as TicketPriority | '');
+                setOffset(0);
+              }}
+              className={inputClass}
+            >
+              <option value="">All priorities</option>
+              {PRIORITIES.map((item) => (
+                <option key={item} value={item}>
+                  {PRIORITY_LABEL[item]}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </form>
 
       {error && (
-        <div role="alert" className="rounded border border-red-300 bg-red-50 p-4 text-red-900">
-          <p>{error}</p>
-          <button type="button" onClick={() => void load()} className={`${secondaryButton} mt-3`}>
-            Try again
-          </button>
-        </div>
+        <ErrorState
+          message={error}
+          action={
+            <button type="button" onClick={() => void load()} className={secondaryButton}>
+              Try again
+            </button>
+          }
+        />
       )}
-
-      {loading && !page && !error && (
-        <p role="status" className="text-slate-600">
-          Loading your tickets…
-        </p>
-      )}
+      {loading && !page && !error && <LoadingState label="Loading your tickets…" />}
 
       {page && page.items.length === 0 && !error && (
-        <div className="rounded border border-slate-200 bg-white p-6 text-center">
-          <p className="font-medium">
-            {filtered
-              ? 'No tickets match these filters.'
-              : 'You have not submitted any tickets yet.'}
-          </p>
-          {!filtered && (
-            <p className="mt-2 text-slate-600">
-              When something is wrong with your equipment or access,{' '}
-              <Link href="/employee/tickets/new" className="underline">
-                submit a ticket
+        <EmptyState
+          title={
+            filtered ? 'No tickets match these filters.' : 'You have not submitted any tickets yet.'
+          }
+          description={
+            filtered
+              ? 'Try clearing a filter to see more results.'
+              : 'When equipment, software, or access gets in your way, create a support request here.'
+          }
+          action={
+            filtered ? (
+              <button type="button" onClick={resetFilters} className={secondaryButton}>
+                Clear filters
+              </button>
+            ) : (
+              <Link href="/employee/tickets/new" className={primaryButton}>
+                <Plus aria-hidden="true" size={17} />
+                New ticket
               </Link>
-              .
-            </p>
-          )}
-        </div>
+            )
+          }
+        />
       )}
 
       {page && page.items.length > 0 && (
-        <div aria-busy={loading}>
-          <div className="overflow-x-auto rounded border border-slate-200 bg-white">
-            <table className="w-full min-w-[42rem] text-left text-sm">
+        <div aria-busy={loading} className="space-y-4">
+          <div className="app-card overflow-hidden">
+            <table className="app-table responsive-table">
               <caption className="sr-only">Your tickets, newest first</caption>
-              <thead className="bg-slate-50">
+              <thead>
                 <tr>
-                  <th scope="col" className="p-2">
-                    Ticket
-                  </th>
-                  <th scope="col" className="p-2">
-                    Title
-                  </th>
-                  <th scope="col" className="p-2">
-                    Status
-                  </th>
-                  <th scope="col" className="p-2">
-                    Priority
-                  </th>
-                  <th scope="col" className="p-2">
-                    Submitted
-                  </th>
-                  <th scope="col" className="p-2">
-                    Updated
-                  </th>
+                  <th scope="col">Ticket</th>
+                  <th scope="col">Title</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Priority</th>
+                  <th scope="col">Submitted</th>
+                  <th scope="col">Updated</th>
                 </tr>
               </thead>
               <tbody>
-                {page.items.map((t) => (
-                  <tr key={t.id} className="border-t border-slate-200">
-                    <td className="p-2 font-mono text-xs" title={t.trackingId}>
-                      {shortId(t.trackingId)}
+                {page.items.map((ticket) => (
+                  <tr key={ticket.id}>
+                    <td
+                      data-label="Ticket"
+                      data-secondary="true"
+                      className="font-mono text-xs text-slate-500"
+                      title={ticket.trackingId}
+                    >
+                      {shortId(ticket.trackingId)}
                     </td>
-                    <th scope="row" className="p-2 font-medium">
-                      <Link href={`/employee/tickets/${t.id}`} className="underline">
-                        {t.title}
+                    <th scope="row" data-primary="true" className="font-semibold text-slate-950">
+                      <Link
+                        href={`/employee/tickets/${ticket.id}`}
+                        className="hover:text-blue-700 hover:underline"
+                      >
+                        {ticket.title}
                       </Link>
                     </th>
-                    <td className="p-2">
-                      <StatusBadge status={t.status} />
+                    <td data-label="Status">
+                      <StatusBadge status={ticket.status} />
                     </td>
-                    <td className="p-2">{PRIORITY_LABEL[t.priority]}</td>
-                    <td className="p-2">{formatDateTime(t.createdAt)}</td>
-                    <td className="p-2">{formatDateTime(t.updatedAt)}</td>
+                    <td data-label="Priority" className="font-medium">
+                      {PRIORITY_LABEL[ticket.priority]}
+                    </td>
+                    <td data-label="Submitted" className="text-slate-600">
+                      {formatDateTime(ticket.createdAt)}
+                    </td>
+                    <td data-label="Updated" className="text-slate-600">
+                      {formatDateTime(ticket.updatedAt)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-
-          <nav aria-label="Pagination" className="mt-4 flex flex-wrap items-center gap-3">
+          <nav aria-label="Pagination" className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               className={secondaryButton}
@@ -220,7 +249,7 @@ export function TicketList() {
             >
               Next
             </button>
-            <p role="status" className="text-sm text-slate-600">
+            <p role="status" className="ml-auto text-sm text-slate-500">
               Showing {first}–{last} of {page.total}
             </p>
           </nav>

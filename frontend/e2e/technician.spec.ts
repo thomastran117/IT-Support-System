@@ -245,6 +245,7 @@ test('a ticket that belongs to another team is unavailable', async ({ page }) =>
 
 test('an internal note is visible to the technician and never to the requester', async ({
   page,
+  isMobile,
 }) => {
   const api = await installMockApi(page);
   const [t] = api.seedTickets(1);
@@ -255,6 +256,7 @@ test('an internal note is visible to the technician and never to the requester',
   await expect(page.getByTestId('comment')).toHaveCount(1);
   await expect(page.getByTestId('comment')).toContainText('Internal note');
 
+  if (isMobile) await page.getByRole('button', { name: 'Open navigation' }).click();
   await page.getByRole('button', { name: 'Sign out' }).click();
   await signIn(page, ACCOUNTS.employee.email);
   await page.goto(`/employee/tickets/${t!.id}`);
