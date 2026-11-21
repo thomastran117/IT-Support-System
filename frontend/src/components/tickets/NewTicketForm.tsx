@@ -1,7 +1,9 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { Send } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { PageHeader } from '@/components/ui';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { ticketsApi } from '@/lib/tickets/api';
 import { describeError } from '@/lib/tickets/format';
@@ -91,21 +93,18 @@ export function NewTicketForm() {
   ];
 
   return (
-    <section aria-labelledby="page-title" className="max-w-2xl space-y-6">
-      <div>
-        <h1 id="page-title" className="text-2xl font-semibold">
-          New ticket
-        </h1>
-        <p className="mt-1 text-slate-600">
-          Tell us what is wrong. A technician will review it and reply here.
-        </p>
-      </div>
+    <section aria-labelledby="page-title" className="max-w-3xl space-y-6">
+      <PageHeader
+        eyebrow="Support request"
+        title="New ticket"
+        description="Describe what is blocking you and the support team will take it from here."
+      />
 
       <ErrorSummary ref={summaryRef} items={summary} />
 
-      <form onSubmit={onSubmit} noValidate className="space-y-5" aria-busy={busy}>
+      <form onSubmit={onSubmit} noValidate className="app-card space-y-6 p-5 sm:p-7" aria-busy={busy}>
         <div>
-          <label htmlFor="title" className="block font-medium">
+          <label htmlFor="title" className="app-label">
             Title
           </label>
           <input
@@ -119,7 +118,7 @@ export function NewTicketForm() {
             className={inputClass}
           />
           {errors.title && (
-            <p id="title-error" className="mt-1 text-sm font-medium text-red-700">
+            <p id="title-error" className="mt-1.5 text-sm font-medium text-rose-700">
               {errors.title}
             </p>
           )}
@@ -127,7 +126,7 @@ export function NewTicketForm() {
         </div>
 
         <div>
-          <label htmlFor="description" className="block font-medium">
+          <label htmlFor="description" className="app-label">
             Description
           </label>
           <textarea
@@ -141,7 +140,7 @@ export function NewTicketForm() {
             className={inputClass}
           />
           {errors.description && (
-            <p id="description-error" className="mt-1 text-sm font-medium text-red-700">
+            <p id="description-error" className="mt-1.5 text-sm font-medium text-rose-700">
               {errors.description}
             </p>
           )}
@@ -153,6 +152,7 @@ export function NewTicketForm() {
         </div>
 
         <button type="submit" disabled={busy} className={primaryButton}>
+          <Send aria-hidden="true" size={16} />
           {busy ? 'Submitting…' : 'Submit ticket'}
         </button>
       </form>

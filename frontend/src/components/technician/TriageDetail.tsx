@@ -258,10 +258,10 @@ export function TriageDetail() {
     JSON.stringify(form) !== JSON.stringify(formFrom(ticket)) || ticket.status === 'OPEN';
 
   return (
-    <article aria-labelledby="page-title" className="space-y-8">
+    <article aria-labelledby="page-title" className="space-y-6">
       <p className="text-sm">
-        <Link href="/technician" className="underline">
-          ← Dashboard
+        <Link href="/technician" className="app-button-quiet min-h-9 px-2 py-1.5">
+          Dashboard
         </Link>
       </p>
 
@@ -281,8 +281,8 @@ export function TriageDetail() {
         )}
       </div>
 
-      <header className="space-y-3">
-        <h1 id="page-title" className="text-2xl font-semibold">
+      <header className="app-card space-y-3 p-5 sm:p-6">
+        <h1 id="page-title" className="text-2xl font-bold tracking-[-0.025em] text-slate-950 sm:text-3xl">
           {ticket.title}
         </h1>
         <p className="flex flex-wrap items-center gap-3 text-sm">
@@ -296,25 +296,25 @@ export function TriageDetail() {
         </p>
       </header>
 
-      <section aria-labelledby="description-title" className="space-y-2">
-        <h2 id="description-title" className="text-xl font-semibold">
+      <section aria-labelledby="description-title" className="app-card space-y-3 p-5 sm:p-6">
+        <h2 id="description-title" className="text-lg font-bold text-slate-950">
           Description
         </h2>
-        <p className="whitespace-pre-wrap rounded border border-slate-200 bg-white p-3">
+        <p className="whitespace-pre-wrap rounded-xl bg-slate-50 p-4 text-slate-700 ring-1 ring-slate-200">
           {ticket.description}
         </p>
         {ticket.resolutionSummary && (
           <div>
             <h3 className="font-medium">Resolution</h3>
-            <p className="mt-1 whitespace-pre-wrap rounded border border-emerald-300 bg-emerald-50 p-3">
+            <p className="mt-2 whitespace-pre-wrap rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950">
               {ticket.resolutionSummary}
             </p>
           </div>
         )}
       </section>
 
-      <section aria-labelledby="routing-title" className="space-y-3">
-        <h2 id="routing-title" className="text-xl font-semibold">
+      <section aria-labelledby="routing-title" className="app-card space-y-4 p-5 sm:p-6">
+        <h2 id="routing-title" className="text-lg font-bold text-slate-950">
           Approved routing
         </h2>
         <p className="text-sm text-slate-600">
@@ -348,7 +348,7 @@ export function TriageDetail() {
             aria-busy={busy}
           >
             <div>
-              <label htmlFor="route-category" className="block text-sm font-medium">
+              <label htmlFor="route-category" className="app-label">
                 Category
               </label>
               <select
@@ -366,7 +366,7 @@ export function TriageDetail() {
               </select>
             </div>
             <div>
-              <label htmlFor="route-priority" className="block text-sm font-medium">
+              <label htmlFor="route-priority" className="app-label">
                 Priority
               </label>
               <select
@@ -386,7 +386,7 @@ export function TriageDetail() {
               </select>
             </div>
             <div>
-              <label htmlFor="route-team" className="block text-sm font-medium">
+              <label htmlFor="route-team" className="app-label">
                 Team
               </label>
               <select
@@ -404,7 +404,7 @@ export function TriageDetail() {
               </select>
             </div>
             <div>
-              <label htmlFor="route-assignee" className="block text-sm font-medium">
+              <label htmlFor="route-assignee" className="app-label">
                 Assignee
               </label>
               <select
@@ -435,8 +435,8 @@ export function TriageDetail() {
         </p>
       </section>
 
-      <section aria-labelledby="status-title" className="space-y-3">
-        <h2 id="status-title" className="text-xl font-semibold">
+      <section aria-labelledby="status-title" className="app-card space-y-4 p-5 sm:p-6">
+        <h2 id="status-title" className="text-lg font-bold text-slate-950">
           Progress
         </h2>
         {actions.length === 0 ? (
@@ -447,7 +447,7 @@ export function TriageDetail() {
           <>
             {needsSummary && (
               <div>
-                <label htmlFor="summary" className="block text-sm font-medium">
+                <label htmlFor="summary" className="app-label">
                   Resolution summary (required to resolve)
                 </label>
                 <textarea
@@ -487,8 +487,8 @@ export function TriageDetail() {
         )}
       </section>
 
-      <section aria-labelledby="conversation-title" className="space-y-4">
-        <h2 id="conversation-title" className="text-xl font-semibold">
+      <section aria-labelledby="conversation-title" className="app-card space-y-4 p-5 sm:p-6">
+        <h2 id="conversation-title" className="text-lg font-bold text-slate-950">
           Conversation and notes
         </h2>
         {ticket.comments.length === 0 ? (
@@ -499,7 +499,7 @@ export function TriageDetail() {
               <li
                 key={c.id}
                 data-testid="comment"
-                className={`rounded border p-3 ${
+                className={`rounded-xl border p-4 ${
                   c.isInternal ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white'
                 }`}
               >
@@ -522,7 +522,7 @@ export function TriageDetail() {
 
         <form onSubmit={onComment} noValidate className="space-y-3" aria-busy={busy}>
           <div>
-            <label htmlFor="note" className="block font-medium">
+            <label htmlFor="note" className="app-label">
               Add a note or reply
             </label>
             <textarea
@@ -555,8 +555,8 @@ export function TriageDetail() {
         </form>
       </section>
 
-      <section aria-labelledby="history-title" className="space-y-3">
-        <h2 id="history-title" className="text-xl font-semibold">
+      <section aria-labelledby="history-title" className="app-card space-y-4 p-5 sm:p-6">
+        <h2 id="history-title" className="text-lg font-bold text-slate-950">
           Audit timeline
         </h2>
         <ol className="space-y-2 border-l-2 border-slate-300 pl-4">

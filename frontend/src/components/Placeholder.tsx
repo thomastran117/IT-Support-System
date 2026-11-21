@@ -2,7 +2,7 @@ export function Placeholder({ title, description }: { title: string; description
   return (
     <section
       aria-labelledby="page-title"
-      className="rounded-lg border border-slate-200 bg-white p-6"
+      className="app-card p-6"
     >
       <h1 id="page-title" className="text-2xl font-semibold">
         {title}

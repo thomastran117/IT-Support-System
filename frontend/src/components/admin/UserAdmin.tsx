@@ -13,9 +13,8 @@ import { ApiError, NetworkError } from '@/lib/auth/client';
 import { ROLE_LABEL } from '@/lib/auth/roles';
 
 const ROLES: Role[] = ['EMPLOYEE', 'TECHNICIAN', 'ADMIN'];
-const input = 'mt-1 w-full rounded border border-slate-300 px-3 py-2 text-base';
-const smallButton =
-  'rounded border border-slate-300 px-2 py-1 text-sm hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50';
+const input = 'app-field';
+const smallButton = 'app-button-secondary min-h-9 px-2.5 py-1.5';
 
 const ACTION_TEXT: Record<AdminAuditEntry['action'], string> = {
   USER_CREATED: 'created',
@@ -137,9 +136,9 @@ export function UserAdmin() {
   }
 
   return (
-    <div className="space-y-10">
+    <div className="mt-7 space-y-6">
       {error && (
-        <p role="alert" className="rounded border border-red-300 bg-red-50 p-3 text-red-800">
+        <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-900">
           {error}
         </p>
       )}
@@ -147,7 +146,7 @@ export function UserAdmin() {
       {secret && (
         <section
           aria-labelledby="secret-title"
-          className="rounded border border-amber-300 bg-amber-50 p-4"
+          className="rounded-xl border border-amber-200 bg-amber-50 p-5 shadow-sm"
         >
           <h3 id="secret-title" className="font-semibold">
             One-time password for {secret.email}
@@ -167,30 +166,30 @@ export function UserAdmin() {
         </section>
       )}
 
-      <section aria-labelledby="create-title">
-        <h2 id="create-title" className="text-xl font-semibold">
+      <section aria-labelledby="create-title" className="app-card p-5 sm:p-6">
+        <h2 id="create-title" className="text-lg font-bold text-slate-950">
           Add a user
         </h2>
         {createError && (
-          <p role="alert" className="mt-2 rounded border border-red-300 bg-red-50 p-3 text-red-800">
+          <p role="alert" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-rose-900">
             {createError}
           </p>
         )}
-        <form onSubmit={onCreate} className="mt-3 grid gap-4 sm:grid-cols-4 sm:items-end">
+        <form onSubmit={onCreate} className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4 xl:items-end">
           <div>
-            <label htmlFor="new-email" className="block text-sm font-medium">
+            <label htmlFor="new-email" className="app-label">
               Email
             </label>
             <input id="new-email" name="email" type="email" required className={input} />
           </div>
           <div>
-            <label htmlFor="new-name" className="block text-sm font-medium">
+            <label htmlFor="new-name" className="app-label">
               Display name
             </label>
             <input id="new-name" name="displayName" required maxLength={120} className={input} />
           </div>
           <div>
-            <label htmlFor="new-role" className="block text-sm font-medium">
+            <label htmlFor="new-role" className="app-label">
               Role
             </label>
             <select id="new-role" name="role" defaultValue="EMPLOYEE" className={input}>
@@ -204,15 +203,15 @@ export function UserAdmin() {
           <button
             type="submit"
             disabled={busy}
-            className="rounded bg-blue-600 px-3 py-2 text-white disabled:opacity-60"
+            className="app-button-primary"
           >
             Create user
           </button>
         </form>
       </section>
 
-      <section aria-labelledby="users-title">
-        <h2 id="users-title" className="text-xl font-semibold">
+      <section aria-labelledby="users-title" className="space-y-3">
+        <h2 id="users-title" className="text-lg font-bold text-slate-950">
           User accounts
         </h2>
         {users === null ? (
@@ -220,8 +219,8 @@ export function UserAdmin() {
             Loading users…
           </p>
         ) : (
-          <div className="mt-3 overflow-x-auto rounded border border-slate-200 bg-white">
-            <table className="w-full min-w-[40rem] text-left text-sm">
+          <div className="app-card overflow-hidden">
+            <table className="app-table responsive-table">
               <caption className="sr-only">User accounts</caption>
               <thead className="bg-slate-50">
                 <tr>
@@ -247,15 +246,15 @@ export function UserAdmin() {
                   const self = u.id === me?.id;
                   return (
                     <tr key={u.id} className="border-t border-slate-200">
-                      <td className="p-2">{u.displayName}</td>
-                      <td className="p-2">{u.email}</td>
-                      <td className="p-2">
+                      <td data-primary="true" className="font-semibold text-slate-950">{u.displayName}</td>
+                      <td data-secondary="true" className="text-slate-500">{u.email}</td>
+                      <td data-label="Role">
                         <select
                           aria-label={`Role for ${u.email}`}
                           value={u.role}
                           disabled={busy || self}
                           onChange={(e) => void changeRole(u, e.target.value as Role)}
-                          className="rounded border border-slate-300 px-2 py-1 disabled:opacity-60"
+                          className="app-field min-h-9 py-1 text-sm disabled:opacity-60"
                         >
                           {ROLES.map((r) => (
                             <option key={r} value={r}>
@@ -264,8 +263,8 @@ export function UserAdmin() {
                           ))}
                         </select>
                       </td>
-                      <td className="p-2">{u.isActive ? 'Active' : 'Inactive'}</td>
-                      <td className="flex flex-wrap gap-2 p-2">
+                      <td data-label="Status"><span className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold ${u.isActive ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-slate-100 text-slate-600'}`}>{u.isActive ? 'Active' : 'Inactive'}</span></td>
+                      <td data-label="Actions"><div className="flex flex-wrap gap-2">
                         <button
                           type="button"
                           aria-label={`${u.isActive ? 'Deactivate' : 'Activate'} ${u.email}`}
@@ -284,7 +283,7 @@ export function UserAdmin() {
                         >
                           Reset password
                         </button>
-                      </td>
+                      </div></td>
                     </tr>
                   );
                 })}
@@ -294,16 +293,16 @@ export function UserAdmin() {
         )}
       </section>
 
-      <section aria-labelledby="audit-title">
-        <h2 id="audit-title" className="text-xl font-semibold">
+      <section aria-labelledby="audit-title" className="app-card p-5 sm:p-6">
+        <h2 id="audit-title" className="text-lg font-bold text-slate-950">
           Recent account changes
         </h2>
         {audit.length === 0 ? (
           <p className="mt-3 text-slate-600">No changes recorded yet.</p>
         ) : (
-          <ul className="mt-3 space-y-1 text-sm">
+          <ul className="mt-4 divide-y divide-slate-100 text-sm">
             {audit.map((a) => (
-              <li key={a.id}>
+              <li key={a.id} className="py-3 first:pt-0 last:pb-0">
                 <time dateTime={a.createdAt} className="text-slate-500">
                   {new Date(a.createdAt).toLocaleString()}
                 </time>{' '}
