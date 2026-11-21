@@ -45,6 +45,19 @@ The frontend holds the access token in memory. Its API client performs at most o
 and one retry after a 401. Route guards improve navigation, but the backend independently authorizes
 every request.
 
+## Technician screens
+
+`/technician` is the triage dashboard: tabs for the unassigned backlog, a team queue and tickets
+assigned to the technician, with priority and category filters, urgency chips, age and pagination
+(`GET /api/technician/queue`, `/unassigned`). `/technician/tickets/:id` is the triage detail. The
+approved category, priority, team and assignee are edited in one form and saved with
+`POST /api/tickets/:id/routing`; status buttons mirror the backend workflow, and resolving needs a
+summary. Internal notes are visibly distinct and are never returned to the requester. Every write
+sends the ticket `version`: on a `VERSION_CONFLICT` the page reloads the latest ticket and says so
+instead of overwriting. If a change hands a ticket to a team the technician does not belong to, the
+page explains that it can no longer be opened. Manual triage never depends on AI. The AI suggestion
+card (accept, override, reject) arrives with the recommendation endpoints (SD-027, SD-036, SD-038).
+
 ## Development and validation
 
 `docker compose up --build --watch` synchronizes application source. Shared-package, manifest, and

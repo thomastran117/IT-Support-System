@@ -1,10 +1,8 @@
 import type { Metadata } from 'next';
-import { Placeholder } from '@/components/Placeholder';
+import { TechnicianDashboard } from '@/components/technician/TechnicianDashboard';
 
-export const metadata: Metadata = { title: 'Technician' };
+export const metadata: Metadata = { title: 'Technician dashboard' };
 
 export default function TechnicianPage() {
-  return (
-    <Placeholder title="Technician area" description="Placeholder for the technician section." />
-  );
+  return <TechnicianDashboard />;
 }
