@@ -6,6 +6,9 @@ export type DbErrorCode =
   | 'NOT_FOUND'
   | 'CONFLICT'
   | 'STALE_WRITE'
+  | 'VERSION_CONFLICT'
+  | 'INVALID_TRANSITION'
+  | 'PREREQUISITE_FAILED'
   | 'LIFECYCLE'
   | 'REFERENCE'
   | 'CONSTRAINT'
@@ -36,6 +39,21 @@ export const forbiddenError = (message = 'You are not allowed to perform this ac
   new DbError('FORBIDDEN', 403, message);
 export const notFoundError = (what: string) => new DbError('NOT_FOUND', 404, `${what} not found`);
 export const lifecycleError = (message: string) => new DbError('LIFECYCLE', 409, message);
+/** The optimistic concurrency check failed: the ticket changed since the caller read it. */
+export const versionConflictError = (currentVersion: number | null) =>
+  new DbError(
+    'VERSION_CONFLICT',
+    409,
+    'Ticket was changed by someone else. Reload it and try again.',
+    { currentVersion },
+  );
+export const invalidTransitionError = (from: string, to: string) =>
+  new DbError('INVALID_TRANSITION', 409, `A ${from} ticket cannot move to ${to}`, { from, to });
+export const prerequisiteError = (to: string, missing: readonly string[]) =>
+  new DbError('PREREQUISITE_FAILED', 409, `Cannot move to ${to}: prerequisites are not met`, {
+    to,
+    missing,
+  });
 export const staleWriteError = (what: string) =>
   new DbError('STALE_WRITE', 409, `${what} was changed by someone else. Reload it and try again.`);
 

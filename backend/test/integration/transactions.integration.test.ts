@@ -254,7 +254,7 @@ describe.skipIf(!testDatabaseUrl)('transactions and services (integration)', () 
           categoryId: category,
           priority,
           teamId,
-          expectedUpdatedAt: ticket.updatedAt,
+          expectedVersion: ticket.version,
         });
       const results = await Promise.allSettled([
         approve(categoryId, 'LOW'),
@@ -264,7 +264,7 @@ describe.skipIf(!testDatabaseUrl)('transactions and services (integration)', () 
       const rejected = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
       expect(fulfilled).toHaveLength(1);
       expect(rejected).toHaveLength(1);
-      expect(rejected[0]!.reason).toMatchObject({ code: 'STALE_WRITE', statusCode: 409 });
+      expect(rejected[0]!.reason).toMatchObject({ code: 'VERSION_CONFLICT', statusCode: 409 });
 
       // The loser left no partial changes: exactly one set of approval events exists.
       const events = await types(ticket.id);
@@ -477,7 +477,7 @@ describe.skipIf(!testDatabaseUrl)('transactions and services (integration)', () 
       let err = await rejection(
         transitionTicket(prisma, { ticketId: ticket.id, actorId: techId, to: 'CLOSED' }),
       );
-      expect(err.code).toBe('LIFECYCLE');
+      expect(err.code).toBe('INVALID_TRANSITION');
       err = await rejection(
         transitionTicket(prisma, { ticketId: ticket.id, actorId: techId, to: 'RESOLVED' }),
       );

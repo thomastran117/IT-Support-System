@@ -186,3 +186,28 @@ export interface TicketDetailDto extends TicketSummaryDto {
   comments: TicketCommentDto[];
   timeline: TicketTimelineEntry[];
 }
+
+// --- Ticket transitions (SD-020) -------------------------------------------------------------
+
+export const TICKET_RESOLUTION_MAX = 5000;
+
+/**
+ * Body of POST /api/tickets/:id/transitions. `expectedVersion` is the `version` the client last
+ * read; the server answers 409 `VERSION_CONFLICT` when the ticket has moved on since.
+ */
+export interface TransitionRequest {
+  to: TicketStatus;
+  expectedVersion: number;
+  /** Required for RESOLVED. Optional for CLOSED (the existing summary is kept). */
+  resolutionSummary?: string;
+}
+
+/**
+ * Machine-readable reason in `details.code` of a 409 from a ticket mutation:
+ * - VERSION_CONFLICT: stale `expectedVersion` (`details.currentVersion` has the current one)
+ * - INVALID_TRANSITION: the workflow has no such edge (`details.from`, `details.to`)
+ * - PREREQUISITE_FAILED: triage/start requirements unmet (`details.missing` lists them)
+ */
+export type TicketConflictCode = 'VERSION_CONFLICT' | 'INVALID_TRANSITION' | 'PREREQUISITE_FAILED';
+
+export type TicketPrerequisite = 'CATEGORY' | 'PRIORITY' | 'TEAM' | 'ACTIVE_TEAM' | 'ASSIGNEE';

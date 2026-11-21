@@ -10,7 +10,10 @@
  *    they requested themselves (read-only, like an employee).
  *  - ADMIN: all tickets (read and edit), plus account, label and analytics administration.
  */
-import type { Principal } from './guard.js';
+import type { Principal as RequestPrincipal } from './guard.js';
+
+/** What the policies need from a caller. Services pass this without building a full principal. */
+export type Principal = Pick<RequestPrincipal, 'id' | 'role' | 'teamIds'>;
 
 /** The ownership facts a ticket decision needs. */
 export interface TicketScope {

@@ -22,18 +22,19 @@ export const findRecommendation = (db: Db, id: string) =>
 /**
  * Record the human review. Only review metadata changes: the original `proposed_*`, `suggestion`
  * and `confidence` columns are deliberately not part of this statement, so proposals stay immutable.
- * `reviewed_at` is never earlier than `created_at` (CHECK) even with clock skew.
+ * Only a PENDING recommendation can be reviewed; the return value is the rows changed (0 when
+ * another reviewer already decided it). `reviewed_at` is never earlier than `created_at` (CHECK) even with clock skew.
  */
 export async function markReviewed(
   db: Db,
   id: string,
   review: { decision: ReviewDecision; reviewerId: string; notes?: string | null },
-): Promise<void> {
-  await db.$executeRaw(Prisma.sql`
+): Promise<number> {
+  return db.$executeRaw(Prisma.sql`
     UPDATE ai_recommendations
     SET review_status = ${review.decision},
         reviewer_id = ${review.reviewerId}::uuid,
         reviewed_at = GREATEST(clock_timestamp(), created_at),
         review_notes = ${review.notes ?? null}
-    WHERE recommendation_id = ${id}::uuid`);
+    WHERE recommendation_id = ${id}::uuid AND review_status = 'PENDING'`);
 }

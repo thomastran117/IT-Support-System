@@ -46,6 +46,13 @@ export function registerErrorHandling(app: FastifyInstance): void {
       status = err.statusCode;
       message = err.message;
       details = err.details;
+      // Domain errors (DbError) carry a stable machine-readable code; clients branch on
+      // `details.code`, never on the message text.
+      const code = (err as { code?: unknown }).code;
+      if (typeof code === 'string') {
+        const extra = details && typeof details === 'object' ? (details as object) : {};
+        details = { code, ...extra };
+      }
     } else if ('validation' in err && err.validation) {
       status = 400;
       message = 'Validation failed';
