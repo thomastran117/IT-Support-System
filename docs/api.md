@@ -182,10 +182,11 @@ Article visibility is separate from ticket permissions. Two surfaces, split by w
 **Readers**, `/api/knowledge`: any signed-in role (anonymous is `401`). Published articles only,
 for every role, administrators included.
 
-| Method | Path                 | Purpose                                                                                   |
-| ------ | -------------------- | ----------------------------------------------------------------------------------------- |
-| GET    | `/api/knowledge`     | Page of summaries (`id`, `title`, `category`, `updatedAt`); `?categoryId=&limit=&offset=` |
-| GET    | `/api/knowledge/:id` | One article with `body`, `createdAt`, `updatedAt`                                         |
+| Method | Path                        | Purpose                                                                                                         |
+| ------ | --------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/knowledge`            | Page of summaries (`id`, `title`, `category`, `updatedAt`); `?categoryId=&limit=&offset=`                       |
+| GET    | `/api/knowledge/categories` | Active categories with at least one published article, for the filter (employees cannot read `/api/categories`) |
+| GET    | `/api/knowledge/:id`        | One article with `body`, `createdAt`, `updatedAt`                                                               |
 
 ### Search
 

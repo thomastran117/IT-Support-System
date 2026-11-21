@@ -2,6 +2,7 @@
 
 import type { Role } from '@smartdesk/contracts';
 import {
+  BookOpen,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -40,13 +41,25 @@ const NAVIGATION: Record<Role, NavItem[]> = {
       icon: PlusCircle,
       active: (path) => path === '/employee/tickets/new',
     },
+    {
+      href: '/employee/knowledge',
+      label: 'Knowledge base',
+      icon: BookOpen,
+      active: (path) => path.startsWith('/employee/knowledge'),
+    },
   ],
   TECHNICIAN: [
     {
       href: '/technician',
       label: 'Support queue',
       icon: LayoutDashboard,
-      active: (path) => path.startsWith('/technician'),
+      active: (path) => path.startsWith('/technician') && !path.startsWith('/technician/knowledge'),
+    },
+    {
+      href: '/technician/knowledge',
+      label: 'Knowledge base',
+      icon: BookOpen,
+      active: (path) => path.startsWith('/technician/knowledge'),
     },
   ],
   ADMIN: [
@@ -54,7 +67,13 @@ const NAVIGATION: Record<Role, NavItem[]> = {
       href: '/admin',
       label: 'User management',
       icon: UsersRound,
-      active: (path) => path.startsWith('/admin'),
+      active: (path) => path.startsWith('/admin') && !path.startsWith('/admin/knowledge'),
+    },
+    {
+      href: '/admin/knowledge',
+      label: 'Knowledge base',
+      icon: BookOpen,
+      active: (path) => path.startsWith('/admin/knowledge'),
     },
   ],
 };

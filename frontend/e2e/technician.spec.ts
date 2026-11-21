@@ -187,7 +187,7 @@ test('a concurrent edit is reported as a conflict and the latest version is load
   await page.getByRole('button', { name: 'Approve routing' }).click();
   await expect(notice(page)).toContainText('Someone else changed this ticket');
   // The form was reset to what the server now holds, not left half-applied.
-  await expect(page.getByLabel('Category')).toHaveValue('c-sw');
+  await expect(page.getByLabel('Category')).toHaveValue('c0000000-0000-4000-8000-000000000002');
   await expect(page.getByLabel('Priority')).toHaveValue('MEDIUM');
 
   // Re-applying on top of the fresh version succeeds.

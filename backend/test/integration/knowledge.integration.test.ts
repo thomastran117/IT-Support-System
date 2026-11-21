@@ -144,6 +144,29 @@ describe.skipIf(!testDatabaseUrl)('knowledge articles (integration)', () => {
       },
     );
 
+    it('lists only active categories that hold published articles', async () => {
+      const names = async (as: string) =>
+        ((await read(as, '/categories')).json().data as { id: string }[]).map((c) => c.id).sort();
+      const expected = [
+        CATEGORIES.hardware,
+        CATEGORIES.software,
+        CATEGORIES.network,
+        CATEGORIES.access,
+      ].sort();
+      expect(await names(USERS.erin)).toEqual(expected);
+      expect(await names(USERS.tara)).toEqual(expected);
+      expect((await read(null, '/categories')).statusCode).toBe(401);
+
+      // A category with only a draft stays hidden; unpublishing the last article hides it too.
+      const secret = await prisma.ticketCategory.create({ data: { name: 'Secret' } });
+      await prisma.knowledgeArticle.create({
+        data: { title: 'Hidden', body: 'Draft only', categoryId: secret.id },
+      });
+      expect(await names(USERS.erin)).not.toContain(secret.id);
+      await admin('POST', `/${ARTICLES.vpn}/unpublish`);
+      expect(await names(USERS.erin)).not.toContain(CATEGORIES.network);
+    });
+
     it('a malformed id is 400, not a server error', async () => {
       expect((await read(USERS.erin, '/not-a-uuid')).statusCode).toBe(400);
     });
