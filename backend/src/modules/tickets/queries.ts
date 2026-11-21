@@ -12,6 +12,7 @@ import type {
 import type { Principal } from '../../auth/guard.js';
 import { canSeeInternalNotes, canViewRawAudit, type TicketScope } from '../../auth/policies.js';
 import { ticketReadFilter } from '../../auth/ticketAccess.js';
+import { toTimelineEntry } from '../../domain/ticketEvents.js';
 
 /** Joined once per query so actors, team and category never cost one query per row. */
 const summarySelect = {
@@ -136,15 +137,30 @@ export async function listTickets(
   };
 }
 
-/** Event types a requester may see. Their details are reduced to the status change. */
-const REQUESTER_EVENT_TYPES = new Set([
-  'CREATED',
-  'STATUS_CHANGED',
-  'RESOLVED',
-  'REOPENED',
-  'TEAM_ASSIGNED',
-  'TEAM_REASSIGNED',
-]);
+/**
+ * The timeline for the caller's audience: staff who can view the raw audit see every event with its
+ * actor; everyone else gets the reduced requester view. Ordered by (occurred_at, event_id), which
+ * is total, so equal timestamps are deterministic.
+ */
+export async function listTicketEvents(
+  prisma: PrismaClient,
+  principal: Principal,
+  scope: TicketScope & { id: string },
+): Promise<TicketTimelineEntry[]> {
+  const audience = canViewRawAudit(principal, scope) ? 'staff' : 'requester';
+  const events = await prisma.ticketEvent.findMany({
+    where: { ticketId: scope.id },
+    select: {
+      id: true,
+      eventType: true,
+      occurredAt: true,
+      details: true,
+      actor: { select: { id: true, displayName: true } },
+    },
+    orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
+  });
+  return events.flatMap((e) => toTimelineEntry(e, audience) ?? []);
+}
 
 /**
  * Detail view for a ticket the caller can already read (authorizeTicket ran first). Three queries,
@@ -155,9 +171,7 @@ export async function getTicketDetail(
   principal: Principal,
   scope: TicketScope & { id: string },
 ): Promise<TicketDetailDto | null> {
-  const rawAudit = canViewRawAudit(principal, scope);
-
-  const [ticket, comments, events] = await Promise.all([
+  const [ticket, comments, timeline] = await Promise.all([
     prisma.ticket.findUnique({
       where: { id: scope.id },
       select: {
@@ -168,37 +182,9 @@ export async function getTicketDetail(
       },
     }),
     listTicketComments(prisma, principal, scope),
-    prisma.ticketEvent.findMany({
-      where: { ticketId: scope.id },
-      select: {
-        id: true,
-        eventType: true,
-        occurredAt: true,
-        details: true,
-        actor: { select: { id: true, displayName: true } },
-      },
-      orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
-    }),
+    listTicketEvents(prisma, principal, scope),
   ]);
   if (!ticket) return null;
-
-  const timeline: TicketTimelineEntry[] = events
-    .filter((e) => rawAudit || REQUESTER_EVENT_TYPES.has(e.eventType))
-    .map((e) => {
-      const d = (e.details ?? {}) as Record<string, unknown>;
-      return {
-        id: e.id,
-        type: e.eventType,
-        occurredAt: e.occurredAt.toISOString(),
-        actor: rawAudit && e.actor ? { id: e.actor.id, name: e.actor.displayName } : null,
-        // Requesters only learn the status change, never ids, notes or other detail.
-        details: rawAudit
-          ? d
-          : e.eventType === 'STATUS_CHANGED'
-            ? { from: d.from ?? null, to: d.to ?? null }
-            : null,
-      };
-    });
 
   return {
     ...toSummary(ticket),

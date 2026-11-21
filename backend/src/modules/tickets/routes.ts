@@ -17,7 +17,7 @@ import { TICKET_STATUSES } from '../../domain/ticketStateMachine.js';
 import { HttpError, envelope } from '../../plugins/errors.js';
 import { parse } from '../../plugins/validate.js';
 import { toTicketDto } from './dto.js';
-import { getTicketDetail, listTicketComments, listTickets } from './queries.js';
+import { getTicketDetail, listTicketComments, listTicketEvents, listTickets } from './queries.js';
 
 const ListQuery = z.strictObject({
   status: z.enum(['OPEN', 'TRIAGED', 'IN_PROGRESS', 'RESOLVED', 'CLOSED']).optional(),
@@ -91,6 +91,12 @@ export const ticketRoutes =
       const detail = await getTicketDetail(prisma, req.principal!, scope);
       if (!detail) throw new HttpError(404, 'Ticket not found');
       return envelope('Ticket', detail);
+    });
+
+    app.get('/:id/events', auth, async (req) => {
+      const { id } = req.params as { id: string };
+      const scope = await authorizeTicket(prisma, req.principal!, id, 'read');
+      return envelope('Timeline', await listTicketEvents(prisma, req.principal!, scope));
     });
 
     app.get('/:id/comments', auth, async (req) => {

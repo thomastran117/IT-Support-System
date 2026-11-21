@@ -1,23 +1,16 @@
 import { Prisma } from '@smartdesk/db';
+import type { TicketEventType } from '@smartdesk/contracts';
+import { sanitizeEventDetails } from '../../domain/ticketEvents.js';
 import type { Db } from '../transaction.js';
 
-export type TicketEventType =
-  | 'CREATED'
-  | 'STATUS_CHANGED'
-  | 'TEAM_ASSIGNED'
-  | 'TEAM_REASSIGNED'
-  | 'COMMENT_ADDED'
-  | 'AI_REVIEWED'
-  | 'RESOLVED'
-  | 'REOPENED'
-  | 'CATEGORY_UPDATED'
-  | 'PRIORITY_UPDATED'
-  | 'ASSIGNEE_UPDATED';
+export type { TicketEventType };
 
 /**
  * Append an audit event. `occurred_at` uses `clock_timestamp()` (not the transaction start time) so
  * several events written in one transaction keep their order when sorted by (occurred_at, event_id).
- * `actorId = null` records a system action. Details must never contain secrets or private text.
+ * `actorId = null` records a system action. This is the only place events are written: details are
+ * reduced to the allow-listed keys for the type (ids, statuses, flags), so secrets and private text
+ * cannot be stored whatever the caller passes.
  */
 export async function appendEvent(
   db: Db,
@@ -31,7 +24,7 @@ export async function appendEvent(
   await db.$executeRaw(Prisma.sql`
     INSERT INTO ticket_events (ticket_id, actor_id, event_type, details, occurred_at)
     VALUES (${event.ticketId}::uuid, ${event.actorId}::uuid, ${event.type},
-            ${JSON.stringify(event.details ?? {})}::jsonb, clock_timestamp())`);
+            ${JSON.stringify(sanitizeEventDetails(event.type, event.details))}::jsonb, clock_timestamp())`);
 }
 
 export const listEvents = (db: Db, ticketId: string) =>

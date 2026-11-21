@@ -171,12 +171,34 @@ export interface TicketCommentDto {
 }
 
 /**
- * One line of the timeline summary. Requesters get type, time and status change only; staff also
- * get the actor and the structured details. The full timeline endpoint is SD-022.
+ * Every event type the ticket timeline can hold. The database CHECK `ck_ticket_events_type` must list
+ * exactly these (a test compares them). Actions by the system (no user) are recorded with a null
+ * actor, using the same types.
+ */
+export const TICKET_EVENT_TYPES = [
+  'CREATED',
+  'STATUS_CHANGED',
+  'TEAM_ASSIGNED',
+  'TEAM_REASSIGNED',
+  'CATEGORY_UPDATED',
+  'PRIORITY_UPDATED',
+  'ASSIGNEE_UPDATED',
+  'COMMENT_ADDED',
+  'AI_REVIEWED',
+  'RESOLVED',
+  'REOPENED',
+] as const;
+export type TicketEventType = (typeof TICKET_EVENT_TYPES)[number];
+
+/**
+ * One timeline entry (`GET /api/tickets/:id/events`, and `timeline` in the ticket detail).
+ * Staff in scope get every event, the actor (null for a system action) and the sanitized details.
+ * Requesters get a reduced view: some event types are hidden, the actor is always null and the
+ * details are limited to status and priority changes.
  */
 export interface TicketTimelineEntry {
   id: string;
-  type: string;
+  type: TicketEventType;
   occurredAt: string;
   actor: NamedRef | null;
   details: Record<string, unknown> | null;
