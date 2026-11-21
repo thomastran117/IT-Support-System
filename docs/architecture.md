@@ -66,6 +66,19 @@ card (accept, override, reject) arrives with the recommendation endpoints (SD-02
 - Model output must match a strict Zod schema (category/team UUIDs, priority `LOW|MEDIUM|HIGH|CRITICAL`, bounded troubleshooting text, optional 0..1 `confidence`, optional cited article IDs). Category, team and article IDs are then checked against the allowlists supplied for that request; hallucinated values are rejected, not repaired.
 - `confidence` is the model's self-reported score and is not a calibrated probability. A proposal is a draft: this module never changes a ticket.
 
+### Ticket analysis (SD-034)
+
+`createAnalysisService({prisma, provider}).analyse(ticketId)` in `analysisService.ts` returns an `AnalysisDraft` (a validated proposal plus `retrievedArticleIds`). It only reads: it never updates a ticket, writes a recommendation (that is SD-036) or exposes any tool or API to the model.
+
+1. Loads the ticket title and description and the **active** categories and teams.
+2. Retrieves up to 5 **published** articles through `searchPublished` (the same path as the knowledge search API) using a loose OR query of distinctive words from the redacted ticket text.
+3. Redacts and truncates ticket and article text, and sends only title, description, the allowlists and the articles. The requester's name, email, id and ticket metadata are never sent.
+4. Calls the provider, then re-checks the category, team and cited article IDs against what was actually sent. Cited articles are returned in retrieval order.
+
+Ticket text and article text are untrusted: the prompt serialises them as one JSON document and tells the model to treat them as data. The real defence is structural, since output that is not a valid, allowlisted proposal is rejected and nothing else is acted on.
+
+**Redaction limits.** `redact.ts` is pattern based. It removes emails, credentials in URLs, bearer/JWT/API-key style tokens, `password: ...` style assignments, long hex/base64 strings, card-like and SSN-like numbers and private-key blocks. It cannot recognise names, addresses, free-form passphrases or secrets written in prose, so users should not paste credentials into tickets. Retrieval query text is redacted too, and nothing in this module logs ticket or article text.
+
 ## Development and validation
 
 `docker compose up --build --watch` synchronizes application source. Shared-package, manifest, and
