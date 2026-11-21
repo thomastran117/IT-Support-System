@@ -957,6 +957,11 @@
       ],
       "indexes": [
         {
+          "name": "idx_knowledge_articles_fts",
+          "columns": ["(expression)"],
+          "unique": false
+        },
+        {
           "name": "knowledge_articles_pkey",
           "columns": ["article_id"],
           "unique": true

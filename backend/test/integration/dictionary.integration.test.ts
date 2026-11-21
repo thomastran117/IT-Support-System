@@ -150,7 +150,8 @@ describe.skipIf(!testDatabaseUrl)('schema-spec.json matches the migrated Postgre
       const actual = rows
         .filter((r) => r.table === t.name)
         .sort(byName)
-        .map((r) => ({ name: r.name, columns: r.cols, unique: r.unique }));
+        // Expression indexes (e.g. full-text) have no plain columns; the spec calls them "(expression)".
+        .map((r) => ({ name: r.name, columns: r.cols ?? ['(expression)'], unique: r.unique }));
       expect(actual, `${t.name} indexes`).toEqual([...t.indexes].sort(byName));
     }
   });
