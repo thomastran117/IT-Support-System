@@ -437,6 +437,23 @@ export interface ArticlePage<T> {
   nextOffset: number | null;
 }
 
+export const SEARCH_QUERY_MAX = 200;
+export const SEARCH_PAGE_SIZE_DEFAULT = 10;
+export const SEARCH_PAGE_SIZE_MAX = 20;
+
+/**
+ * One hit of `GET /api/knowledge/search`: enough to render a result card and to cite the source
+ * (`id`) from AI suggestions. `preview` is plain text (whitespace collapsed, at most 200 characters
+ * plus an ellipsis); `rank` is relevance, higher first, comparable only within one response.
+ */
+export interface KnowledgeSearchResultDto {
+  id: string;
+  title: string;
+  category: NamedRef | null;
+  preview: string;
+  rank: number;
+}
+
 const articleTitle = z.string().trim().min(1).max(ARTICLE_TITLE_MAX);
 const articleBody = z.string().trim().min(1).max(ARTICLE_BODY_MAX);
 

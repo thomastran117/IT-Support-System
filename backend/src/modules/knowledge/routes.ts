@@ -3,6 +3,9 @@ import type { PrismaClient } from '@smartdesk/db';
 import {
   ARTICLE_PAGE_SIZE_DEFAULT,
   ARTICLE_PAGE_SIZE_MAX,
+  SEARCH_PAGE_SIZE_DEFAULT,
+  SEARCH_PAGE_SIZE_MAX,
+  SEARCH_QUERY_MAX,
   createArticleSchema,
   updateArticleSchema,
 } from '@smartdesk/contracts';
@@ -22,6 +25,13 @@ const Paging = {
   offset: z.coerce.number().int().min(0).max(100_000).default(0),
 };
 const ReaderQuery = z.object({ categoryId: z.uuid().optional(), ...Paging });
+const SearchQuery = z.object({
+  // Blank is allowed and returns an empty page; over-long input is rejected rather than truncated.
+  q: z.string().max(SEARCH_QUERY_MAX).default(''),
+  categoryId: z.uuid().optional(),
+  limit: z.coerce.number().int().min(1).max(SEARCH_PAGE_SIZE_MAX).default(SEARCH_PAGE_SIZE_DEFAULT),
+  offset: z.coerce.number().int().min(0).max(1_000).default(0),
+});
 const AdminQuery = z.object({
   categoryId: z.uuid().optional(),
   published: z.enum(['true', 'false']).optional(),
@@ -43,6 +53,15 @@ export const knowledgeRoutes =
       return envelope(
         'Articles',
         await service.listPublished({ categoryId: q.categoryId }, q.limit, q.offset),
+      );
+    });
+
+    // Registered before `/:id`; `search` is not a valid uuid so the two can never collide.
+    app.get('/search', signedIn, async (req) => {
+      const q = parse(SearchQuery, req.query);
+      return envelope(
+        'Search results',
+        await service.search(q.q, { categoryId: q.categoryId }, q.limit, q.offset),
       );
     });
 

@@ -187,6 +187,27 @@ for every role, administrators included.
 | GET    | `/api/knowledge`     | Page of summaries (`id`, `title`, `category`, `updatedAt`); `?categoryId=&limit=&offset=` |
 | GET    | `/api/knowledge/:id` | One article with `body`, `createdAt`, `updatedAt`                                         |
 
+### Search
+
+`GET /api/knowledge/search?q=&categoryId=&limit=&offset=` ranks **published** articles by
+relevance for any signed-in role. It returns `{ items, total, limit, offset, nextOffset }`; each
+item is `{ id, title, category, preview, rank }` with a plain-text preview (whitespace collapsed,
+200 characters plus an ellipsis). `id` is the source id AI suggestions cite.
+
+- `q` is at most 200 characters (longer is `400`). Blank, punctuation-only and no-match queries
+  return an empty page, never an error. `limit` is 1-20 (default 10), `offset` 0-1000.
+- Uses PostgreSQL full-text search with the `english` configuration (stemming, stop words, case
+  and punctuation folded) over title and body, via a partial GIN index on published rows
+  (`idx_knowledge_articles_fts`, migration `0007`). The query is `websearch_to_tsquery`: quoted
+  phrases, `or` and `-term` work, and anything else is treated as plain text. It is always a bound
+  parameter, so injection-like input is just data.
+- Order: weighted relevance (a title match outranks a body-only match), then most recently
+  updated, then id, so the order is total and stable across pages.
+- Drafts and unpublished articles are never candidates. The endpoint and future AI retrieval share
+  one repository function (`searchPublished`), so there is no second search path.
+- An unknown `categoryId` yields an empty page. Changing the language means rebuilding the index
+  and the matching expression in `backend/src/db/repositories/knowledge.ts`.
+
 **Authoring**, `/api/admin/knowledge`: `ADMIN` only (`403` otherwise).
 
 | Method | Path                                 | Purpose                                                                |

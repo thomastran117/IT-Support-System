@@ -5,6 +5,7 @@ import type {
   ArticlePage,
   KnowledgeArticleDto,
   KnowledgeArticleSummaryDto,
+  KnowledgeSearchResultDto,
 } from '@smartdesk/contracts';
 import { DbError, notFoundError, validationError } from '../../db/errors.js';
 import * as articles from '../../db/repositories/knowledge.js';
@@ -97,6 +98,25 @@ export function createKnowledgeService(prisma: PrismaClient) {
         offset,
       );
       return toPage(rows.map(toSummary), total, limit, offset);
+    },
+
+    /**
+     * Ranked full-text search over published articles. This is the retrieval AI orchestration
+     * calls too, so there is exactly one published-only search path.
+     */
+    async search(
+      query: string,
+      filter: { categoryId?: string | undefined },
+      limit: number,
+      offset: number,
+    ): Promise<ArticlePage<KnowledgeSearchResultDto>> {
+      const { hits, total } = await articles.searchPublished(prisma, {
+        query,
+        categoryId: filter.categoryId,
+        limit,
+        offset,
+      });
+      return toPage(hits, total, limit, offset);
     },
 
     async getPublished(id: string): Promise<KnowledgeArticleDto> {
