@@ -121,3 +121,68 @@ export interface TicketDto {
   resolvedAt: string | null;
   version: number;
 }
+
+// --- Ticket list and detail (SD-019) ---------------------------------------------------------
+
+export const TICKET_PAGE_SIZE_DEFAULT = 20;
+export const TICKET_PAGE_SIZE_MAX = 100;
+
+/** A named reference, resolved in the same query so clients never need follow-up lookups. */
+export interface NamedRef {
+  id: string;
+  name: string;
+}
+
+export interface TicketSummaryDto {
+  id: string;
+  trackingId: string;
+  title: string;
+  status: TicketStatus;
+  priority: TicketPriority;
+  category: NamedRef | null;
+  team: NamedRef | null;
+  assignee: NamedRef | null;
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt: string | null;
+  version: number;
+}
+
+/** `GET /api/tickets`. Newest first; `total` counts everything the caller may see with the filters. */
+export interface TicketPage {
+  items: TicketSummaryDto[];
+  total: number;
+  limit: number;
+  offset: number;
+  /** Offset of the next page, or null on the last page. */
+  nextOffset: number | null;
+}
+
+export interface TicketCommentDto {
+  id: string;
+  body: string;
+  isInternal: boolean;
+  author: NamedRef;
+  createdAt: string;
+}
+
+/**
+ * One line of the timeline summary. Requesters get type, time and status change only; staff also
+ * get the actor and the structured details. The full timeline endpoint is SD-022.
+ */
+export interface TicketTimelineEntry {
+  id: string;
+  type: string;
+  occurredAt: string;
+  actor: NamedRef | null;
+  details: Record<string, unknown> | null;
+}
+
+/** `GET /api/tickets/:id`. Internal notes and raw audit data only appear for staff in scope. */
+export interface TicketDetailDto extends TicketSummaryDto {
+  description: string;
+  resolutionSummary: string | null;
+  requester: NamedRef;
+  comments: TicketCommentDto[];
+  timeline: TicketTimelineEntry[];
+}

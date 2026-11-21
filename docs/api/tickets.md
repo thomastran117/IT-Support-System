@@ -42,3 +42,45 @@ blocks or fails the request.
 Tickets carry `version` (starts at 1, increments on every change). Endpoints that modify a ticket
 take the version the client last read and answer 409 when it is stale; see
 [concurrency](../database/concurrency.md).
+
+## `GET /api/tickets` (SD-019)
+
+Role-scoped history, newest first (`created_at DESC, ticket_id DESC`, a total order, so pages never
+overlap or skip rows). Visibility is the same rule as the policies (`ticketReadFilter`), applied to
+both the rows and the count:
+
+| Role       | Sees                                                                  |
+| ---------- | --------------------------------------------------------------------- |
+| Employee   | only tickets they requested                                           |
+| Technician | own requests, tickets of their active teams, and the unrouted backlog |
+| Admin      | everything                                                            |
+
+Query parameters (strict; unknown ones are 400):
+
+| Name       | Rules                                                  |
+| ---------- | ------------------------------------------------------ |
+| `status`   | `OPEN`, `TRIAGED`, `IN_PROGRESS`, `RESOLVED`, `CLOSED` |
+| `priority` | `UNSET`, `LOW`, `MEDIUM`, `HIGH`, `CRITICAL`           |
+| `limit`    | 1-100, default 20                                      |
+| `offset`   | integer >= 0, default 0                                |
+
+Result `TicketPage`: `items` (`TicketSummaryDto`, with category, team and assignee names already
+joined, so there is no per-row lookup), `total` (rows visible with the filters), `limit`, `offset`
+and `nextOffset` (null on the last page). Offset paging was chosen over cursors: `created_at` has
+microsecond precision that a JavaScript cursor cannot carry exactly, and the total is wanted by the UI.
+Tickets created while paging can shift later pages by one; they never cause an error.
+
+## `GET /api/tickets/:id` (SD-019)
+
+Returns `TicketDetailDto`: the approved fields, `version`, the requester, comments (oldest first)
+and a role-specific timeline summary. Unknown, malformed and unreadable ids all return the same 404,
+so ids cannot be probed.
+
+| Data                 | Requester (and technician outside their scope)          | Staff in scope (technician, admin)       |
+| -------------------- | ------------------------------------------------------- | ---------------------------------------- |
+| Comments             | public only                                             | public and internal notes (`isInternal`) |
+| Timeline event types | CREATED, STATUS_CHANGED, RESOLVED, REOPENED, TEAM_*     | all                                      |
+| Timeline detail      | type and time; status changes show `from` and `to` only | actor and full structured `details`      |
+
+AI recommendation data is not part of either view. The dedicated timeline endpoint (SD-022) will
+refine which events requesters see.
