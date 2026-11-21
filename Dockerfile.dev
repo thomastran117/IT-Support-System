@@ -27,9 +27,10 @@ WORKDIR /app/backend
 EXPOSE 4000
 CMD ["npm", "run", "dev"]
 
+# The AI analysis worker is a second entrypoint of the backend package (same code, separate process).
 FROM source AS worker
-WORKDIR /app/worker
-CMD ["npm", "run", "dev"]
+WORKDIR /app/backend
+CMD ["npm", "run", "dev:worker"]
 
 FROM source AS frontend
 WORKDIR /app/frontend

@@ -54,7 +54,7 @@ const IdempotencyKey = z
 
 /** Mounted under /api/tickets. */
 export const ticketRoutes =
-  (prisma: PrismaClient): FastifyPluginAsync =>
+  (prisma: PrismaClient, analysis?: { maxAttempts: number }): FastifyPluginAsync =>
   async (app) => {
     const auth = { preHandler: app.authGuards.requireAuth };
 
@@ -63,12 +63,14 @@ export const ticketRoutes =
       const header = req.headers[IDEMPOTENCY_KEY_HEADER];
       const idempotencyKey = header === undefined ? undefined : parse(IdempotencyKey, header);
 
-      // The requester is always the authenticated user. AI analysis, when it exists, is scheduled
-      // after this commit and never blocks or fails the submission.
+      // The requester is always the authenticated user. When AI is enabled the analysis job is
+      // queued in the same transaction (a durable outbox) and a worker runs it later, so the
+      // provider's latency or failure never blocks or fails the submission.
       const { ticket, created } = await submitTicket(prisma, {
         requesterId: req.principal!.id,
         ...body,
         idempotencyKey,
+        ...(analysis ? { enqueueAnalysis: analysis } : {}),
       });
 
       reply.header('cache-control', 'no-store');

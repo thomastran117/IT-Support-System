@@ -116,6 +116,7 @@ model Ticket {
   comments        TicketComment[]
   events          TicketEvent[]
   recommendations AiRecommendation[]
+  analysisJobs    AiAnalysisJob[]
   label           ClassificationLabel?
 
   @@index([requesterId, createdAt(sort: Desc)], map: "idx_tickets_requester_created")
@@ -239,4 +240,28 @@ model AdminAuditLog {
   @@index([createdAt(sort: Desc), id], map: "idx_admin_audit_created")
   @@index([targetUserId, createdAt(sort: Desc)], map: "idx_admin_audit_target")
   @@map("admin_audit_log")
+}
+
+/// Durable AI analysis queue (SD-035): a transactional outbox claimed with SKIP LOCKED and a lease.
+model AiAnalysisJob {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @map("job_id") @db.Uuid
+  ticketId    String    @map("ticket_id") @db.Uuid
+  requestId   String    @default(dbgenerated("gen_random_uuid()")) @map("request_id") @db.Uuid
+  state       String    @default("QUEUED") @db.VarChar(10)
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3) @map("max_attempts")
+  runAfter    DateTime  @default(now()) @map("run_after") @db.Timestamptz(6)
+  leaseToken  String?   @map("lease_token") @db.Uuid
+  lockedUntil DateTime? @map("locked_until") @db.Timestamptz(6)
+  errorKind   String?   @map("error_kind") @db.VarChar(24)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+
+  @@unique([ticketId, requestId], map: "uq_ai_analysis_jobs_ticket_request")
+  @@index([state, runAfter], map: "idx_ai_jobs_claim")
+  @@index([ticketId, createdAt(sort: Desc)], map: "idx_ai_jobs_ticket")
+  @@map("ai_analysis_jobs")
 }

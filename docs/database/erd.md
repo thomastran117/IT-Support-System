@@ -112,6 +112,21 @@ erDiagram
     jsonb details
     timestamptz created_at
   }
+  ai_analysis_jobs {
+    uuid job_id PK
+    uuid ticket_id FK
+    uuid request_id
+    varchar state
+    int attempts
+    int max_attempts
+    timestamptz run_after
+    uuid lease_token
+    timestamptz locked_until
+    varchar error_kind
+    timestamptz created_at
+    timestamptz updated_at
+    timestamptz completed_at
+  }
   support_teams ||--o{ team_members : "team_id"
   users ||--o{ team_members : "user_id"
   team_members |o--o{ tickets : "assigned_team_id, assignee_id"
@@ -135,6 +150,7 @@ erDiagram
   tickets ||--o| classification_labels : "ticket_id"
   users ||--o{ admin_audit_log : "actor_id"
   users ||--o{ admin_audit_log : "target_user_id"
+  tickets ||--o{ ai_analysis_jobs : "ticket_id"
 ```
 
 ## Relationships
@@ -169,3 +185,4 @@ the assigned team.
 | `classification_labels` | `ticket_id` | `tickets` (`ticket_id`) | 1 : 0..1 | required | RESTRICT |
 | `admin_audit_log` | `actor_id` | `users` (`user_id`) | 1 : N | required | RESTRICT |
 | `admin_audit_log` | `target_user_id` | `users` (`user_id`) | 1 : N | required | RESTRICT |
+| `ai_analysis_jobs` | `ticket_id` | `tickets` (`ticket_id`) | 1 : N | required | RESTRICT |

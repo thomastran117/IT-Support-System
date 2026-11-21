@@ -232,3 +232,30 @@ _Identity._ Append-only audit trail of administrator account actions (SD-017): c
 
 - `ck_admin_audit_action`: `((action)::text = ANY ((ARRAY['USER_CREATED'::character varying, 'USER_ACTIVATED'::character varying, 'USER_DEACTIVATED'::character varying, 'ROLE_CHANGED'::character varying, 'PASSWORD_RESET'::character varying])::text[]))`
 - `ck_admin_audit_details_object`: `(jsonb_typeof(details) = 'object'::text)`
+
+## `ai_analysis_jobs`
+
+_AI and evaluation._ Durable queue for AI ticket analysis (SD-035), a transactional outbox. A job is inserted in the same transaction as its ticket; workers claim rows with FOR UPDATE SKIP LOCKED and a time-limited lease, so work survives worker restarts and is never lost between ticket commit and dispatch. (ticket_id, request_id) is the idempotency key. Holds reason codes only, never ticket text, provider messages or secrets.
+
+| Column | Type | Null | Default | Key | Unique | Indexes | Meaning |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `job_id` | `uuid` | NOT NULL | `gen_random_uuid()` | PK |  |  | Primary key. |
+| `ticket_id` | `uuid` | NOT NULL |  | FK → tickets.ticket_id | with request_id | `idx_ai_jobs_ticket`, `uq_ai_analysis_jobs_ticket_request` | Ticket being analysed. |
+| `request_id` | `uuid` | NOT NULL | `gen_random_uuid()` |  | with ticket_id | `uq_ai_analysis_jobs_ticket_request` | Analysis request identifier; with ticket_id it makes enqueueing idempotent. A re-analysis uses a new one. |
+| `state` | `character varying(10)` | NOT NULL | `'QUEUED'::character varying` |  |  | `idx_ai_jobs_claim` | QUEUED, RUNNING, COMPLETED or FAILED. |
+| `attempts` | `integer` | NOT NULL | `0` |  |  |  | Number of times the job has been claimed. |
+| `max_attempts` | `integer` | NOT NULL | `3` |  |  |  | Claims allowed before the job fails terminally. |
+| `run_after` | `timestamp(6) with time zone` | NOT NULL | `CURRENT_TIMESTAMP` |  |  | `idx_ai_jobs_claim` | Earliest time the job may be claimed (retry backoff). |
+| `lease_token` | `uuid` | NULL |  |  |  |  | Rotated on every claim; only the holder may complete or fail the job. NULL unless RUNNING. |
+| `locked_until` | `timestamp(6) with time zone` | NULL |  |  |  |  | Lease expiry. A RUNNING job past this time is re-claimed. NULL unless RUNNING. |
+| `error_kind` | `character varying(24)` | NULL |  |  |  |  | Reason code of the latest failed attempt (for example timeout, rate_limited, malformed, internal, worker_lost). Never message text. |
+| `created_at` | `timestamp(6) with time zone` | NOT NULL | `CURRENT_TIMESTAMP` |  |  | `idx_ai_jobs_ticket` | When the job was queued. |
+| `updated_at` | `timestamp(6) with time zone` | NOT NULL | `CURRENT_TIMESTAMP` |  |  |  | Last state change. |
+| `completed_at` | `timestamp(6) with time zone` | NULL |  |  |  |  | When the job reached COMPLETED or FAILED; NULL otherwise. |
+
+**CHECK constraints**
+
+- `ck_ai_jobs_attempts`: `((attempts >= 0) AND (max_attempts > 0))`
+- `ck_ai_jobs_lease`: `(((state)::text = 'RUNNING'::text) = ((lease_token IS NOT NULL) AND (locked_until IS NOT NULL)))`
+- `ck_ai_jobs_state`: `((state)::text = ANY ((ARRAY['QUEUED'::character varying, 'RUNNING'::character varying, 'COMPLETED'::character varying, 'FAILED'::character varying])::text[]))`
+- `ck_ai_jobs_terminal`: `(((state)::text = ANY ((ARRAY['COMPLETED'::character varying, 'FAILED'::character varying])::text[])) = (completed_at IS NOT NULL))`
