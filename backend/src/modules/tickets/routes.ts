@@ -3,6 +3,7 @@ import type { PrismaClient } from '@smartdesk/db';
 import type { TicketCommentDto, TicketStatus } from '@smartdesk/contracts';
 import {
   IDEMPOTENCY_KEY_HEADER,
+  approveRoutingSchema,
   createCommentSchema,
   createTicketSchema,
   TICKET_PAGE_SIZE_DEFAULT,
@@ -11,7 +12,12 @@ import {
 } from '@smartdesk/contracts';
 import { z } from 'zod';
 import { authorizeTicket } from '../../auth/ticketAccess.js';
-import { addComment, submitTicket, transitionTicket } from '../../db/services/ticketService.js';
+import {
+  addComment,
+  approveRouting,
+  submitTicket,
+  transitionTicket,
+} from '../../db/services/ticketService.js';
 import { TICKET_STATUSES } from '../../domain/ticketStateMachine.js';
 import { HttpError, envelope } from '../../plugins/errors.js';
 import { parse } from '../../plugins/validate.js';
@@ -136,5 +142,26 @@ export const ticketRoutes =
       });
       reply.header('cache-control', 'no-store');
       return envelope('Ticket updated', toTicketDto(ticket));
+    });
+
+    app.post('/:id/routing', auth, async (req, reply) => {
+      const { id } = req.params as { id: string };
+      const body = parse(approveRoutingSchema, req.body);
+      // 404 for unknown or unreadable tickets, 403 for readers who may not edit (the requester,
+      // technicians outside the ticket's team). The service re-checks inside its transaction.
+      await authorizeTicket(prisma, req.principal!, id, 'edit');
+      const ticket = await approveRouting(prisma, {
+        ticketId: id,
+        actorId: req.principal!.id,
+        categoryId: body.categoryId,
+        priority: body.priority,
+        teamId: body.teamId,
+        // Omitted keeps the current assignee when the team is unchanged (and clears it on a team
+        // change); an explicit null clears it.
+        assigneeId: body.assigneeId,
+        expectedVersion: body.expectedVersion,
+      });
+      reply.header('cache-control', 'no-store');
+      return envelope('Routing approved', toTicketDto(ticket));
     });
   };
