@@ -58,6 +58,14 @@ instead of overwriting. If a change hands a ticket to a team the technician does
 page explains that it can no longer be opened. Manual triage never depends on AI. The AI suggestion
 card (accept, override, reject) arrives with the recommendation endpoints (SD-027, SD-036, SD-038).
 
+## AI provider (backend/worker only)
+
+`backend/src/modules/ai/` defines the advisory AI boundary. `AIProvider.analyse()` takes the ticket text, the active category/team allowlists and retrieved knowledge articles and returns a `ValidatedProposal`, or throws a classified `ProviderError` (`disabled`, `timeout`, `rate_limited`, `unavailable`, `malformed`, `invalid_reference`; the first four transient kinds are marked retryable).
+
+- `AI_PROVIDER` selects `none` (default; analysis unavailable, ticketing unaffected), `fake` (deterministic, used by CI) or `openai`. `AI_API_KEY`, `AI_MODEL`, `AI_TIMEOUT_MS`, `AI_MAX_OUTPUT_TOKENS` and `AI_MAX_INPUT_CHARS` configure the live adapter. The key is read only by the backend and worker, is sent only in the provider's `Authorization` header, and is never logged or placed in error messages.
+- Model output must match a strict Zod schema (category/team UUIDs, priority `LOW|MEDIUM|HIGH|CRITICAL`, bounded troubleshooting text, optional 0..1 `confidence`, optional cited article IDs). Category, team and article IDs are then checked against the allowlists supplied for that request; hallucinated values are rejected, not repaired.
+- `confidence` is the model's self-reported score and is not a calibrated probability. A proposal is a draft: this module never changes a ticket.
+
 ## Development and validation
 
 `docker compose up --build --watch` synchronizes application source. Shared-package, manifest, and
