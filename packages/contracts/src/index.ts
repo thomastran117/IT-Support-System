@@ -312,6 +312,22 @@ export interface TransitionRequest {
   resolutionSummary?: string;
 }
 
+/** Priorities a technician can approve; `UNSET` is only the initial state. */
+export const APPROVABLE_PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as const;
+
+/**
+ * `POST /api/tickets/:id/routing` (SD-026): the approved category, priority and team in one request,
+ * with an optional assignee (`null` clears it). `expectedVersion` is the ticket `version` the
+ * technician last read; a stale one is rejected with 409 `VERSION_CONFLICT`.
+ */
+export interface ApproveRoutingRequest {
+  categoryId: string;
+  priority: (typeof APPROVABLE_PRIORITIES)[number];
+  teamId: string;
+  assigneeId?: string | null;
+  expectedVersion: number;
+}
+
 /**
  * Machine-readable reason in `details.code` of a 409 from a ticket mutation:
  * - VERSION_CONFLICT: stale `expectedVersion` (`details.currentVersion` has the current one)
@@ -364,3 +380,11 @@ export const updateTeamSchema = z
   });
 
 export const addTeamMemberSchema = z.strictObject({ userId: z.uuid() });
+
+export const approveRoutingSchema = z.strictObject({
+  categoryId: z.uuid(),
+  priority: z.enum(APPROVABLE_PRIORITIES),
+  teamId: z.uuid(),
+  assigneeId: z.uuid().nullable().optional(),
+  expectedVersion: z.number().int().min(1),
+});

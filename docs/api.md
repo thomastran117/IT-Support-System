@@ -86,6 +86,38 @@ tickets may reopen to `OPEN`. Resolving requires a nonblank summary. Routing pre
 before triage. A stale `expectedVersion` returns 409 with the current version, and every successful
 mutation increments the version.
 
+### Routing approval
+
+`POST /api/tickets/:id/routing` records a technician's approved category, priority and team, with an
+optional assignee, in one request:
+
+```json
+{
+  "categoryId": "<uuid>",
+  "priority": "HIGH",
+  "teamId": "<uuid>",
+  "assigneeId": "<uuid>|null",
+  "expectedVersion": 3
+}
+```
+
+- Staff who can edit the ticket only (administrators; technicians in the ticket's team or, for an
+  unrouted ticket, on any active team). The requester gets `403`; anyone who cannot read the ticket
+  gets `404`. The body is strict: unknown fields (status, requester, ...) are `400`.
+- `priority` is `LOW`, `MEDIUM`, `HIGH` or `CRITICAL`. Category and team must be active, and the
+  assignee must be an active technician in the chosen team (`422` otherwise). Omitting `assigneeId`
+  keeps the current assignee when the team is unchanged and clears it when the team changes; `null`
+  clears it. Use `GET /api/teams`, `/api/categories` and `/api/teams/:id/members` to fill the form.
+- An `OPEN` ticket becomes `TRIAGED` once category, priority and team are all approved. Resolved or
+  closed tickets cannot be re-routed (`409`; reopen first).
+- Events are written in the same transaction: `CATEGORY_UPDATED`, `PRIORITY_UPDATED`,
+  `TEAM_ASSIGNED` for the first team or `TEAM_REASSIGNED` for a later change, `ASSIGNEE_UPDATED`.
+  A request that changes nothing writes nothing.
+- A stale `expectedVersion` is `409` with `details.code = "VERSION_CONFLICT"` and the
+  `currentVersion`; nothing is applied. Two concurrent approvals from the same version: exactly one
+  succeeds.
+- AI suggestions are never modified by this endpoint, and it works whether or not AI has run.
+
 ## Administration
 
 All `/api/admin` endpoints require the `ADMIN` role.
