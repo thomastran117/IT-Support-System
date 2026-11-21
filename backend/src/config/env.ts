@@ -12,6 +12,40 @@ export interface Env {
   refreshTtlSeconds: number;
   /** Secure flag on the refresh cookie. Defaults to on in production. */
   cookieSecure: boolean;
+  /** AI recommendation provider. The key is backend/worker-only and must never be logged or sent to the browser. */
+  ai: AiConfig;
+}
+
+export type AiProviderName = 'none' | 'fake' | 'openai';
+
+export interface AiConfig {
+  provider: AiProviderName;
+  apiKey: string;
+  model: string;
+  timeoutMs: number;
+  maxOutputTokens: number;
+  maxInputChars: number;
+}
+
+const AI_PROVIDERS: readonly AiProviderName[] = ['none', 'fake', 'openai'];
+
+function loadAiConfig(source: NodeJS.ProcessEnv): AiConfig {
+  const provider = (source.AI_PROVIDER || 'none') as AiProviderName;
+  if (!AI_PROVIDERS.includes(provider)) {
+    throw new Error(`Invalid AI_PROVIDER: must be one of ${AI_PROVIDERS.join(', ')}`);
+  }
+  const apiKey = source.AI_API_KEY ?? '';
+  if (provider === 'openai' && !apiKey) {
+    throw new Error('AI_API_KEY is required when AI_PROVIDER=openai');
+  }
+  return {
+    provider,
+    apiKey,
+    model: source.AI_MODEL || 'gpt-4o-mini',
+    timeoutMs: positiveInt(source, 'AI_TIMEOUT_MS', 20_000),
+    maxOutputTokens: positiveInt(source, 'AI_MAX_OUTPUT_TOKENS', 1000),
+    maxInputChars: positiveInt(source, 'AI_MAX_INPUT_CHARS', 20_000),
+  };
 }
 
 const DEV_JWT_SECRET = 'change-me-dev-only-change-me-dev-only';
@@ -54,5 +88,6 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     accessTtlSeconds: positiveInt(source, 'ACCESS_TOKEN_TTL_SECONDS', 15 * 60),
     refreshTtlSeconds: positiveInt(source, 'REFRESH_TOKEN_TTL_SECONDS', 7 * 24 * 60 * 60),
     cookieSecure: source.COOKIE_SECURE ? source.COOKIE_SECURE === 'true' : production,
+    ai: loadAiConfig(source),
   };
 }
