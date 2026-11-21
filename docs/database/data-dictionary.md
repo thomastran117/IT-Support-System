@@ -1,4 +1,4 @@
-<!-- Generated from schema-spec.json by `npm run docs:db -w backend`. Do not edit by hand. -->
+<!-- Generated from schema-spec.json by `docker compose --profile tools run --rm docs`. Do not edit by hand. -->
 
 # Data dictionary
 

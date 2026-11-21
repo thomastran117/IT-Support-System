@@ -1,5 +1,5 @@
 -- Q04 (requester variant): the same history restricted for the employee who owns the ticket.
--- Deviation from Q04, recorded in docs/database/queries.md: only employee-relevant event types are
+-- Only employee-relevant event types are
 -- returned, public comment events only (internal notes are hidden), and details are reduced to the
 -- status change itself so team routing, AI review payloads and system reasons are never exposed.
 SELECT e.event_type, e.occurred_at, u.display_name AS actor,

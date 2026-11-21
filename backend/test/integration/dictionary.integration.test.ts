@@ -14,7 +14,7 @@ const byName = <T extends { name: string }>(a: T, b: T) =>
   a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
 
 describe('documentation is generated from the spec', () => {
-  it('erd.md and data-dictionary.md match schema-spec.json (run `npm run docs:db -w backend`)', () => {
+  it('erd.md and data-dictionary.md match schema-spec.json (run the Compose docs service)', () => {
     expect(read('erd.md')).toBe(renderErd(spec));
     expect(read('data-dictionary.md')).toBe(renderDictionary(spec));
   });
@@ -32,7 +32,7 @@ describe('documentation is generated from the spec', () => {
       'knowledge_articles',
       'recommendation_articles',
       'classification_labels',
-      // Extension table added by SD-017 (docs/database/deviations.md #6).
+      // Runtime extension to the original ticketing schema.
       'admin_audit_log',
     ]);
     for (const table of spec.tables) expect(read('erd.md')).toContain(`  ${table.name} {`);

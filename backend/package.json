@@ -25,14 +25,22 @@
     "@fastify/cookie": "^11.1.5",
     "@fastify/cors": "^11.4.3",
     "@fastify/rate-limit": "^11.2.2",
-    "@smartdesk/contracts": "^0.0.0",
-    "@smartdesk/db": "^0.0.0",
+    "@smartdesk/contracts": "file:../packages/contracts",
+    "@smartdesk/db": "file:../packages/db",
     "argon2": "^0.45.2",
     "fastify": "^5.12.8",
     "jose": "^6.2.18",
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "prisma": "^7.10.1"
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.6",
+    "eslint": "^10.15.0",
+    "prettier": "^3.10.1",
+    "prisma": "^7.10.1",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.73.0",
+    "vitest": "^5.1.1"
   }
 }

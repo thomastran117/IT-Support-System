@@ -39,7 +39,7 @@ describe.skipIf(!url)('core schema (integration)', () => {
       SELECT table_name FROM information_schema.tables
       WHERE table_schema = 'public' AND table_name <> '_prisma_migrations'
       ORDER BY table_name`;
-    // Extensions are recorded in docs/database/deviations.md (admin_audit_log: SD-017).
+    // The runtime schema includes the administrator audit extension.
     expect(rows.map((r) => r.table_name)).toEqual([...CORE_TABLES, ...EXTENSION_TABLES].sort());
   });
 

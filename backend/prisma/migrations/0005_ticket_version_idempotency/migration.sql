@@ -2,7 +2,7 @@
 --
 -- `version` starts at 1 and is incremented by every ticket mutation. Writers send the version they
 -- read and the UPDATE only matches that version, so a concurrent change is reported as a conflict
--- instead of being silently overwritten (see docs/database/concurrency.md).
+-- instead of being silently overwritten (see docs/database.md).
 --
 -- `idempotency_key` is an optional client-chosen key (Idempotency-Key header). A retry of the same
 -- submission by the same requester hits the unique index and resolves to the original ticket.
