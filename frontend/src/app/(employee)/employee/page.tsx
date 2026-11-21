@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
-import { Placeholder } from '@/components/Placeholder';
+import { TicketList } from '@/components/tickets/TicketList';
 
-export const metadata: Metadata = { title: 'Employee' };
+export const metadata: Metadata = { title: 'My tickets' };
 
 export default function EmployeePage() {
-  return <Placeholder title="Employee area" description="Placeholder for the employee section." />;
+  return <TicketList />;
 }

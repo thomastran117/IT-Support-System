@@ -14,7 +14,7 @@ export const ACCOUNTS = {
     displayName: 'Erin Employee',
     role: 'EMPLOYEE',
     portal: '/employee',
-    heading: 'Employee area',
+    heading: 'My tickets',
   },
   technician: {
     id: 'u-tara',
@@ -54,7 +54,67 @@ interface AuditRow {
   createdAt: string;
 }
 
+export type TicketStatus = 'OPEN' | 'TRIAGED' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+
+interface MockComment {
+  id: string;
+  body: string;
+  isInternal: boolean;
+  author: { id: string; name: string };
+  createdAt: string;
+}
+interface MockEvent {
+  id: string;
+  type: string;
+  occurredAt: string;
+  details: Record<string, unknown>;
+}
+export interface MockTicket {
+  id: string;
+  requesterId: string;
+  title: string;
+  description: string;
+  status: TicketStatus;
+  priority: string;
+  category: { id: string; name: string } | null;
+  team: { id: string; name: string } | null;
+  assignee: { id: string; name: string } | null;
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt: string | null;
+  resolutionSummary: string | null;
+  version: number;
+  comments: MockComment[];
+  events: MockEvent[];
+}
+
 export interface MockApi {
+  /** The server-side tickets (all requesters). */
+  tickets(): readonly MockTicket[];
+  /** Create `n` tickets owned by the employee, newest last. Returns them. */
+  seedTickets(n: number, requesterId?: string): MockTicket[];
+  /** A ticket belonging to somebody else, to prove it can never be opened. */
+  seedForeignTicket(): MockTicket;
+  /** Plays a technician: changes the ticket on the server, as the real backend would. */
+  technician: {
+    update(
+      id: string,
+      change: {
+        status?: TicketStatus;
+        priority?: string;
+        category?: string;
+        team?: string;
+        resolutionSummary?: string;
+      },
+    ): void;
+    reply(id: string, body: string, isInternal?: boolean): void;
+  };
+  /** The next call to this endpoint fails with the HTTP status, or `'network'` to drop the request. */
+  failNext(endpoint: 'create' | 'reply' | 'list' | 'detail', status: number | 'network'): void;
+  /** Number of POST /api/tickets requests that reached the server (including idempotent replays). */
+  createRequests(): number;
+  /** The Idempotency-Key header of each create request, in order. */
+  createKeys(): readonly (string | undefined)[];
   /** Live view of the mocked accounts (what the admin API would return). */
   adminUsers(): readonly AdminUserRow[];
   /** Simulates the server disabling the account / expiring the refresh cookie. */
@@ -231,7 +291,255 @@ export async function installMockApi(page: Page): Promise<MockApi> {
     }
   });
 
+  // --- Tickets API (SD-018 to SD-022): the server's rules, in memory ---------------------------
+  const tickets: MockTicket[] = [];
+  const idempotent = new Map<string, MockTicket>();
+  const createKeys: (string | undefined)[] = [];
+  const failures = new Map<string, number | 'network'>();
+  let createRequests = 0;
+  let ticketSeq = 0;
+  let commentSeq = 0;
+  let clockMs = Date.parse('2026-03-01T09:00:00.000Z');
+  const tick = () => new Date((clockMs += 60_000)).toISOString();
+  const uuid = (kind: number, n: number) =>
+    `0000000${kind}-0000-4000-8000-${String(n).padStart(12, '0')}`;
+
+  const newTicket = (requesterId: string, title: string, description: string): MockTicket => {
+    const at = tick();
+    const t: MockTicket = {
+      id: uuid(4, ++ticketSeq),
+      requesterId,
+      title,
+      description,
+      status: 'OPEN',
+      priority: 'UNSET',
+      category: null,
+      team: null,
+      assignee: null,
+      createdAt: at,
+      updatedAt: at,
+      resolvedAt: null,
+      resolutionSummary: null,
+      version: 1,
+      comments: [],
+      events: [{ id: uuid(6, ++ticketSeq + 1000), type: 'CREATED', occurredAt: at, details: {} }],
+    };
+    tickets.push(t);
+    return t;
+  };
+  const addEvent = (t: MockTicket, type: string, details: Record<string, unknown> = {}) => {
+    const at = tick();
+    t.events.push({ id: uuid(6, ++ticketSeq + 1000), type, occurredAt: at, details });
+    t.updatedAt = at;
+    t.version++;
+  };
+
+  const REQUESTER_EVENTS = new Set([
+    'CREATED',
+    'STATUS_CHANGED',
+    'RESOLVED',
+    'REOPENED',
+    'TEAM_ASSIGNED',
+    'TEAM_REASSIGNED',
+    'CATEGORY_UPDATED',
+    'PRIORITY_UPDATED',
+  ]);
+  const summary = (t: MockTicket) => ({
+    id: t.id,
+    trackingId: t.id,
+    title: t.title,
+    status: t.status,
+    priority: t.priority,
+    category: t.category,
+    team: t.team,
+    assignee: t.assignee,
+    createdAt: t.createdAt,
+    updatedAt: t.updatedAt,
+    resolvedAt: t.resolvedAt,
+    firstResponseAt: null,
+    version: t.version,
+  });
+  /** What the real API returns to the requester: public comments and a reduced timeline only. */
+  const detail = (t: MockTicket) => ({
+    ...summary(t),
+    description: t.description,
+    resolutionSummary: t.resolutionSummary,
+    requester: { id: t.requesterId, name: 'Requester' },
+    comments: t.comments.filter((c) => !c.isInternal),
+    timeline: t.events
+      .filter((e) => REQUESTER_EVENTS.has(e.type))
+      .map((e) => ({
+        id: e.id,
+        type: e.type,
+        occurredAt: e.occurredAt,
+        actor: null,
+        details:
+          e.type === 'STATUS_CHANGED' || e.type === 'PRIORITY_UPDATED'
+            ? { from: e.details.from, to: e.details.to }
+            : null,
+      })),
+  });
+
+  await page.route(/\/api\/tickets/, async (route) => {
+    const req = route.request();
+    if (req.method() === 'OPTIONS') {
+      return route.fulfill({
+        status: 204,
+        headers: {
+          ...cors(route),
+          'access-control-allow-headers': 'authorization, content-type, idempotency-key',
+        },
+      });
+    }
+    if (offline) return route.abort('failed');
+    const auth = req.headers()['authorization'];
+    if (!session || auth !== `Bearer ${currentToken}`) {
+      return reply(route, 401, null, 'Authentication required');
+    }
+    const url = new URL(req.url());
+    const path = url.pathname.replace('/api/tickets', '');
+    const method = req.method();
+
+    const kind =
+      method === 'POST' && path === ''
+        ? 'create'
+        : method === 'POST' && path.endsWith('/comments')
+          ? 'reply'
+          : method === 'GET' && path === ''
+            ? 'list'
+            : 'detail';
+    if (kind === 'create') {
+      createRequests++;
+      createKeys.push(req.headers()['idempotency-key']);
+    }
+    const failure = failures.get(kind);
+    if (failure !== undefined) {
+      failures.delete(kind);
+      return failure === 'network'
+        ? route.abort('failed')
+        : reply(route, failure, null, 'Server error');
+    }
+
+    if (method === 'POST' && path === '') {
+      const body = req.postDataJSON() as { title?: unknown; description?: unknown };
+      const title = typeof body.title === 'string' ? body.title.trim() : '';
+      const description = typeof body.description === 'string' ? body.description.trim() : '';
+      if (!title || title.length > 150 || !description || description.length > 5000) {
+        return reply(route, 400, null, 'Validation failed');
+      }
+      const key = req.headers()['idempotency-key'];
+      const previous = key ? idempotent.get(`${session.id}:${key}`) : undefined;
+      if (previous) return reply(route, 200, summary(previous), 'Ticket already submitted');
+      const created = newTicket(session.id, title, description);
+      if (key) idempotent.set(`${session.id}:${key}`, created);
+      return reply(
+        route,
+        201,
+        { ...summary(created), description, requesterId: session.id },
+        'Ticket created',
+      );
+    }
+
+    if (method === 'GET' && path === '') {
+      const status = url.searchParams.get('status');
+      const priority = url.searchParams.get('priority');
+      const limit = Number(url.searchParams.get('limit') ?? 20);
+      const offset = Number(url.searchParams.get('offset') ?? 0);
+      const mine = tickets
+        .filter((t) => t.requesterId === session!.id)
+        .filter((t) => !status || t.status === status)
+        .filter((t) => !priority || t.priority === priority)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
+      const items = mine.slice(offset, offset + limit).map(summary);
+      const next = offset + items.length;
+      return reply(route, 200, {
+        items,
+        total: mine.length,
+        limit,
+        offset,
+        nextOffset: next < mine.length ? next : null,
+      });
+    }
+
+    const match = /^\/([^/]+)(\/comments)?$/.exec(path);
+    const target = match && tickets.find((t) => t.id === match[1]);
+    // Someone else's ticket is indistinguishable from a missing one, as in the real API.
+    if (!match || !target || target.requesterId !== session.id) {
+      return reply(route, 404, null, 'Ticket not found');
+    }
+    if (method === 'GET' && !match[2]) return reply(route, 200, detail(target));
+    if (method === 'POST' && match[2]) {
+      const body = req.postDataJSON() as { body?: unknown; isInternal?: unknown };
+      const text = typeof body.body === 'string' ? body.body.trim() : '';
+      if (!text || text.length > 5000) return reply(route, 400, null, 'Validation failed');
+      if (body.isInternal === true) return reply(route, 403, null, 'Forbidden');
+      const comment: MockComment = {
+        id: uuid(5, ++commentSeq),
+        body: text,
+        isInternal: false,
+        author: { id: session.id, name: session.displayName },
+        createdAt: tick(),
+      };
+      target.comments.push(comment);
+      return reply(route, 201, comment, 'Comment added');
+    }
+    return reply(route, 404, null, 'Not found');
+  });
+
   return {
+    tickets: () => tickets,
+    seedTickets: (n, requesterId = ACCOUNTS.employee.id) =>
+      Array.from({ length: n }, (_, i) =>
+        newTicket(requesterId, `Seeded ticket ${i + 1}`, `Description ${i + 1}`),
+      ),
+    seedForeignTicket: () => newTicket('u-omar', 'Omar private issue', 'Not yours'),
+    technician: {
+      update(id, change) {
+        const t = tickets.find((x) => x.id === id);
+        if (!t) throw new Error(`no ticket ${id}`);
+        if (change.category) {
+          addEvent(t, 'CATEGORY_UPDATED', { to: 'c1' });
+          t.category = { id: 'c1', name: change.category };
+        }
+        if (change.team) {
+          addEvent(t, 'TEAM_ASSIGNED', { to: 't1' });
+          t.team = { id: 't1', name: change.team };
+          t.assignee = { id: 'u-tara', name: ACCOUNTS.technician.displayName };
+        }
+        if (change.priority) {
+          addEvent(t, 'PRIORITY_UPDATED', { from: t.priority, to: change.priority });
+          t.priority = change.priority;
+        }
+        if (change.status) {
+          const from = t.status;
+          if (change.status === 'RESOLVED') {
+            t.resolvedAt = tick();
+            t.resolutionSummary = change.resolutionSummary ?? 'Fixed.';
+            addEvent(t, 'RESOLVED', { from });
+          } else {
+            addEvent(t, 'STATUS_CHANGED', { from, to: change.status });
+          }
+          t.status = change.status;
+        }
+      },
+      reply(id, body, isInternal = false) {
+        const t = tickets.find((x) => x.id === id);
+        if (!t) throw new Error(`no ticket ${id}`);
+        t.comments.push({
+          id: uuid(5, ++commentSeq),
+          body,
+          isInternal,
+          author: { id: 'u-tara', name: ACCOUNTS.technician.displayName },
+          createdAt: tick(),
+        });
+        addEvent(t, 'COMMENT_ADDED', { isInternal });
+      },
+    },
+    failNext: (endpoint, status) => {
+      failures.set(endpoint, status);
+    },
+    createRequests: () => createRequests,
+    createKeys: () => createKeys,
     adminUsers: () => users,
     revokeSession: () => {
       session = null;

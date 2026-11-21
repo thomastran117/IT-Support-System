@@ -185,3 +185,10 @@ catalogue and the coverage checklist are in [audit.md](../audit.md).
 
 The API offers no way to create, edit or delete events: only `GET` exists, and a database trigger
 rejects UPDATE and DELETE.
+
+## Shared validation (SD-023)
+
+`createTicketSchema` and `createCommentSchema` live in `packages/contracts` and are used by both this API
+and the web forms, so client and server enforce identical limits. Both are strict (unknown fields are
+rejected). The employee screens that consume these endpoints are described in
+[employee-screens.md](../employee-screens.md).

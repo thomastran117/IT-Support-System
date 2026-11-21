@@ -20,6 +20,10 @@ export default defineConfig({
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
-    env: { NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000' },
+    env: {
+      NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000',
+      // Open tickets re-check the server every second so e2e sees technician updates quickly.
+      NEXT_PUBLIC_TICKET_POLL_MS: '1000',
+    },
   },
 });
