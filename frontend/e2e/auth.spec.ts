@@ -79,7 +79,7 @@ test('the session survives a reload and is restored from the refresh cookie', as
   await signIn(page, ACCOUNTS.technician.email);
   await expect(page).toHaveURL(/\/technician$/);
   await page.reload();
-  await expect(page.getByRole('heading', { level: 1, name: 'Technician area' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Technician dashboard' })).toBeVisible();
   await expect(page.getByTestId('current-user')).toHaveText('Tara Technician');
   expect(api.count('refresh')).toBeGreaterThanOrEqual(1);
 });

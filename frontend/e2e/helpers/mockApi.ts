@@ -22,7 +22,7 @@ export const ACCOUNTS = {
     displayName: 'Tara Technician',
     role: 'TECHNICIAN',
     portal: '/technician',
-    heading: 'Technician area',
+    heading: 'Technician dashboard',
   },
   admin: {
     id: 'u-admin',
@@ -110,7 +110,10 @@ export interface MockApi {
     reply(id: string, body: string, isInternal?: boolean): void;
   };
   /** The next call to this endpoint fails with the HTTP status, or `'network'` to drop the request. */
-  failNext(endpoint: 'create' | 'reply' | 'list' | 'detail', status: number | 'network'): void;
+  failNext(
+    endpoint: 'create' | 'reply' | 'list' | 'detail' | 'queue',
+    status: number | 'network',
+  ): void;
   /** Number of POST /api/tickets requests that reached the server (including idempotent replays). */
   createRequests(): number;
   /** The Idempotency-Key header of each create request, in order. */
@@ -147,14 +150,20 @@ export async function installMockApi(page: Page): Promise<MockApi> {
       'access-control-allow-origin': origin,
       'access-control-allow-credentials': 'true',
       'access-control-allow-headers': 'authorization, content-type',
-      'access-control-allow-methods': 'GET, POST, OPTIONS',
+      'access-control-allow-methods': 'GET, POST, PATCH, DELETE, OPTIONS',
     };
   };
-  const reply = (route: Route, status: number, data: unknown = null, message = '') =>
+  const reply = (
+    route: Route,
+    status: number,
+    data: unknown = null,
+    message = '',
+    details: unknown = null,
+  ) =>
     route.fulfill({
       status,
       headers: { ...cors(route), 'content-type': 'application/json' },
-      body: JSON.stringify({ message, error: status >= 400 ? 'Error' : null, details: null, data }),
+      body: JSON.stringify({ message, error: status >= 400 ? 'Error' : null, details, data }),
     });
   const issue = (account: Account) => {
     currentToken = `access-${account.id}-${++tokenSeq}`;
@@ -380,6 +389,112 @@ export async function installMockApi(page: Page): Promise<MockApi> {
       })),
   });
 
+  // --- Staff reference data and queues (SD-024, SD-025) --------------------------------------
+  const TEAMS = [
+    { id: 't-net', name: 'Network & Access', description: null },
+    { id: 't-hw', name: 'Hardware & Devices', description: null },
+  ];
+  const CATEGORIES = [
+    { id: 'c-hw', name: 'Hardware', description: null },
+    { id: 'c-sw', name: 'Software', description: null },
+    { id: 'c-net', name: 'Network/VPN', description: null },
+  ];
+  const MEMBERS: Record<string, { id: string; displayName: string }[]> = {
+    't-net': [
+      { id: 'u-tara', displayName: 'Tara Technician' },
+      { id: 'u-tom', displayName: 'Tom Technician' },
+    ],
+    't-hw': [
+      { id: 'u-tom', displayName: 'Tom Technician' },
+      { id: 'u-hana', displayName: 'Hana Technician' },
+    ],
+  };
+  /** Tara belongs to Network & Access only. */
+  const TARA_TEAMS = ['t-net'];
+  const RANK: Record<string, number> = { CRITICAL: 1, HIGH: 2, MEDIUM: 3, LOW: 4, UNSET: 5 };
+  const inScope = (t: MockTicket) => t.team === null || TARA_TEAMS.includes(t.team.id);
+
+  const queueItem = (t: MockTicket) => ({
+    id: t.id,
+    title: t.title,
+    status: t.status,
+    priority: t.priority,
+    category: t.category,
+    assignee: t.assignee,
+    createdAt: t.createdAt,
+    ageMinutes: Math.max(0, Math.round((clockMs - Date.parse(t.createdAt)) / 60_000)),
+    version: t.version,
+  });
+
+  await page.route(/\/api\/(technician|teams|categories)/, async (route) => {
+    const req = route.request();
+    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors(route) });
+    if (offline) return route.abort('failed');
+    const auth = req.headers()['authorization'];
+    if (!session || auth !== `Bearer ${currentToken}`) {
+      return reply(route, 401, null, 'Authentication required');
+    }
+    if (session.role === 'EMPLOYEE') return reply(route, 403, null, 'Forbidden');
+    const url = new URL(req.url());
+    const path = url.pathname.replace('/api/', '');
+    const q = url.searchParams;
+
+    if (path === 'categories') return reply(route, 200, CATEGORIES);
+    if (path === 'teams') {
+      const mine = q.get('mine') === 'true' && session.role === 'TECHNICIAN';
+      return reply(route, 200, mine ? TEAMS.filter((t) => TARA_TEAMS.includes(t.id)) : TEAMS);
+    }
+    const members = /^teams\/([^/]+)\/members$/.exec(path);
+    if (members) {
+      return MEMBERS[members[1]!]
+        ? reply(route, 200, MEMBERS[members[1]!])
+        : reply(route, 404, null, 'Team not found');
+    }
+    if (path !== 'technician/queue' && path !== 'technician/unassigned') {
+      return reply(route, 404, null, 'Not found');
+    }
+    const failure = failures.get('queue');
+    if (failure !== undefined) {
+      failures.delete('queue');
+      return failure === 'network'
+        ? route.abort('failed')
+        : reply(route, failure, null, 'Server error');
+    }
+    const unassigned = path === 'technician/unassigned';
+    const teamId = q.get('teamId');
+    if (!unassigned && (!teamId || !TARA_TEAMS.includes(teamId))) {
+      return reply(route, 403, null, 'You are not a member of this team');
+    }
+    const priorities = q.get('priority')?.split(',');
+    const category = q.get('categoryId');
+    const limit = Number(q.get('limit') ?? 20);
+    const offset = Number(q.get('offset') ?? 0);
+    const rows = tickets
+      .filter((t) =>
+        unassigned
+          ? t.team === null && t.status === 'OPEN'
+          : t.team?.id === teamId && ['OPEN', 'TRIAGED', 'IN_PROGRESS'].includes(t.status),
+      )
+      .filter((t) => q.get('mine') !== 'true' || t.assignee?.id === session!.id)
+      .filter((t) => !priorities || priorities.includes(t.priority))
+      .filter((t) => !category || t.category?.id === category)
+      .sort(
+        (a, b) =>
+          (unassigned ? 0 : RANK[a.priority]! - RANK[b.priority]!) ||
+          a.createdAt.localeCompare(b.createdAt) ||
+          a.id.localeCompare(b.id),
+      );
+    const items = rows.slice(offset, offset + limit).map(queueItem);
+    const next = offset + items.length;
+    return reply(route, 200, {
+      items,
+      total: rows.length,
+      limit,
+      offset,
+      nextOffset: next < rows.length ? next : null,
+    });
+  });
+
   await page.route(/\/api\/tickets/, async (route) => {
     const req = route.request();
     if (req.method() === 'OPTIONS') {
@@ -461,6 +576,158 @@ export async function installMockApi(page: Page): Promise<MockApi> {
       });
     }
 
+    if (session.role === 'TECHNICIAN') {
+      const m = /^\/([^/]+)(?:\/(comments|routing|transitions))?$/.exec(path);
+      const t = m && tickets.find((x) => x.id === m[1]);
+      if (!m || !t || !inScope(t)) return reply(route, 404, null, 'Ticket not found');
+      const sub = m[2];
+      const actor = { id: session.id, name: session.displayName };
+      const conflict = () =>
+        reply(route, 409, null, 'Ticket was changed by someone else. Reload it and try again.', {
+          code: 'VERSION_CONFLICT',
+          currentVersion: t.version,
+        });
+      const staffDetail = () => ({
+        ...summary(t),
+        description: t.description,
+        resolutionSummary: t.resolutionSummary,
+        requester: { id: t.requesterId, name: 'Erin Employee' },
+        comments: t.comments,
+        timeline: t.events.map((e) => ({
+          id: e.id,
+          type: e.type,
+          occurredAt: e.occurredAt,
+          actor: e.type === 'CREATED' ? { id: t.requesterId, name: 'Erin Employee' } : actor,
+          details: e.details,
+        })),
+      });
+      const dto = () => ({
+        id: t.id,
+        trackingId: t.id,
+        title: t.title,
+        description: t.description,
+        status: t.status,
+        priority: t.priority,
+        categoryId: t.category?.id ?? null,
+        teamId: t.team?.id ?? null,
+        assigneeId: t.assignee?.id ?? null,
+        requesterId: t.requesterId,
+        resolutionSummary: t.resolutionSummary,
+        createdAt: t.createdAt,
+        updatedAt: t.updatedAt,
+        resolvedAt: t.resolvedAt,
+        firstResponseAt: null,
+        version: t.version,
+      });
+
+      if (method === 'GET' && !sub) return reply(route, 200, staffDetail());
+
+      if (method === 'POST' && sub === 'comments') {
+        const body = req.postDataJSON() as { body?: unknown; isInternal?: unknown };
+        const text = typeof body.body === 'string' ? body.body.trim() : '';
+        if (!text || text.length > 5000) return reply(route, 400, null, 'Validation failed');
+        const comment: MockComment = {
+          id: uuid(5, ++commentSeq),
+          body: text,
+          isInternal: body.isInternal === true,
+          author: actor,
+          createdAt: tick(),
+        };
+        t.comments.push(comment);
+        addEvent(t, 'COMMENT_ADDED', { isInternal: comment.isInternal });
+        return reply(route, 201, comment, 'Comment added');
+      }
+
+      if (method === 'POST' && sub === 'routing') {
+        const b = req.postDataJSON() as {
+          categoryId: string;
+          priority: string;
+          teamId: string;
+          assigneeId?: string | null;
+          expectedVersion: number;
+        };
+        if (b.expectedVersion !== t.version) return conflict();
+        const category = CATEGORIES.find((c) => c.id === b.categoryId);
+        const team = TEAMS.find((x) => x.id === b.teamId);
+        if (!category || !team || !(b.priority in RANK) || b.priority === 'UNSET') {
+          return reply(route, 422, null, 'Category or team is unknown or inactive');
+        }
+        const assignee = b.assigneeId
+          ? MEMBERS[team.id]!.find((x) => x.id === b.assigneeId)
+          : undefined;
+        if (b.assigneeId && !assignee) {
+          return reply(
+            route,
+            422,
+            null,
+            'Assignee must be an active technician in the assigned team',
+          );
+        }
+        const before = t.version;
+        if (t.category?.id !== category.id) addEvent(t, 'CATEGORY_UPDATED', { to: category.id });
+        if (t.priority !== b.priority) {
+          addEvent(t, 'PRIORITY_UPDATED', { from: t.priority, to: b.priority });
+        }
+        if (t.team?.id !== team.id) {
+          addEvent(t, t.team ? 'TEAM_REASSIGNED' : 'TEAM_ASSIGNED', { to: team.id });
+        }
+        if ((t.assignee?.id ?? null) !== (assignee?.id ?? null)) {
+          addEvent(t, 'ASSIGNEE_UPDATED', { to: assignee?.id ?? null });
+        }
+        t.category = { id: category.id, name: category.name };
+        t.priority = b.priority;
+        t.team = { id: team.id, name: team.name };
+        t.assignee = assignee ? { id: assignee.id, name: assignee.displayName } : null;
+        if (t.status === 'OPEN') {
+          addEvent(t, 'STATUS_CHANGED', { from: 'OPEN', to: 'TRIAGED' });
+          t.status = 'TRIAGED';
+        }
+        t.version = before + 1;
+        return reply(route, 200, dto(), 'Routing approved');
+      }
+
+      if (method === 'POST' && sub === 'transitions') {
+        const b = req.postDataJSON() as {
+          to: TicketStatus;
+          expectedVersion: number;
+          resolutionSummary?: string;
+        };
+        if (b.expectedVersion !== t.version) return conflict();
+        const allowed: Record<TicketStatus, TicketStatus[]> = {
+          OPEN: ['TRIAGED'],
+          TRIAGED: ['IN_PROGRESS'],
+          IN_PROGRESS: ['RESOLVED'],
+          RESOLVED: ['CLOSED', 'OPEN'],
+          CLOSED: ['OPEN'],
+        };
+        if (!allowed[t.status].includes(b.to)) {
+          return reply(route, 409, null, `A ${t.status} ticket cannot move to ${b.to}`, {
+            code: 'INVALID_TRANSITION',
+          });
+        }
+        if (b.to === 'RESOLVED' && !b.resolutionSummary?.trim()) {
+          return reply(route, 422, null, 'A resolution summary is required');
+        }
+        const before = t.version;
+        const from = t.status;
+        if (b.to === 'RESOLVED') {
+          t.resolvedAt = tick();
+          t.resolutionSummary = b.resolutionSummary!.trim();
+          addEvent(t, 'RESOLVED', { from });
+        } else if (b.to === 'OPEN') {
+          t.resolvedAt = null;
+          t.resolutionSummary = null;
+          addEvent(t, 'REOPENED', { from });
+        } else {
+          addEvent(t, 'STATUS_CHANGED', { from, to: b.to });
+        }
+        t.status = b.to;
+        t.version = before + 1;
+        return reply(route, 200, dto(), 'Ticket updated');
+      }
+      return reply(route, 404, null, 'Not found');
+    }
+
     const match = /^\/([^/]+)(\/comments)?$/.exec(path);
     const target = match && tickets.find((t) => t.id === match[1]);
     // Someone else's ticket is indistinguishable from a missing one, as in the real API.
@@ -498,12 +765,14 @@ export async function installMockApi(page: Page): Promise<MockApi> {
         const t = tickets.find((x) => x.id === id);
         if (!t) throw new Error(`no ticket ${id}`);
         if (change.category) {
-          addEvent(t, 'CATEGORY_UPDATED', { to: 'c1' });
-          t.category = { id: 'c1', name: change.category };
+          const category = CATEGORIES.find((c) => c.name === change.category);
+          addEvent(t, 'CATEGORY_UPDATED', { to: category?.id ?? 'c1' });
+          t.category = { id: category?.id ?? 'c1', name: change.category };
         }
         if (change.team) {
-          addEvent(t, 'TEAM_ASSIGNED', { to: 't1' });
-          t.team = { id: 't1', name: change.team };
+          const team = TEAMS.find((x) => x.name === change.team);
+          addEvent(t, 'TEAM_ASSIGNED', { to: team?.id ?? 't1' });
+          t.team = { id: team?.id ?? 't1', name: change.team };
           t.assignee = { id: 'u-tara', name: ACCOUNTS.technician.displayName };
         }
         if (change.priority) {

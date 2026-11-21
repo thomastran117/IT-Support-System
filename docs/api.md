@@ -140,11 +140,11 @@ self-demotion, self-deactivation, self-password-reset, and removal of the last a
 Staff (`TECHNICIAN` or `ADMIN`) can read the reference lists that assignment forms need. Employees
 receive `403`. These responses carry only what a dropdown needs: no emails, roles or account state.
 
-| Method | Path                     | Purpose                                                    |
-| ------ | ------------------------ | ---------------------------------------------------------- |
-| GET    | `/api/teams`             | Active teams (`id`, `name`, `description`)                 |
-| GET    | `/api/teams/:id/members` | Active technicians of an active team (`id`, `displayName`) |
-| GET    | `/api/categories`        | Active ticket categories (`id`, `name`, `description`)     |
+| Method | Path                     | Purpose                                                                                         |
+| ------ | ------------------------ | ----------------------------------------------------------------------------------------------- |
+| GET    | `/api/teams`             | Active teams (`id`, `name`, `description`); `?mine=true` limits a technician to their own teams |
+| GET    | `/api/teams/:id/members` | Active technicians of an active team (`id`, `displayName`)                                      |
+| GET    | `/api/categories`        | Active ticket categories (`id`, `name`, `description`)                                          |
 
 An inactive or unknown team returns `404` from the members list.
 

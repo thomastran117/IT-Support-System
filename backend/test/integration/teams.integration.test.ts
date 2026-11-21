@@ -105,6 +105,17 @@ describe.skipIf(!testDatabaseUrl)('support teams and membership (integration)', 
       expect(Object.keys(teams[0]!).sort()).toEqual(['description', 'id', 'name']);
     });
 
+    it('limits the list to my own teams with mine=true (technicians) but not for admins', async () => {
+      const ids = async (as: string, qs: string) =>
+        ((await call(as, 'GET', `/api/teams${qs}`)).json().data as Array<{ id: string }>)
+          .map((t) => t.id)
+          .sort();
+      expect(await ids(USERS.tara, '?mine=true')).toEqual([TEAMS.network]);
+      expect(await ids(USERS.tom, '?mine=true')).toEqual([TEAMS.network, TEAMS.hardware].sort());
+      expect(await ids(USERS.admin, '?mine=true')).toHaveLength(2);
+      expect((await call(USERS.tara, 'GET', '/api/teams?mine=maybe')).statusCode).toBe(400);
+    });
+
     it('lists only active categories', async () => {
       const res = await call(USERS.tara, 'GET', '/api/categories');
       const ids = (res.json().data as Array<{ id: string }>).map((c) => c.id);

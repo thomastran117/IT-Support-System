@@ -19,7 +19,17 @@ export const teamRoutes =
     const service = createTeamService(prisma);
     const staff = { preHandler: app.authGuards.requireRole('TECHNICIAN', 'ADMIN') };
 
-    app.get('/', staff, async () => envelope('Teams', await service.listActiveTeams()));
+    // `?mine=true`: only the caller's own active teams (administrators have none, so they get all).
+    app.get('/', staff, async (req) => {
+      const { mine } = parse(z.object({ mine: z.enum(['true', 'false']).optional() }), req.query);
+      const p = req.principal!;
+      const teams = await service.listActiveTeams();
+      const scoped =
+        mine === 'true' && p.role === 'TECHNICIAN'
+          ? teams.filter((t) => p.teamIds.includes(t.id))
+          : teams;
+      return envelope('Teams', scoped);
+    });
 
     app.get('/:id/members', staff, async (req) =>
       envelope(
