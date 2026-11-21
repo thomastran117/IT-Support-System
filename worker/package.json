@@ -12,7 +12,16 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@smartdesk/contracts": "^0.0.0",
-    "@smartdesk/db": "^0.0.0"
+    "@smartdesk/contracts": "file:../packages/contracts",
+    "@smartdesk/db": "file:../packages/db"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.6",
+    "eslint": "^10.15.0",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.73.0",
+    "vitest": "^5.1.1"
   }
 }

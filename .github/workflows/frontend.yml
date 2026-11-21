@@ -16,46 +16,21 @@ jobs:
   verify:
     name: frontend / verify
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
-    env:
-      # The e2e suite runs against the production build and never needs the API.
-      NEXT_PUBLIC_API_URL: http://localhost:4000
-      NEXT_TELEMETRY_DISABLED: '1'
-      CI: 'true'
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-
-      - name: Install
-        run: npm ci
+      - name: Build verification images
+        run: docker compose --profile ci build format-check frontend-ci
 
       - name: Format check
-        run: npm run format:check
+        run: set -o pipefail; docker compose --profile ci run --rm format-check 2>&1 | tee ci-format.log
 
-      - name: Build shared packages
-        run: npm run build -w packages/contracts 2>&1 | tee ci-build-shared.log
-
-      - name: Lint
-        run: npm run lint -w frontend 2>&1 | tee ci-lint.log
-
-      - name: Typecheck
-        run: npm run typecheck -w frontend 2>&1 | tee ci-typecheck.log
-
-      - name: Unit tests
-        run: npm run test:unit -w frontend 2>&1 | tee ci-test-unit.log
-
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
-
-      - name: End-to-end tests (builds and serves the app)
-        run: npm run test:e2e -w frontend 2>&1 | tee ci-test-e2e.log
+      - name: Frontend checks and browser tests
+        run: set -o pipefail; docker compose --profile ci run --rm frontend-ci 2>&1 | tee ci-frontend.log
 
       - name: Upload Playwright report and logs
         if: failure()
@@ -68,3 +43,7 @@ jobs:
             frontend/test-results/
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Stop containers
+        if: always()
+        run: docker compose --profile ci down -v

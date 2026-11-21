@@ -1,7 +1,7 @@
 /**
  * Regenerate docs/database/erd.md and docs/database/data-dictionary.md from schema-spec.json.
  *
- *   npm run docs:db -w backend
+ *   docker compose --profile tools run --rm docs
  *
  * After changing a migration, update docs/database/schema-spec.json (the dictionary test prints
  * what differs from the live database), then run this command and commit the results.

@@ -1,87 +1,97 @@
 # SmartDesk
 
-IT support ticketing system. npm-workspaces monorepo with two independently runnable apps, a worker and a shared TypeScript contract package.
+SmartDesk is a role-based IT support ticketing system with a Next.js web app, Fastify API,
+PostgreSQL database, and background worker. Docker Compose is the supported development and
+validation environment; no root npm installation is required.
 
-| Workspace              | Path                  | Purpose                                    |
-| ---------------------- | --------------------- | ------------------------------------------ |
-| `@smartdesk/frontend`  | `frontend/`           | Next.js (App Router) + Tailwind            |
-| `@smartdesk/backend`   | `backend/`            | Fastify HTTP API, migrations               |
-| `@smartdesk/worker`    | `worker/`             | Background worker                          |
-| `@smartdesk/contracts` | `packages/contracts/` | Browser-safe shared types (no server code) |
+## Start the stack
 
-## Prerequisites
-
-- Node.js 22+ (see `.nvmrc`) and npm 10+ — npm is the only package manager used.
-- Docker with Compose v2 (for the containerised environment and PostgreSQL).
-
-## Quick start (host)
+Prerequisite: Docker Desktop or Docker Engine with Compose v2 and Compose Watch support.
 
 ```bash
-cp .env.example .env     # development placeholders only, no secrets
-npm ci
-npm run build -w packages/contracts -w packages/db   # also runs `prisma generate`
-npm run dev --workspace backend    # http://localhost:4000
-npm run dev --workspace frontend   # http://localhost:3000 (starts without the API)
+docker compose up --build --watch
 ```
 
-The backend needs PostgreSQL for `/health/ready`; `/health/live` works without it.
-Run everything at once with `npm run dev`.
+The defaults work without a `.env` file. Copy `.env.example` to `.env` only when you need to
+override ports, credentials, token lifetimes, logging, or the optional AI provider.
 
-## Root scripts
+| Service    | Address or role                                    |
+| ---------- | -------------------------------------------------- |
+| Frontend   | <http://localhost:3000>                            |
+| API        | <http://localhost:4000>                            |
+| Liveness   | <http://localhost:4000/health/live>                |
+| Readiness  | <http://localhost:4000/health/ready>               |
+| PostgreSQL | Internal Compose network only (`postgres:5432`)    |
+| Worker     | Internal background process; no published endpoint |
 
-| Command             | What it does                                      |
-| ------------------- | ------------------------------------------------- |
-| `npm run dev`       | backend + worker + frontend together              |
-| `npm run build`     | builds contracts first, then every workspace      |
-| `npm run lint`      | lint in every workspace (fails if any fails)      |
-| `npm run typecheck` | typecheck in every workspace (fails if any fails) |
-| `npm test`          | tests in every workspace                          |
-| `npm run format`    | Prettier write (`format:check` verifies)          |
+Application source changes are synchronized into the running frontend, backend, and worker.
+Changes to manifests, lockfiles, Prisma files, or shared packages rebuild the affected images.
 
-Run one workspace with `npm run <script> --workspace <frontend|backend|worker|packages/contracts>`.
-
-## Docker Compose
+Stop the stack while preserving database data:
 
 ```bash
-cp .env.example .env
-docker compose up --build        # postgres, backend, worker, frontend
-docker compose logs -f backend   # follow logs of a service
-docker compose down              # stop, keep data (named volume `pgdata`)
+docker compose down
 ```
 
-- Frontend: <http://localhost:3000> · API: <http://localhost:4000> (`/health/live`, `/health/ready`)
-- PostgreSQL sits on an isolated internal network and is not published on the host. Backend/worker reach it as `postgres:5432`. Ad-hoc access: `docker compose exec postgres psql -U smartdesk`.
-- The backend applies migrations on start. Re-run manually: `docker compose exec backend npm run migrate -w backend`; seed demo data: `docker compose exec backend npm run db:seed -w backend`.
-- **Destructive reset** (deletes all data, rebuilds schema and seed):
+## Common operations
 
-  ```bash
-  docker compose down -v
-  docker compose up --build -d
-  docker compose exec backend npm run db:seed -w backend
-  ```
+```bash
+# Follow one service
+docker compose logs -f backend
 
-## Continuous integration
+# Seed or refresh the deterministic demo records
+docker compose exec backend npm run db:seed
 
-Two GitHub Actions workflows run on every push to `main` and every pull request, using the Node version from `.nvmrc` with npm caching. Both start with `npm ci` and `npm run format:check`.
+# Open PostgreSQL directly
+docker compose exec postgres psql -U smartdesk -d smartdesk
 
-| Workflow (`.github/workflows/`) | Required check      | Steps after install                                                                                                                                                                                                                                                                   |
-| ------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `backend.yml`                   | `backend / verify`  | build contracts + Prisma client, lint, typecheck, build (backend, worker, db, contracts); **unit tests** (`npm run test:unit -w backend`); worker tests; `npm run migrate -w backend` on a fresh PostgreSQL 16 service; **integration tests** (`npm run test:integration -w backend`) |
-| `frontend.yml`                  | `frontend / verify` | lint, typecheck, **unit tests** (`npm run test:unit -w frontend`), Playwright browser install, **end-to-end tests** (`npm run test:e2e -w frontend`, builds and serves the app; desktop and mobile Chromium)                                                                          |
+# Apply pending migrations explicitly (the backend also does this on startup)
+docker compose exec backend npm run migrate
 
-Environment variables (CI-only, non-secret, set in the workflows): `DATABASE_URL`, `TEST_DATABASE_URL`, `FRONTEND_ORIGIN` (backend); `NEXT_PUBLIC_API_URL` (frontend). No repository secrets are used. Logs (and the Playwright report) are uploaded as artifacts on failure.
+# Regenerate the committed ERD and data dictionary
+docker compose --profile tools run --rm docs
+```
 
-Mark both `backend / verify` and `frontend / verify` as required status checks in branch protection for `main`. The workflows have no path filters so required checks always report.
+Resetting the database is destructive:
 
-Test layout: `backend/test/unit` (no external services), `backend/test/integration` (needs `TEST_DATABASE_URL`, skipped without it), `frontend/test/unit` (Vitest), `frontend/e2e` (Playwright). Locally: `npx playwright install chromium` once, then `npm run test:e2e -w frontend`. Root `npm test` runs unit/integration suites but not Playwright.
+```bash
+docker compose down -v
+docker compose up --build --watch
+docker compose exec backend npm run db:seed
+```
 
-## Conventions
+## Validation
 
-- Shared types live in `packages/contracts` and must stay browser-safe (no `node:*`, `pg`, `fastify`).
-- API responses use the envelope `{ message, error, details, data }`.
-- Feature code never hardcodes API hosts; the frontend reads `NEXT_PUBLIC_API_URL` via `frontend/src/lib/config.ts`.
-- Database access goes through Prisma (`@smartdesk/db` exports the client; the schema and migrations live in `backend/prisma/`). Edit `backend/prisma/schema.prisma`, then `npm run migrate:dev -w backend -- --name <change>` to create a migration; commit the generated SQL. Constraints Prisma cannot express go in hand-written SQL migrations. The generated client (`packages/db/src/generated`) is not committed. Deviations from the Deliverable 2 design are recorded in `docs/database/deviations.md`.
-- **Employee ticket screens:** see [docs/employee-screens.md](docs/employee-screens.md) (routes, validation, drafts, idempotency, live updates, tests).
-- **Ticket audit trail:** see [docs/audit.md](docs/audit.md) (event catalogue, sanitization, coverage checklist).
-- **Database docs, seed and tests:** see [docs/database/](docs/database/README.md) (ERD, data dictionary, query catalogue, fixtures). Common commands: `npm run db:migrate`, `npm run db:seed`, `TEST_DATABASE_URL=� npm run test:db` (fresh isolated database per run), `npm run docs:db` (regenerate the ERD and dictionary from `docs/database/schema-spec.json`).
-- Never commit `.env` files or build output.
+The same container targets run locally and in GitHub Actions:
+
+```bash
+docker compose --profile ci run --rm format-check
+docker compose --profile ci run --rm backend-ci
+docker compose --profile ci run --rm frontend-ci
+```
+
+`backend-ci` starts PostgreSQL, applies migrations, and runs package, API, worker, and database
+checks. `frontend-ci` includes Chromium and runs unit plus desktop/mobile Playwright tests.
+
+## Repository map
+
+| Path                  | Purpose                                                   |
+| --------------------- | --------------------------------------------------------- |
+| `frontend/`           | Next.js App Router UI                                     |
+| `backend/`            | Fastify API, Prisma schema/migrations, seeds, SQL reports |
+| `worker/`             | Background processing host                                |
+| `packages/contracts/` | Browser-safe API types and validation                     |
+| `packages/db/`        | Generated Prisma client adapter shared by API and worker  |
+| `docs/`               | Durable technical references and generated schema docs    |
+
+Each Node package owns its own manifest and lockfile. The root deliberately has no `package.json`,
+`package-lock.json`, or npm workspace.
+
+## Further reading
+
+- [Architecture](docs/architecture.md)
+- [API reference](docs/api.md)
+- [Authentication and authorization](docs/authentication.md)
+- [Database development](docs/database.md)
+
+Never commit `.env` files, credentials, generated build output, or local test reports.

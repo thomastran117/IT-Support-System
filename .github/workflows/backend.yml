@@ -16,68 +16,21 @@ jobs:
   verify:
     name: backend / verify
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     defaults:
       run:
-        # Explicit bash enables `pipefail`, so `| tee` never masks a failing step.
         shell: bash
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: ci
-          POSTGRES_PASSWORD: ci-only-password
-          POSTGRES_DB: smartdesk_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U ci -d smartdesk_test"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    env:
-      # CI-only, non-secret values pointing at the throwaway service container.
-      DATABASE_URL: postgres://ci:ci-only-password@localhost:5432/smartdesk_test
-      TEST_DATABASE_URL: postgres://ci:ci-only-password@localhost:5432/smartdesk_test
-      FRONTEND_ORIGIN: http://localhost:3000
-      CI: 'true'
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-
-      - name: Install
-        run: npm ci
+      - name: Build verification images
+        run: docker compose --profile ci build format-check backend-ci
 
       - name: Format check
-        run: npm run format:check
+        run: set -o pipefail; docker compose --profile ci run --rm format-check 2>&1 | tee ci-format.log
 
-      - name: Build shared packages (contracts, Prisma client)
-        run: npm run build -w packages/contracts -w packages/db 2>&1 | tee ci-build-shared.log
-
-      - name: Lint
-        run: npm run lint -w backend -w worker -w packages/db -w packages/contracts 2>&1 | tee ci-lint.log
-
-      - name: Typecheck
-        run: npm run typecheck -w backend -w worker -w packages/db -w packages/contracts 2>&1 | tee ci-typecheck.log
-
-      - name: Build
-        run: npm run build -w backend -w worker 2>&1 | tee ci-build.log
-
-      - name: Unit tests
-        run: npm run test:unit -w backend 2>&1 | tee ci-test-unit.log
-
-      - name: Worker tests
-        run: npm test -w worker 2>&1 | tee ci-test-worker.log
-
-      - name: Migrate fresh database
-        run: npm run migrate -w backend 2>&1 | tee ci-migrate.log
-
-      - name: Integration tests
-        run: npm run test:integration -w backend 2>&1 | tee ci-test-integration.log
+      - name: Backend, worker and database checks
+        run: set -o pipefail; docker compose --profile ci run --rm backend-ci 2>&1 | tee ci-backend.log
 
       - name: Upload logs on failure
         if: failure()
@@ -87,3 +40,7 @@ jobs:
           path: ci-*.log
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Stop containers
+        if: always()
+        run: docker compose --profile ci down -v

@@ -5,12 +5,24 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-smartdesk}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-smartdesk}
       POSTGRES_DB: ${POSTGRES_DB:-smartdesk}
-    # No host port: the database lives on the isolated `internal` network.
-    # Use `docker compose exec postgres psql -U smartdesk` for ad-hoc access.
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [internal]
+
+  postgres-ci:
+    profiles: [ci]
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ci
+      POSTGRES_PASSWORD: ci-only-password
+      POSTGRES_DB: smartdesk_test
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ci -d smartdesk_test']
       interval: 5s
       timeout: 5s
       retries: 10
@@ -21,7 +33,7 @@ services:
       context: .
       dockerfile: Dockerfile.dev
       target: backend
-    command: sh -c "npm run migrate -w backend && npm run dev -w backend"
+    command: sh -c "npm run migrate && npm run dev"
     environment:
       HOST: 0.0.0.0
       PORT: 4000
@@ -31,6 +43,9 @@ services:
       JWT_SECRET: ${JWT_SECRET:-change-me-dev-only-change-me-dev-only}
       JWT_ISSUER: ${JWT_ISSUER:-smartdesk-api}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-smartdesk-web}
+      ACCESS_TOKEN_TTL_SECONDS: ${ACCESS_TOKEN_TTL_SECONDS:-900}
+      REFRESH_TOKEN_TTL_SECONDS: ${REFRESH_TOKEN_TTL_SECONDS:-604800}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
       AI_PROVIDER: ${AI_PROVIDER:-none}
       AI_API_KEY: ${AI_API_KEY:-}
     ports:
@@ -39,6 +54,21 @@ services:
       postgres:
         condition: service_healthy
     networks: [internal, public]
+    develop:
+      watch:
+        - action: sync
+          path: ./backend/src
+          target: /app/backend/src
+        - action: rebuild
+          path: ./backend/package.json
+        - action: rebuild
+          path: ./backend/package-lock.json
+        - action: rebuild
+          path: ./backend/prisma
+        - action: rebuild
+          path: ./packages/contracts
+        - action: rebuild
+          path: ./packages/db
 
   worker:
     build:
@@ -54,6 +84,21 @@ services:
       postgres:
         condition: service_healthy
     networks: [internal]
+    develop:
+      watch:
+        - action: sync
+          path: ./worker/src
+          target: /app/worker/src
+        - action: rebuild
+          path: ./worker/package.json
+        - action: rebuild
+          path: ./worker/package-lock.json
+        - action: rebuild
+          path: ./backend/prisma
+        - action: rebuild
+          path: ./packages/contracts
+        - action: rebuild
+          path: ./packages/db
 
   frontend:
     build:
@@ -61,11 +106,70 @@ services:
       dockerfile: Dockerfile.dev
       target: frontend
     environment:
-      # Resolved by the browser, so it must be reachable from the host.
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
     ports:
       - '${FRONTEND_PORT:-3000}:3000'
     networks: [public]
+    develop:
+      watch:
+        - action: sync
+          path: ./frontend/src
+          target: /app/frontend/src
+        - action: rebuild
+          path: ./frontend/package.json
+        - action: rebuild
+          path: ./frontend/package-lock.json
+        - action: rebuild
+          path: ./frontend/next.config.ts
+        - action: rebuild
+          path: ./packages/contracts
+
+  format-check:
+    profiles: [ci]
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: format-check
+
+  backend-ci:
+    profiles: [ci]
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: backend-ci
+    environment:
+      DATABASE_URL: postgres://ci:ci-only-password@postgres-ci:5432/smartdesk_test
+      TEST_DATABASE_URL: postgres://ci:ci-only-password@postgres-ci:5432/smartdesk_test
+      FRONTEND_ORIGIN: http://localhost:3000
+      CI: 'true'
+    depends_on:
+      postgres-ci:
+        condition: service_healthy
+    networks: [internal]
+
+  frontend-ci:
+    profiles: [ci]
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: frontend-ci
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+      NEXT_TELEMETRY_DISABLED: '1'
+      CI: 'true'
+    volumes:
+      - ./frontend/playwright-report:/app/frontend/playwright-report
+      - ./frontend/test-results:/app/frontend/test-results
+
+  docs:
+    profiles: [tools]
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: backend
+    command: npm run docs:db
+    volumes:
+      - ./docs/database:/app/docs/database
 
 volumes:
   pgdata:

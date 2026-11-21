@@ -3,7 +3,7 @@
  * they are trivially testable and every route applies the same rules. Routes must go through these
  * (or {@link ./ticketAccess.ts}) rather than comparing roles or ids inline.
  *
- * Decisions (see docs/auth.md for the matrix):
+ * Decisions (see docs/authentication.md for the matrix):
  *  - EMPLOYEE: only their own tickets; never internal notes or raw audit data.
  *  - TECHNICIAN: tickets assigned to one of their active teams, plus the shared triage backlog
  *    (tickets with no team yet) provided they belong to at least one active team; and any ticket

@@ -12,7 +12,7 @@ import { TICKET_EVENT_TYPES } from '@smartdesk/contracts';
  *
  * Adding an event type means: extend `TICKET_EVENT_TYPES` in packages/contracts, add a migration for
  * the `ck_ticket_events_type` CHECK, and describe its details here (a test fails until all three
- * agree). See docs/audit.md for the coverage checklist.
+ * agree). See docs/api.md for the public timeline behavior.
  */
 export { TICKET_EVENT_TYPES };
 export type { TicketEventType };

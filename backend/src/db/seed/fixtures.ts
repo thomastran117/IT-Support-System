@@ -3,7 +3,7 @@
  *
  * Everything here is fake: fixed UUIDs, fixed UTC timestamps (never relative to "now"), no real
  * people, passwords, tokens or API secrets. Expected report values for the `test` profile are
- * hand-computed in {@link EXPECTED} and documented in docs/database/fixtures.md.
+ * hand-computed in {@link EXPECTED} and verified by integration tests.
  */
 import type { Prisma } from '@smartdesk/db';
 
@@ -700,8 +700,8 @@ export const REPORT_WINDOW = {
 export const EMPTY_WINDOW = { start: '2026-05-01T00:00:00Z', end: '2026-06-01T00:00:00Z' } as const;
 
 /**
- * Hand-computed expectations for the `test` profile (see docs/database/fixtures.md for the
- * arithmetic). They are the contract for the Q01-Q10 integration tests.
+ * Hand-computed expectations for the `test` profile. They are the contract for the Q01-Q10
+ * integration tests.
  */
 export const EXPECTED = {
   rowCounts: {

@@ -1,8 +1,8 @@
 /**
  * Seed synthetic fixtures.
  *
- *   npm run db:seed -w backend                       # demo profile (default)
- *   npm run db:seed -w backend -- --profile test --reset   # empty a *test* database first
+ *   npm run db:seed                                  # demo profile (default, inside backend)
+ *   npm run db:seed -- --profile test --reset        # empty a *test* database first
  *
  * The fixture data and the insert logic live in src/db/seed so tests can reuse them.
  */

@@ -37,7 +37,7 @@ export interface SchemaSpec {
 }
 
 const HEADER =
-  '<!-- Generated from schema-spec.json by `npm run docs:db -w backend`. Do not edit by hand. -->';
+  '<!-- Generated from schema-spec.json by `docker compose --profile tools run --rm docs`. Do not edit by hand. -->';
 
 const mermaidType = (type: string): string => {
   if (type.startsWith('character varying')) return 'varchar';
@@ -58,8 +58,8 @@ export function renderErd(spec: SchemaSpec): string {
     '',
     '# Entity-relationship diagram',
     '',
-    'The eleven core SmartDesk entities as deployed by the Prisma migrations. Field details are in',
-    '[data-dictionary.md](./data-dictionary.md); rules and enumerations are in [README.md](./README.md).',
+    'The SmartDesk entities as deployed by the Prisma migrations. Field details are in',
+    '[data-dictionary.md](./data-dictionary.md); workflow and maintenance guidance is in [database.md](../database.md).',
     '',
     '```mermaid',
     'erDiagram',

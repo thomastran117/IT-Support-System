@@ -103,7 +103,7 @@ export const authRoutes =
     );
 
     // Idempotent. Stateless tokens cannot be revoked individually, so this clears the cookie only;
-    // see docs/auth.md for the accepted tradeoff.
+    // see docs/authentication.md for the accepted tradeoff.
     app.post('/logout', { preHandler: requireTrustedOrigin }, async (_req, reply) => {
       clearRefreshCookie(reply);
       return envelope('Signed out');

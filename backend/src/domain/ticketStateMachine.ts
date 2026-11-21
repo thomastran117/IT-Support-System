@@ -3,7 +3,7 @@ import type { TicketPriority, TicketStatus } from '@smartdesk/contracts';
 /**
  * The manual ticket workflow as pure data and functions (no I/O), so every edge and prerequisite is
  * unit-testable. The database CHECK constraints validate the final row; which edge was taken, and
- * whether it was legal, is decided here (see docs/database/deviations.md).
+ * whether it was legal, is decided here (see docs/api.md).
  *
  *   OPEN -> TRIAGED -> IN_PROGRESS -> RESOLVED -> CLOSED
  *   RESOLVED -> OPEN and CLOSED -> OPEN (reopen)
