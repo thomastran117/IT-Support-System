@@ -182,21 +182,21 @@ Article visibility is separate from ticket permissions. Two surfaces, split by w
 **Readers**, `/api/knowledge`: any signed-in role (anonymous is `401`). Published articles only,
 for every role, administrators included.
 
-| Method | Path                 | Purpose                                                                         |
-| ------ | -------------------- | ------------------------------------------------------------------------------- |
+| Method | Path                 | Purpose                                                                                   |
+| ------ | -------------------- | ----------------------------------------------------------------------------------------- |
 | GET    | `/api/knowledge`     | Page of summaries (`id`, `title`, `category`, `updatedAt`); `?categoryId=&limit=&offset=` |
-| GET    | `/api/knowledge/:id` | One article with `body`, `createdAt`, `updatedAt`                               |
+| GET    | `/api/knowledge/:id` | One article with `body`, `createdAt`, `updatedAt`                                         |
 
 **Authoring**, `/api/admin/knowledge`: `ADMIN` only (`403` otherwise).
 
-| Method | Path                                | Purpose                                                          |
-| ------ | ----------------------------------- | ---------------------------------------------------------------- |
-| GET    | `/api/admin/knowledge`              | All articles with `isPublished`; also filters `?published=true\|false` |
-| POST   | `/api/admin/knowledge`              | Create a **draft** (`title`, `body`, optional `categoryId`)      |
-| GET    | `/api/admin/knowledge/:id`          | One article, draft or published                                  |
-| PATCH  | `/api/admin/knowledge/:id`          | Change `title`, `body` and/or `categoryId` (`null` clears it)    |
-| POST   | `/api/admin/knowledge/:id/publish`  | Make visible to readers (idempotent)                             |
-| POST   | `/api/admin/knowledge/:id/unpublish`| Hide from readers (idempotent)                                   |
+| Method | Path                                 | Purpose                                                                |
+| ------ | ------------------------------------ | ---------------------------------------------------------------------- |
+| GET    | `/api/admin/knowledge`               | All articles with `isPublished`; also filters `?published=true\|false` |
+| POST   | `/api/admin/knowledge`               | Create a **draft** (`title`, `body`, optional `categoryId`)            |
+| GET    | `/api/admin/knowledge/:id`           | One article, draft or published                                        |
+| PATCH  | `/api/admin/knowledge/:id`           | Change `title`, `body` and/or `categoryId` (`null` clears it)          |
+| POST   | `/api/admin/knowledge/:id/publish`   | Make visible to readers (idempotent)                                   |
+| POST   | `/api/admin/knowledge/:id/unpublish` | Hide from readers (idempotent)                                         |
 
 Rules:
 
