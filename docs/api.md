@@ -175,6 +175,44 @@ Rules:
   team does not affect the others.
 - Deactivating a team does not alter tickets already routed to it.
 
+## Knowledge base
+
+Article visibility is separate from ticket permissions. Two surfaces, split by who may see drafts.
+
+**Readers**, `/api/knowledge`: any signed-in role (anonymous is `401`). Published articles only,
+for every role, administrators included.
+
+| Method | Path                 | Purpose                                                                         |
+| ------ | -------------------- | ------------------------------------------------------------------------------- |
+| GET    | `/api/knowledge`     | Page of summaries (`id`, `title`, `category`, `updatedAt`); `?categoryId=&limit=&offset=` |
+| GET    | `/api/knowledge/:id` | One article with `body`, `createdAt`, `updatedAt`                               |
+
+**Authoring**, `/api/admin/knowledge`: `ADMIN` only (`403` otherwise).
+
+| Method | Path                                | Purpose                                                          |
+| ------ | ----------------------------------- | ---------------------------------------------------------------- |
+| GET    | `/api/admin/knowledge`              | All articles with `isPublished`; also filters `?published=true\|false` |
+| POST   | `/api/admin/knowledge`              | Create a **draft** (`title`, `body`, optional `categoryId`)      |
+| GET    | `/api/admin/knowledge/:id`          | One article, draft or published                                  |
+| PATCH  | `/api/admin/knowledge/:id`          | Change `title`, `body` and/or `categoryId` (`null` clears it)    |
+| POST   | `/api/admin/knowledge/:id/publish`  | Make visible to readers (idempotent)                             |
+| POST   | `/api/admin/knowledge/:id/unpublish`| Hide from readers (idempotent)                                   |
+
+Rules:
+
+- A draft or unpublished article is `404` on the reader API, identical to an id that does not
+  exist, so its existence is not revealed. The filter is applied in the database query.
+- Lists are ordered by `updatedAt` descending then `id`, so pages are stable. `limit` is 1-50
+  (default 20); a bad `limit`, `offset` or id is `400`.
+- Title is 1-200 characters, body 1-20 000, both trimmed. A category must exist and be **active**
+  (`422` otherwise); a write that fails validation changes nothing. Publishing an article whose
+  category has since been deactivated is `409`.
+- `body` is plain text with light Markdown and is **data, not HTML**. The server strips control
+  characters and normalises line endings but does not rewrite markup, so clients must render it
+  escaped (or with a Markdown renderer that disallows raw HTML).
+- There is no delete. Recommendations reference articles through a restrictive foreign key, so
+  unpublishing is the way to retire one; historical recommendation links stay intact.
+
 ## Technician queues
 
 Staff-only (`TECHNICIAN` or `ADMIN`; employees get `403`). Scope is derived from the caller's active

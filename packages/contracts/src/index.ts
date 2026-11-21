@@ -388,3 +388,71 @@ export const approveRoutingSchema = z.strictObject({
   assigneeId: z.uuid().nullable().optional(),
   expectedVersion: z.number().int().min(1),
 });
+
+// --- Knowledge base (SD-029) -----------------------------------------------------------------
+
+export const ARTICLE_TITLE_MAX = 200;
+export const ARTICLE_BODY_MAX = 20_000;
+export const ARTICLE_PAGE_SIZE_DEFAULT = 20;
+export const ARTICLE_PAGE_SIZE_MAX = 50;
+
+/**
+ * An article as every signed-in user sees it. `body` is plain text with light Markdown: it is
+ * data, never HTML. Clients must render it escaped (or through a Markdown renderer that disallows
+ * raw HTML); the server strips control characters on write but does not rewrite markup.
+ */
+export interface KnowledgeArticleDto {
+  id: string;
+  title: string;
+  body: string;
+  category: NamedRef | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** The administrator view adds publication state. */
+export interface AdminKnowledgeArticleDto extends KnowledgeArticleDto {
+  isPublished: boolean;
+}
+
+/** List row: no body, so a page stays small. */
+export interface KnowledgeArticleSummaryDto {
+  id: string;
+  title: string;
+  category: NamedRef | null;
+  updatedAt: string;
+}
+
+export interface AdminKnowledgeArticleSummaryDto extends KnowledgeArticleSummaryDto {
+  isPublished: boolean;
+}
+
+/** `GET /api/knowledge` and `GET /api/admin/knowledge`. */
+export interface ArticlePage<T> {
+  items: T[];
+  /** Everything matching the filters, not just this page. */
+  total: number;
+  limit: number;
+  offset: number;
+  nextOffset: number | null;
+}
+
+const articleTitle = z.string().trim().min(1).max(ARTICLE_TITLE_MAX);
+const articleBody = z.string().trim().min(1).max(ARTICLE_BODY_MAX);
+
+/** Drafts are created unpublished; publishing is a separate, explicit action. */
+export const createArticleSchema = z.strictObject({
+  title: articleTitle,
+  body: articleBody,
+  categoryId: z.uuid().nullish(),
+});
+
+export const updateArticleSchema = z
+  .strictObject({
+    title: articleTitle.optional(),
+    body: articleBody.optional(),
+    categoryId: z.uuid().nullable().optional(),
+  })
+  .refine((v) => v.title !== undefined || v.body !== undefined || v.categoryId !== undefined, {
+    message: 'Provide a title, body or category',
+  });
