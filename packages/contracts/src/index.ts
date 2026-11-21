@@ -268,6 +268,35 @@ export interface TicketDetailDto extends TicketSummaryDto {
   timeline: TicketTimelineEntry[];
 }
 
+// --- Technician queues (SD-025) -------------------------------------------------------------
+
+export type QueueSortOption = 'priority' | 'age';
+
+/** One row of a technician queue. Summary fields only: no description, comments or requester. */
+export interface QueueItemDto {
+  id: string;
+  title: string;
+  status: TicketStatus;
+  priority: TicketPriority;
+  category: NamedRef | null;
+  assignee: NamedRef | null;
+  createdAt: string;
+  /** Minutes since the ticket was created, by the database clock. */
+  ageMinutes: number;
+  /** Send back as `expectedVersion` when approving routing or changing status. */
+  version: number;
+}
+
+/** `GET /api/technician/queue` and `GET /api/technician/unassigned`. */
+export interface QueuePage {
+  items: QueueItemDto[];
+  /** Everything matching the filters, not just this page. */
+  total: number;
+  limit: number;
+  offset: number;
+  nextOffset: number | null;
+}
+
 // --- Ticket transitions (SD-020) -------------------------------------------------------------
 
 export const TICKET_RESOLUTION_MAX = 5000;
