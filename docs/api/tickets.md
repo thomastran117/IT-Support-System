@@ -166,3 +166,22 @@ as `firstResponseAt` on ticket payloads (null until then).
 - Reporting: `SELECT AVG(EXTRACT(EPOCH FROM (first_response_at - created_at)) / 60) FROM tickets
 WHERE first_response_at IS NOT NULL` gives the mean minutes to first response.
 - Migration 0006 backfilled existing tickets, and the seed derives it with the same rule.
+
+## `GET /api/tickets/:id/events` (SD-022)
+
+The ticket's audit timeline, ordered by `occurred_at` then `event_id` (a total order). Returns a list
+of `TicketTimelineEntry`: `id`, `type`, `occurredAt`, `actor` and `details`. The ticket detail's
+`timeline` is the same list. Unknown, malformed and unreadable ids are the same 404 as elsewhere.
+
+| Audience                                              | Events         | Actor                      | Details                          |
+| ----------------------------------------------------- | -------------- | -------------------------- | -------------------------------- |
+| Staff in scope (admin; technician in team or backlog) | all            | the user, or null (system) | sanitized, allow-listed keys     |
+| Requester, and a technician outside their scope       | reduced, below | always null                | status and priority changes only |
+
+Requesters see `CREATED`, `STATUS_CHANGED`, `RESOLVED`, `REOPENED`, `TEAM_ASSIGNED`, `TEAM_REASSIGNED`,
+`CATEGORY_UPDATED` and `PRIORITY_UPDATED`. They never see `COMMENT_ADDED`, `AI_REVIEWED` or
+`ASSIGNEE_UPDATED`, nor record ids, actors, comment text or private notes. Full rules, the event
+catalogue and the coverage checklist are in [audit.md](../audit.md).
+
+The API offers no way to create, edit or delete events: only `GET` exists, and a database trigger
+rejects UPDATE and DELETE.
