@@ -41,57 +41,67 @@ even with clock skew between app and database.
 
 ## Concurrency strategy
 
-**Direction (SD-018 onwards): optimistic concurrency.** Prefer a version check over holding locks.
+**Optimistic concurrency (since SD-018/SD-020).** No ticket write holds a row lock while it thinks;
+every write is conditional on the `version` that was read.
 
-- `tickets.version` starts at 1 and every ticket mutation increments it (`patchTicket`,
+- `tickets.version` starts at 1 and every ticket mutation increments it (`patchTicketIfVersion`,
   `markResolved`). The API returns it as `version` on every ticket payload.
-- A writer sends the version it read. The write is a conditional `UPDATE ... WHERE version = $n`;
-  zero matching rows means someone else changed the ticket, and the caller gets a 409 to reload and
-  retry. Nothing is silently overwritten. The state-machine endpoint (SD-020) is the first to take
-  `expectedVersion`; it replaces `expectedUpdatedAt` below.
+- A mutation reads the ticket, decides, then writes with `UPDATE ... WHERE ticket_id = $id AND
+version = $read`. Zero rows changed means someone else got there first: the whole transaction
+  (status change and audit events) rolls back and the caller gets `VERSION_CONFLICT` (HTTP 409,
+  `details.currentVersion`). Nothing is overwritten and no event is orphaned. Under READ COMMITTED a
+  second writer waits for the first to commit, re-evaluates the `WHERE` and matches nothing.
+- **Callers that name a version** (`expectedVersion`, mandatory on `POST /api/tickets/:id/transitions`)
+  are never retried: their view is stale and must be reloaded. A stale version is reported before
+  any workflow error, so the client refreshes first.
+- **Callers that name none** (internal service calls with no stale view to protect) retry the whole
+  transaction on a lost race, up to 8 attempts with jittered backoff (`mutate` in
+  `ticketService.ts`), so concurrent system writers still all land without losing events.
 - Duplicate submits use the same idea: `tickets(requester_id, idempotency_key)` is unique, so two
-  racing requests with one key cannot both insert. The loser's transaction rolls back and it returns
-  the winner's ticket (`submitTicket`). No lock is taken.
+  racing requests with one key cannot both insert; the loser rolls back and returns the winner's
+  ticket (`submitTicket`).
+- A recommendation is claimed by `UPDATE ... WHERE review_status = 'PENDING'`; the reviewer who
+  matches no row gets `STALE_WRITE`, so two reviewers cannot both decide it.
+- `lockRow` (`SELECT ... FOR UPDATE`) and `expectedUpdatedAt` are gone. Millisecond JavaScript dates
+  could differ from the microsecond `updated_at`, which made them an unreliable token.
 
-**Existing services (not yet converted):** `approveRouting`, `transitionTicket` and
-`reviewRecommendation` still use the earlier scheme, which SD-020 migrates:
-
-1. Every mutation locks the ticket with `SELECT … FOR UPDATE` (`lockRow`) before reading it, so
-   concurrent writers to one ticket run one after another and each sees the previous commit.
-   Lock order is always **ticket, then recommendation**, so reviews cannot deadlock.
-2. Callers may pass `expectedUpdatedAt` (the version they last read). If the locked row differs, the
-   operation fails with `STALE_WRITE` (HTTP 409) instead of silently overwriting. Millisecond
-   JavaScript dates can differ from the microsecond column, which is why `version` replaces it.
-3. A recommendation that is no longer `PENDING` when its lock is acquired also fails with
-   `STALE_WRITE`, so two reviewers cannot both decide it.
+Lock-free also removes the lock-ordering rule: transactions touch the recommendation and the
+ticket in any order without deadlock risk (the retry loop still covers serialization failures).
 
 ## Error mapping
 
 `mapDbError` converts any failure into a `DbError` whose message is safe to return:
 
-| Cause                           | Code                                                                                   | HTTP |
-| ------------------------------- | -------------------------------------------------------------------------------------- | ---- |
-| unique violation (23505)        | `CONFLICT`                                                                             | 409  |
-| FK / restrict (23503, 23001)    | `REFERENCE`                                                                            | 409  |
-| CHECK / NOT NULL (23514, 23502) | `CONSTRAINT`                                                                           | 422  |
-| serialization / deadlock        | `RETRYABLE` (after retries)                                                            | 409  |
-| transaction timeout             | `TIMEOUT`                                                                              | 503  |
-| database unreachable            | `UNAVAILABLE`                                                                          | 503  |
-| anything else                   | `UNKNOWN` ("Internal server error")                                                    | 500  |
-| service-level                   | `VALIDATION` 422, `FORBIDDEN` 403, `NOT_FOUND` 404, `LIFECYCLE` 409, `STALE_WRITE` 409 |      |
+| Cause                           | Code                                                                                                                                                                                 | HTTP |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---- |
+| unique violation (23505)        | `CONFLICT`                                                                                                                                                                           | 409  |
+| FK / restrict (23503, 23001)    | `REFERENCE`                                                                                                                                                                          | 409  |
+| CHECK / NOT NULL (23514, 23502) | `CONSTRAINT`                                                                                                                                                                         | 422  |
+| serialization / deadlock        | `RETRYABLE` (after retries)                                                                                                                                                          | 409  |
+| transaction timeout             | `TIMEOUT`                                                                                                                                                                            | 503  |
+| database unreachable            | `UNAVAILABLE`                                                                                                                                                                        | 503  |
+| anything else                   | `UNKNOWN` ("Internal server error")                                                                                                                                                  | 500  |
+| service-level                   | `VALIDATION` 422, `FORBIDDEN` 403, `NOT_FOUND` 404, `LIFECYCLE` 409, `STALE_WRITE` 409 (recommendation), `VERSION_CONFLICT` 409, `INVALID_TRANSITION` 409, `PREREQUISITE_FAILED` 409 |      |
 
-Messages never include SQL, constraint names, connection strings or row data.
+Messages never include SQL, constraint names, connection strings or row data. The API puts the
+code in `details.code` of the error envelope so clients branch on it, never on the message.
 
 ## Authorization
 
 Services re-read the acting user (must exist and be active) and derive the role from the database,
-never from client input. Employees act only on their own tickets and cannot write internal notes;
-technicians act on unassigned tickets and on tickets of teams they belong to; admins on any. Target
-team/category must be active; an assignee must be an active technician in the assigned team (the
-composite FK from SD-007 remains as defence in depth).
+never from client input. Staff scope is the shared policy `canEditTicket` (`auth/policies.ts`), the
+same rule the HTTP layer applies: admins act on any ticket; technicians on tickets of their **active**
+teams and on the unrouted backlog, but only while they belong to at least one active team (a
+technician with no active team is denied, in the service as well as at the API). Employees act only
+on their own tickets and cannot write internal notes; the requester may reopen their own ticket.
+Target team/category must be active; an assignee must be an active technician in the assigned team
+(the composite FK from SD-007 remains as defence in depth).
 
 ## Allowed transitions
 
-`ALLOWED_TRANSITIONS` (exported for the ticket state machine, SD-020): OPEN→TRIAGED→IN_PROGRESS→
-RESOLVED→CLOSED, and RESOLVED/CLOSED→OPEN (reopen clears `resolved_at` and `resolution_summary`;
-earlier `RESOLVED` events stay in the audit trail).
+The workflow lives in `backend/src/domain/ticketStateMachine.ts` (pure, unit-tested for all 25
+status pairs). OPEN→TRIAGED→IN_PROGRESS→RESOLVED→CLOSED, and RESOLVED/CLOSED→OPEN (reopen clears
+`resolved_at` and `resolution_summary`; earlier `RESOLVED` events stay in the audit trail). TRIAGED
+and IN_PROGRESS require an approved category, a priority other than UNSET, an assigned **active** team
+and, when set, an assignee who is an active technician in that team. RESOLVED requires a nonblank
+summary; CLOSED keeps the existing one unless a new one is supplied.

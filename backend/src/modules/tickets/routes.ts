@@ -1,15 +1,18 @@
 import type { FastifyPluginAsync } from 'fastify';
 import type { PrismaClient } from '@smartdesk/db';
+import type { TicketStatus } from '@smartdesk/contracts';
 import {
   IDEMPOTENCY_KEY_HEADER,
   TICKET_DESCRIPTION_MAX,
   TICKET_PAGE_SIZE_DEFAULT,
   TICKET_PAGE_SIZE_MAX,
+  TICKET_RESOLUTION_MAX,
   TICKET_TITLE_MAX,
 } from '@smartdesk/contracts';
 import { z } from 'zod';
 import { authorizeTicket } from '../../auth/ticketAccess.js';
-import { submitTicket } from '../../db/services/ticketService.js';
+import { submitTicket, transitionTicket } from '../../db/services/ticketService.js';
+import { TICKET_STATUSES } from '../../domain/ticketStateMachine.js';
 import { HttpError, envelope } from '../../plugins/errors.js';
 import { parse } from '../../plugins/validate.js';
 import { toTicketDto } from './dto.js';
@@ -20,6 +23,13 @@ const ListQuery = z.strictObject({
   priority: z.enum(['UNSET', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).optional(),
   limit: z.coerce.number().int().min(1).max(TICKET_PAGE_SIZE_MAX).default(TICKET_PAGE_SIZE_DEFAULT),
   offset: z.coerce.number().int().min(0).default(0),
+});
+
+/** Strict, and `expectedVersion` is mandatory: a transition is always made against a known view. */
+const TransitionBody = z.strictObject({
+  to: z.enum(TICKET_STATUSES as [string, ...string[]]),
+  expectedVersion: z.number().int().min(1),
+  resolutionSummary: z.string().max(TICKET_RESOLUTION_MAX).optional(),
 });
 
 /**
@@ -74,5 +84,22 @@ export const ticketRoutes =
       const detail = await getTicketDetail(prisma, req.principal!, scope);
       if (!detail) throw new HttpError(404, 'Ticket not found');
       return envelope('Ticket', detail);
+    });
+
+    app.post('/:id/transitions', auth, async (req, reply) => {
+      const { id } = req.params as { id: string };
+      const body = parse(TransitionBody, req.body);
+      // Unreadable or unknown tickets are 404. The service then decides who may do what: staff in
+      // scope for every edge, the requester for reopening only (403 otherwise).
+      await authorizeTicket(prisma, req.principal!, id, 'read');
+      const ticket = await transitionTicket(prisma, {
+        ticketId: id,
+        actorId: req.principal!.id,
+        to: body.to as TicketStatus,
+        expectedVersion: body.expectedVersion,
+        resolutionSummary: body.resolutionSummary,
+      });
+      reply.header('cache-control', 'no-store');
+      return envelope('Ticket updated', toTicketDto(ticket));
     });
   };

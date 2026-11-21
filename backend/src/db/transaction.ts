@@ -1,4 +1,4 @@
-import { Prisma, type PrismaClient, type TransactionClient } from '@smartdesk/db';
+import type { Prisma, PrismaClient, TransactionClient } from '@smartdesk/db';
 import { isRetryable, mapDbError } from './errors.js';
 
 /** Either the shared client or a transaction handle; repositories accept both. */
@@ -44,23 +44,4 @@ export async function withTransaction<T>(
       throw mapDbError(err);
     }
   }
-}
-
-/**
- * Concurrency strategy: pessimistic row locks. Mutating services call `lockRow` first, which
- * takes `SELECT ... FOR UPDATE` inside the transaction, so concurrent writers to the same
- * ticket/recommendation queue up and see each other's committed state. Callers may also pass the
- * `updatedAt` they last read; a mismatch is surfaced as a 409 stale-write instead of a silent
- * last-write-wins.
- */
-export async function lockRow(
-  tx: TransactionClient,
-  table: 'tickets' | 'ai_recommendations',
-  id: string,
-): Promise<boolean> {
-  const idColumn = table === 'tickets' ? 'ticket_id' : 'recommendation_id';
-  const rows = await tx.$queryRaw<unknown[]>(
-    Prisma.sql`SELECT 1 FROM ${Prisma.raw(`"${table}"`)} WHERE ${Prisma.raw(`"${idColumn}"`)} = ${id}::uuid FOR UPDATE`,
-  );
-  return rows.length > 0;
 }

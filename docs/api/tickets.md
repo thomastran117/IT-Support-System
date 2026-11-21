@@ -84,3 +84,39 @@ so ids cannot be probed.
 
 AI recommendation data is not part of either view. The dedicated timeline endpoint (SD-022) will
 refine which events requesters see.
+
+## `POST /api/tickets/:id/transitions` (SD-020)
+
+Moves a ticket along the workflow and writes the status change and its audit event in one
+transaction. Body (strict):
+
+| Field               | Rules                                                          |
+| ------------------- | -------------------------------------------------------------- |
+| `to`                | `OPEN`, `TRIAGED`, `IN_PROGRESS`, `RESOLVED` or `CLOSED`       |
+| `expectedVersion`   | integer >= 1, **required**: the `version` the client last read |
+| `resolutionSummary` | optional string, at most 5000; required for `RESOLVED`         |
+
+Result: `200` with the updated `TicketDto` (new `version`). Errors:
+
+| Status | `details.code`        | Meaning                                                                           |
+| ------ | --------------------- | --------------------------------------------------------------------------------- |
+| 400    |                       | malformed body, unknown field, missing `expectedVersion`                          |
+| 401    |                       | not signed in                                                                     |
+| 403    | `FORBIDDEN`           | caller can read the ticket but may not do this (e.g. the requester triaging)      |
+| 404    |                       | unknown, malformed or unreadable id                                               |
+| 409    | `VERSION_CONFLICT`    | stale `expectedVersion`; `details.currentVersion`. Reload and retry               |
+| 409    | `INVALID_TRANSITION`  | no such edge; `details.from`, `details.to`                                        |
+| 409    | `PREREQUISITE_FAILED` | `details.missing` lists `CATEGORY`, `PRIORITY`, `TEAM`, `ACTIVE_TEAM`, `ASSIGNEE` |
+| 422    | `VALIDATION`          | blank resolution summary                                                          |
+
+Checks run in this order: 404 and 403 (who you are), `VERSION_CONFLICT` (is your view current),
+then the workflow. A failure of any kind leaves the ticket, its version and its events untouched;
+nothing is corrected silently.
+
+Allowed edges: OPEN→TRIAGED→IN_PROGRESS→RESOLVED→CLOSED and RESOLVED/CLOSED→OPEN. Anyone with work
+access (admin; technician in scope) may take any edge; the requester may only reopen. Reopening
+clears `resolved_at` and `resolution_summary`; earlier `RESOLVED` events stay in the timeline, and a
+later resolve stamps a new `resolved_at`.
+
+Routing (category, priority, team, assignee) is approved elsewhere (epic E04). Until then a ticket
+that was never routed answers `PREREQUISITE_FAILED` to TRIAGED, which is the intended gate.

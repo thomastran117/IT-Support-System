@@ -74,6 +74,7 @@ Every protected route is guarded by `app.authGuards` (`backend/src/auth/guard.ts
 | Submit a ticket (`POST /api/tickets`, always as myself)                                   | yes               | yes                                             | yes   |
 | List / read ticket                                                                        | own tickets only  | own, assigned to my active teams, or unrouted\* | all   |
 | Edit, approve routing, assign, change status                                              | no (403 on own)   | same scope as read, except tickets I requested  | all   |
+| Reopen a resolved or closed ticket (`POST .../transitions`)                               | own tickets       | same scope as edit                              | all   |
 | Comment publicly                                                                          | on tickets I read | on tickets I read                               | all   |
 | Read or author internal notes                                                             | never             | within my edit scope                            | all   |
 | Raw ticket audit events (`ticket_events`)                                                 | never (own: 403)  | within my edit scope                            | all   |
