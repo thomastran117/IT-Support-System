@@ -88,7 +88,28 @@ export interface MockTicket {
   events: MockEvent[];
 }
 
+export interface MockArticle {
+  id: string;
+  title: string;
+  body: string;
+  categoryId: string | null;
+  isPublished: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface MockApi {
+  /** The server-side knowledge articles (published and draft). */
+  knowledge: {
+    articles(): readonly MockArticle[];
+    /** Add an article directly on the "server". Returns it. */
+    seed(a: {
+      title: string;
+      body: string;
+      categoryId?: string | null;
+      isPublished?: boolean;
+    }): MockArticle;
+  };
   /** The server-side tickets (all requesters). */
   tickets(): readonly MockTicket[];
   /** Create `n` tickets owned by the employee, newest last. Returns them. */
@@ -395,9 +416,9 @@ export async function installMockApi(page: Page): Promise<MockApi> {
     { id: 't-hw', name: 'Hardware & Devices', description: null },
   ];
   const CATEGORIES = [
-    { id: 'c-hw', name: 'Hardware', description: null },
-    { id: 'c-sw', name: 'Software', description: null },
-    { id: 'c-net', name: 'Network/VPN', description: null },
+    { id: 'c0000000-0000-4000-8000-000000000001', name: 'Hardware', description: null },
+    { id: 'c0000000-0000-4000-8000-000000000002', name: 'Software', description: null },
+    { id: 'c0000000-0000-4000-8000-000000000003', name: 'Network/VPN', description: null },
   ];
   const MEMBERS: Record<string, { id: string; displayName: string }[]> = {
     't-net': [
@@ -753,7 +774,198 @@ export async function installMockApi(page: Page): Promise<MockApi> {
     return reply(route, 404, null, 'Not found');
   });
 
+  // --- Knowledge base ------------------------------------------------------------------------
+  const ARTICLE_ID = (n: number) => `a0000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  let articleSeq = 0;
+  let articleClock = Date.UTC(2026, 1, 1);
+  const articles: MockArticle[] = [];
+  const addArticle = (a: {
+    title: string;
+    body: string;
+    categoryId?: string | null;
+    isPublished?: boolean;
+  }): MockArticle => {
+    const stamp = new Date((articleClock += 60_000)).toISOString();
+    const article: MockArticle = {
+      id: ARTICLE_ID(++articleSeq),
+      title: a.title,
+      body: a.body,
+      categoryId: a.categoryId ?? null,
+      isPublished: a.isPublished ?? false,
+      createdAt: stamp,
+      updatedAt: stamp,
+    };
+    articles.push(article);
+    return article;
+  };
+  addArticle({
+    title: 'Fix a VPN that disconnects repeatedly',
+    body: 'If the VPN client drops every hour, renew the VPN profile certificate.\n\n- Sign out of the VPN client\n- Sign in again\n\nCheck that the **hardware token** has not expired.',
+    categoryId: 'c0000000-0000-4000-8000-000000000003',
+    isPublished: true,
+  });
+  addArticle({
+    title: 'Clear a printer paper jam and restart the queue',
+    body: 'Open the printer tray, remove the jammed paper and restart the print spooler.',
+    categoryId: 'c0000000-0000-4000-8000-000000000001',
+    isPublished: true,
+  });
+  addArticle({
+    title: 'Reset a forgotten or locked password',
+    body: 'Use the self-service portal to reset your password.',
+    categoryId: 'c0000000-0000-4000-8000-000000000002',
+    isPublished: true,
+  });
+  addArticle({
+    title: 'Draft: laptop onboarding checklist',
+    body: 'Work in progress. Steps for provisioning a new laptop.',
+    categoryId: 'c0000000-0000-4000-8000-000000000001',
+    isPublished: false,
+  });
+
+  const catRef = (id: string | null) => {
+    const c = CATEGORIES.find((x) => x.id === id);
+    return c ? { id: c.id, name: c.name } : null;
+  };
+  const articleSummary = (a: MockArticle) => ({
+    id: a.id,
+    title: a.title,
+    category: catRef(a.categoryId),
+    updatedAt: a.updatedAt,
+  });
+  const articleDetail = (a: MockArticle) => ({
+    ...articleSummary(a),
+    body: a.body,
+    createdAt: a.createdAt,
+  });
+  const pageOf = <T>(rows: T[], limit: number, offset: number) => ({
+    items: rows.slice(offset, offset + limit),
+    total: rows.length,
+    limit,
+    offset,
+    nextOffset: offset + limit < rows.length ? offset + limit : null,
+  });
+  const newest = (a: MockArticle, b: MockArticle) =>
+    b.updatedAt.localeCompare(a.updatedAt) || a.id.localeCompare(b.id);
+
+  await page.route(/\/api\/(admin\/)?knowledge/, async (route) => {
+    const req = route.request();
+    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors(route) });
+    if (offline) return route.abort('failed');
+    if (!session) return reply(route, 401, null, 'Authentication required');
+    const url = new URL(req.url());
+    const admin = url.pathname.startsWith('/api/admin/');
+    const path = url.pathname.replace(/^\/api\/(admin\/)?knowledge/, '');
+    const method = req.method();
+    const q = url.searchParams;
+    const limit = Number(q.get('limit') ?? 20);
+    const offset = Number(q.get('offset') ?? 0);
+    if (admin && session.role !== 'ADMIN') return reply(route, 403, null, 'Forbidden');
+    const stamp = () => new Date((articleClock += 60_000)).toISOString();
+    const active = (id: string | null | undefined) => !id || CATEGORIES.some((c) => c.id === id);
+
+    if (!admin) {
+      const visible = articles.filter((a) => a.isPublished);
+      const byCategory = (rows: MockArticle[]) =>
+        q.get('categoryId') ? rows.filter((a) => a.categoryId === q.get('categoryId')) : rows;
+      if (method === 'GET' && path === '/categories') {
+        const used = new Set(visible.map((a) => a.categoryId));
+        return reply(
+          route,
+          200,
+          CATEGORIES.filter((c) => used.has(c.id)),
+        );
+      }
+      if (method === 'GET' && path === '/search') {
+        const terms = (q.get('q') ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+        if (terms.length === 0) return reply(route, 200, pageOf([], limit, offset));
+        const inTitle = (a: MockArticle) => terms.some((t) => a.title.toLowerCase().includes(t));
+        const hits = byCategory(visible)
+          .filter((a) => terms.every((t) => `${a.title} ${a.body}`.toLowerCase().includes(t)))
+          .sort((a, b) => Number(inTitle(b)) - Number(inTitle(a)) || newest(a, b))
+          .map((a) => ({
+            id: a.id,
+            title: a.title,
+            category: catRef(a.categoryId),
+            preview: a.body.replace(/\s+/g, ' ').slice(0, 200),
+            rank: 1,
+          }));
+        return reply(route, 200, pageOf(hits, limit, offset));
+      }
+      if (method === 'GET' && path === '') {
+        const rows = byCategory(visible).sort(newest).map(articleSummary);
+        return reply(route, 200, pageOf(rows, limit, offset));
+      }
+      const one = /^\/([^/]+)$/.exec(path);
+      const found = one ? visible.find((a) => a.id === one[1]) : undefined;
+      if (method === 'GET' && one) {
+        return found
+          ? reply(route, 200, articleDetail(found))
+          : reply(route, 404, null, 'Article not found');
+      }
+      return reply(route, 404, null, 'Not found');
+    }
+
+    // Administrator surface.
+    const withState = (a: MockArticle) => ({ ...articleDetail(a), isPublished: a.isPublished });
+    if (method === 'GET' && path === '') {
+      const published = q.get('published');
+      const rows = articles
+        .filter((a) => published === null || a.isPublished === (published === 'true'))
+        .sort(newest)
+        .map((a) => ({ ...articleSummary(a), isPublished: a.isPublished }));
+      return reply(route, 200, pageOf(rows, limit, offset));
+    }
+    if (method === 'POST' && path === '') {
+      const b = req.postDataJSON() as { title?: string; body?: string; categoryId?: string | null };
+      if (!b.title?.trim() || !b.body?.trim()) return reply(route, 400, null, 'Validation failed');
+      if (!active(b.categoryId)) return reply(route, 422, null, 'Category is unknown or inactive');
+      const created = addArticle({
+        title: b.title.trim(),
+        body: b.body.trim(),
+        categoryId: b.categoryId,
+      });
+      return reply(route, 201, withState(created), 'Article created');
+    }
+    const match = /^\/([^/]+)(?:\/(publish|unpublish))?$/.exec(path);
+    const target = match ? articles.find((a) => a.id === match[1]) : undefined;
+    if (!match || !target) return reply(route, 404, null, 'Article not found');
+    if (method === 'GET' && !match[2]) return reply(route, 200, withState(target));
+    if (method === 'PATCH' && !match[2]) {
+      const b = req.postDataJSON() as { title?: string; body?: string; categoryId?: string | null };
+      if (b.title !== undefined && !b.title.trim()) {
+        return reply(route, 400, null, 'Validation failed');
+      }
+      if (b.body !== undefined && !b.body.trim()) {
+        return reply(route, 400, null, 'Validation failed');
+      }
+      if (b.categoryId !== undefined && !active(b.categoryId)) {
+        return reply(route, 422, null, 'Category is unknown or inactive');
+      }
+      if (b.title !== undefined) target.title = b.title.trim();
+      if (b.body !== undefined) target.body = b.body.trim();
+      if (b.categoryId !== undefined) target.categoryId = b.categoryId;
+      target.updatedAt = stamp();
+      return reply(route, 200, withState(target), 'Article updated');
+    }
+    if (method === 'POST' && match[2]) {
+      const want = match[2] === 'publish';
+      if (target.isPublished !== want) {
+        target.isPublished = want;
+        target.updatedAt = stamp();
+      }
+      return reply(
+        route,
+        200,
+        withState(target),
+        want ? 'Article published' : 'Article unpublished',
+      );
+    }
+    return reply(route, 404, null, 'Not found');
+  });
+
   return {
+    knowledge: { articles: () => articles, seed: addArticle },
     tickets: () => tickets,
     seedTickets: (n, requesterId = ACCOUNTS.employee.id) =>
       Array.from({ length: n }, (_, i) =>

@@ -3,6 +3,7 @@ import type {
   AdminKnowledgeArticleDto,
   AdminKnowledgeArticleSummaryDto,
   ArticlePage,
+  CategoryRefDto,
   KnowledgeArticleDto,
   KnowledgeArticleSummaryDto,
   KnowledgeSearchResultDto,
@@ -117,6 +118,19 @@ export function createKnowledgeService(prisma: PrismaClient) {
         offset,
       });
       return toPage(hits, total, limit, offset);
+    },
+
+    /**
+     * Filter choices for readers: active categories that currently have at least one published
+     * article. Employees cannot read /api/categories, and this never reveals a category that only
+     * holds drafts.
+     */
+    async listCategories(): Promise<CategoryRefDto[]> {
+      const rows = await prisma.ticketCategory.findMany({
+        where: { isActive: true, articles: { some: { isPublished: true } } },
+        orderBy: { name: 'asc' },
+      });
+      return rows.map((c) => ({ id: c.id, name: c.name, description: c.description }));
     },
 
     async getPublished(id: string): Promise<KnowledgeArticleDto> {

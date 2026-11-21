@@ -56,6 +56,10 @@ export const knowledgeRoutes =
       );
     });
 
+    app.get('/categories', signedIn, async () =>
+      envelope('Categories', await service.listCategories()),
+    );
+
     // Registered before `/:id`; `search` is not a valid uuid so the two can never collide.
     app.get('/search', signedIn, async (req) => {
       const q = parse(SearchQuery, req.query);
