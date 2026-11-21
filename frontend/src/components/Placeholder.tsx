@@ -1,9 +1,6 @@
 export function Placeholder({ title, description }: { title: string; description: string }) {
   return (
-    <section
-      aria-labelledby="page-title"
-      className="app-card p-6"
-    >
+    <section aria-labelledby="page-title" className="app-card p-6">
       <h1 id="page-title" className="text-2xl font-semibold">
         {title}
       </h1>

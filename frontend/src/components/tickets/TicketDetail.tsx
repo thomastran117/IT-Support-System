@@ -178,7 +178,10 @@ export function TicketDetail() {
       </p>
 
       {created && (
-        <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950">
+        <div
+          role="status"
+          className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950"
+        >
           <p className="font-semibold">Your ticket was submitted.</p>
           <p className="mt-1">
             Your tracking ID is{' '}
@@ -191,7 +194,10 @@ export function TicketDetail() {
       )}
 
       {refreshFailed && (
-        <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+        <p
+          role="status"
+          className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"
+        >
           Unable to check for updates right now. What you see may be out of date.{' '}
           <button type="button" className="underline" onClick={() => void load(true)}>
             Check again
@@ -200,7 +206,10 @@ export function TicketDetail() {
       )}
 
       <header className="app-card space-y-3 p-5 sm:p-6">
-        <h1 id="page-title" className="text-2xl font-bold tracking-[-0.025em] text-slate-950 sm:text-3xl">
+        <h1
+          id="page-title"
+          className="text-2xl font-bold tracking-[-0.025em] text-slate-950 sm:text-3xl"
+        >
           {ticket.title}
         </h1>
         <p className="flex flex-wrap items-center gap-3 text-sm">
@@ -261,7 +270,10 @@ export function TicketDetail() {
       </section>
 
       <section aria-labelledby="conversation-title" className="app-card space-y-4 p-5 sm:p-6">
-        <h2 id="conversation-title" className="flex items-center gap-2 text-lg font-bold text-slate-950">
+        <h2
+          id="conversation-title"
+          className="flex items-center gap-2 text-lg font-bold text-slate-950"
+        >
           <MessageSquareText aria-hidden="true" size={19} className="text-blue-700" />
           Conversation
         </h2>

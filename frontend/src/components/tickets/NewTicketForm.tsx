@@ -102,7 +102,12 @@ export function NewTicketForm() {
 
       <ErrorSummary ref={summaryRef} items={summary} />
 
-      <form onSubmit={onSubmit} noValidate className="app-card space-y-6 p-5 sm:p-7" aria-busy={busy}>
+      <form
+        onSubmit={onSubmit}
+        noValidate
+        className="app-card space-y-6 p-5 sm:p-7"
+        aria-busy={busy}
+      >
         <div>
           <label htmlFor="title" className="app-label">
             Title

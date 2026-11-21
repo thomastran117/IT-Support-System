@@ -38,7 +38,10 @@ export function PageHeader({
             {eyebrow}
           </p>
         )}
-        <h1 id="page-title" className="text-2xl font-bold tracking-[-0.025em] text-slate-950 sm:text-3xl">
+        <h1
+          id="page-title"
+          className="text-2xl font-bold tracking-[-0.025em] text-slate-950 sm:text-3xl"
+        >
           {title}
         </h1>
         {description && <p className="mt-2 max-w-2xl text-slate-600">{description}</p>}
@@ -90,7 +93,9 @@ export function EmptyState({
         <Icon aria-hidden="true" size={22} />
       </span>
       <p className="mt-4 font-semibold text-slate-900">{title}</p>
-      {description && <div className="mx-auto mt-2 max-w-md text-sm text-slate-600">{description}</div>}
+      {description && (
+        <div className="mx-auto mt-2 max-w-md text-sm text-slate-600">{description}</div>
+      )}
       {action && <div className="mt-5">{action}</div>}
     </div>
   );

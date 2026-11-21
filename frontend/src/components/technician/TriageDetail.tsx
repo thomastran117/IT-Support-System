@@ -282,7 +282,10 @@ export function TriageDetail() {
       </div>
 
       <header className="app-card space-y-3 p-5 sm:p-6">
-        <h1 id="page-title" className="text-2xl font-bold tracking-[-0.025em] text-slate-950 sm:text-3xl">
+        <h1
+          id="page-title"
+          className="text-2xl font-bold tracking-[-0.025em] text-slate-950 sm:text-3xl"
+        >
           {ticket.title}
         </h1>
         <p className="flex flex-wrap items-center gap-3 text-sm">

@@ -123,7 +123,11 @@ export function TechnicianDashboard() {
         description="Triage incoming requests, manage team workload, and keep service moving."
       />
 
-      <div role="tablist" aria-label="Queues" className="app-card flex flex-wrap gap-1.5 p-1.5 sm:w-fit">
+      <div
+        role="tablist"
+        aria-label="Queues"
+        className="app-card flex flex-wrap gap-1.5 p-1.5 sm:w-fit"
+      >
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -163,71 +167,71 @@ export function TechnicianDashboard() {
             Filter queue
           </div>
           <div className="grid gap-4 sm:grid-cols-2 xl:max-w-4xl xl:grid-cols-3">
-          {needsTeam && (
+            {needsTeam && (
+              <div>
+                <label htmlFor="filter-team" className="app-label">
+                  Team
+                </label>
+                <select
+                  id="filter-team"
+                  value={teamId}
+                  onChange={(e) => {
+                    setTeamId(e.target.value);
+                    setOffset(0);
+                  }}
+                  className={inputClass}
+                >
+                  {(teams ?? []).map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div>
-              <label htmlFor="filter-team" className="app-label">
-                Team
+              <label htmlFor="filter-priority" className="app-label">
+                Priority
               </label>
               <select
-                id="filter-team"
-                value={teamId}
+                id="filter-priority"
+                value={priority}
                 onChange={(e) => {
-                  setTeamId(e.target.value);
+                  setPriority(e.target.value as TicketPriority | '');
                   setOffset(0);
                 }}
                 className={inputClass}
               >
-                {(teams ?? []).map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
+                <option value="">All priorities</option>
+                {[...APPROVABLE].reverse().map((p) => (
+                  <option key={p} value={p}>
+                    {PRIORITY_LABEL[p]}
+                  </option>
+                ))}
+                <option value="UNSET">{PRIORITY_LABEL.UNSET}</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="filter-category" className="app-label">
+                Category
+              </label>
+              <select
+                id="filter-category"
+                value={categoryId}
+                onChange={(e) => {
+                  setCategoryId(e.target.value);
+                  setOffset(0);
+                }}
+                className={inputClass}
+              >
+                <option value="">All categories</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
                   </option>
                 ))}
               </select>
             </div>
-          )}
-          <div>
-            <label htmlFor="filter-priority" className="app-label">
-              Priority
-            </label>
-            <select
-              id="filter-priority"
-              value={priority}
-              onChange={(e) => {
-                setPriority(e.target.value as TicketPriority | '');
-                setOffset(0);
-              }}
-              className={inputClass}
-            >
-              <option value="">All priorities</option>
-              {[...APPROVABLE].reverse().map((p) => (
-                <option key={p} value={p}>
-                  {PRIORITY_LABEL[p]}
-                </option>
-              ))}
-              <option value="UNSET">{PRIORITY_LABEL.UNSET}</option>
-            </select>
-          </div>
-          <div>
-            <label htmlFor="filter-category" className="app-label">
-              Category
-            </label>
-            <select
-              id="filter-category"
-              value={categoryId}
-              onChange={(e) => {
-                setCategoryId(e.target.value);
-                setOffset(0);
-              }}
-              className={inputClass}
-            >
-              <option value="">All categories</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
           </div>
         </form>
 
@@ -239,7 +243,10 @@ export function TechnicianDashboard() {
         )}
 
         {error && (
-          <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-950">
+          <div
+            role="alert"
+            className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-950"
+          >
             <p>{error}</p>
             <button type="button" onClick={() => void load()} className={`${secondaryButton} mt-3`}>
               Try again
@@ -254,7 +261,14 @@ export function TechnicianDashboard() {
         )}
 
         {page && page.items.length === 0 && !error && (
-          <EmptyState title={filtered ? 'No tickets match these filters.' : 'This queue is empty.'} description={filtered ? 'Adjust the filters to broaden the results.' : 'New requests will appear here as they arrive.'} />
+          <EmptyState
+            title={filtered ? 'No tickets match these filters.' : 'This queue is empty.'}
+            description={
+              filtered
+                ? 'Adjust the filters to broaden the results.'
+                : 'New requests will appear here as they arrive.'
+            }
+          />
         )}
 
         {page && page.items.length > 0 && (
@@ -291,7 +305,10 @@ export function TechnicianDashboard() {
                         <PriorityChip priority={t.priority} />
                       </td>
                       <th scope="row" data-primary="true" className="font-semibold text-slate-950">
-                        <Link href={`/technician/tickets/${t.id}`} className="hover:text-blue-700 hover:underline">
+                        <Link
+                          href={`/technician/tickets/${t.id}`}
+                          className="hover:text-blue-700 hover:underline"
+                        >
                           {t.title}
                         </Link>
                       </th>

@@ -171,11 +171,17 @@ export function UserAdmin() {
           Add a user
         </h2>
         {createError && (
-          <p role="alert" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-rose-900">
+          <p
+            role="alert"
+            className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-rose-900"
+          >
             {createError}
           </p>
         )}
-        <form onSubmit={onCreate} className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4 xl:items-end">
+        <form
+          onSubmit={onCreate}
+          className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4 xl:items-end"
+        >
           <div>
             <label htmlFor="new-email" className="app-label">
               Email
@@ -200,11 +206,7 @@ export function UserAdmin() {
               ))}
             </select>
           </div>
-          <button
-            type="submit"
-            disabled={busy}
-            className="app-button-primary"
-          >
+          <button type="submit" disabled={busy} className="app-button-primary">
             Create user
           </button>
         </form>
@@ -246,8 +248,12 @@ export function UserAdmin() {
                   const self = u.id === me?.id;
                   return (
                     <tr key={u.id} className="border-t border-slate-200">
-                      <td data-primary="true" className="font-semibold text-slate-950">{u.displayName}</td>
-                      <td data-secondary="true" className="text-slate-500">{u.email}</td>
+                      <td data-primary="true" className="font-semibold text-slate-950">
+                        {u.displayName}
+                      </td>
+                      <td data-secondary="true" className="text-slate-500">
+                        {u.email}
+                      </td>
                       <td data-label="Role">
                         <select
                           aria-label={`Role for ${u.email}`}
@@ -263,27 +269,35 @@ export function UserAdmin() {
                           ))}
                         </select>
                       </td>
-                      <td data-label="Status"><span className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold ${u.isActive ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-slate-100 text-slate-600'}`}>{u.isActive ? 'Active' : 'Inactive'}</span></td>
-                      <td data-label="Actions"><div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          aria-label={`${u.isActive ? 'Deactivate' : 'Activate'} ${u.email}`}
-                          disabled={busy || (self && u.isActive)}
-                          onClick={() => void toggleActive(u)}
-                          className={smallButton}
+                      <td data-label="Status">
+                        <span
+                          className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold ${u.isActive ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-slate-100 text-slate-600'}`}
                         >
-                          {u.isActive ? 'Deactivate' : 'Activate'}
-                        </button>
-                        <button
-                          type="button"
-                          aria-label={`Reset password for ${u.email}`}
-                          disabled={busy || self}
-                          onClick={() => void resetPassword(u)}
-                          className={smallButton}
-                        >
-                          Reset password
-                        </button>
-                      </div></td>
+                          {u.isActive ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td data-label="Actions">
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            aria-label={`${u.isActive ? 'Deactivate' : 'Activate'} ${u.email}`}
+                            disabled={busy || (self && u.isActive)}
+                            onClick={() => void toggleActive(u)}
+                            className={smallButton}
+                          >
+                            {u.isActive ? 'Deactivate' : 'Activate'}
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`Reset password for ${u.email}`}
+                            disabled={busy || self}
+                            onClick={() => void resetPassword(u)}
+                            className={smallButton}
+                          >
+                            Reset password
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}

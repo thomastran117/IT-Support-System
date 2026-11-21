@@ -74,7 +74,10 @@ export const ErrorSummary = forwardRef<HTMLDivElement, { items: SummaryItem[] }>
 export function Counter({ id, length, max }: { id: string; length: number; max: number }) {
   const over = length > max;
   return (
-    <p id={id} className={`mt-1.5 text-sm ${over ? 'font-medium text-rose-700' : 'text-slate-500'}`}>
+    <p
+      id={id}
+      className={`mt-1.5 text-sm ${over ? 'font-medium text-rose-700' : 'text-slate-500'}`}
+    >
       {length.toLocaleString('en')} of {max.toLocaleString('en')} characters
       {over ? ' (too long)' : ''}
     </p>

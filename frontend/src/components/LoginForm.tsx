@@ -62,16 +62,27 @@ export function LoginForm() {
   return (
     <div className="grid min-h-screen bg-white lg:grid-cols-[minmax(22rem,0.9fr)_minmax(30rem,1.1fr)]">
       <section className="relative hidden overflow-hidden bg-[#0b1f3a] p-10 text-white lg:flex lg:flex-col xl:p-14">
-        <div aria-hidden="true" className="absolute -top-36 -right-28 size-[30rem] rounded-full bg-blue-500/15 blur-3xl" />
-        <div aria-hidden="true" className="absolute -bottom-40 -left-20 size-[26rem] rounded-full bg-cyan-400/10 blur-3xl" />
-        <div className="relative"><BrandMark /></div>
+        <div
+          aria-hidden="true"
+          className="absolute -top-36 -right-28 size-[30rem] rounded-full bg-blue-500/15 blur-3xl"
+        />
+        <div
+          aria-hidden="true"
+          className="absolute -bottom-40 -left-20 size-[26rem] rounded-full bg-cyan-400/10 blur-3xl"
+        />
+        <div className="relative">
+          <BrandMark />
+        </div>
         <div className="relative my-auto max-w-lg py-16">
-          <p className="text-sm font-bold tracking-[0.14em] text-blue-300 uppercase">Support operations</p>
+          <p className="text-sm font-bold tracking-[0.14em] text-blue-300 uppercase">
+            Support operations
+          </p>
           <h2 className="mt-4 text-4xl font-bold tracking-[-0.04em] xl:text-5xl">
             Every support request, clearly organized.
           </h2>
           <p className="mt-5 text-lg leading-8 text-slate-300">
-            SmartDesk gives employees and IT teams one dependable place to report, route, and resolve issues.
+            SmartDesk gives employees and IT teams one dependable place to report, route, and
+            resolve issues.
           </p>
           <ul className="mt-9 space-y-4 text-sm text-slate-200">
             {[
@@ -91,28 +102,75 @@ export function LoginForm() {
         <p className="relative text-xs text-slate-300">Secure internal IT support workspace</p>
       </section>
 
-      <section aria-labelledby="login-title" className="flex min-h-screen items-center justify-center bg-[#f4f7fb] p-5 sm:p-8">
+      <section
+        aria-labelledby="login-title"
+        className="flex min-h-screen items-center justify-center bg-[#f4f7fb] p-5 sm:p-8"
+      >
         <div className="w-full max-w-md">
-          <div className="mb-8 lg:hidden"><BrandMark /></div>
+          <div className="mb-8 lg:hidden">
+            <BrandMark />
+          </div>
           <div className="app-card p-6 sm:p-8">
             <span className="grid size-11 place-items-center rounded-xl bg-blue-50 text-blue-700">
               <Headphones aria-hidden="true" size={22} />
             </span>
-            <h1 id="login-title" className="mt-5 text-2xl font-bold tracking-[-0.025em] text-slate-950">Sign in</h1>
+            <h1
+              id="login-title"
+              className="mt-5 text-2xl font-bold tracking-[-0.025em] text-slate-950"
+            >
+              Sign in
+            </h1>
             <p className="mt-2 text-sm text-slate-600">Access your SmartDesk support workspace.</p>
             {banner && (
-              <p role="alert" className="mt-5 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">{banner}</p>
+              <p
+                role="alert"
+                className="mt-5 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900"
+              >
+                {banner}
+              </p>
             )}
             <form noValidate onSubmit={onSubmit} aria-busy={pending} className="mt-6 space-y-5">
               <div>
-                <label htmlFor="email" className="app-label">Email</label>
-                <input ref={emailRef} id="email" name="email" type="email" autoComplete="username" required aria-invalid={errors.email ? true : undefined} aria-describedby={errors.email ? 'email-error' : undefined} className="app-field" />
-                {errors.email && <p id="email-error" className="mt-1.5 text-sm text-rose-700">{errors.email}</p>}
+                <label htmlFor="email" className="app-label">
+                  Email
+                </label>
+                <input
+                  ref={emailRef}
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="username"
+                  required
+                  aria-invalid={errors.email ? true : undefined}
+                  aria-describedby={errors.email ? 'email-error' : undefined}
+                  className="app-field"
+                />
+                {errors.email && (
+                  <p id="email-error" className="mt-1.5 text-sm text-rose-700">
+                    {errors.email}
+                  </p>
+                )}
               </div>
               <div>
-                <label htmlFor="password" className="app-label">Password</label>
-                <input ref={passwordRef} id="password" name="password" type="password" autoComplete="current-password" required aria-invalid={errors.password ? true : undefined} aria-describedby={errors.password ? 'password-error' : undefined} className="app-field" />
-                {errors.password && <p id="password-error" className="mt-1.5 text-sm text-rose-700">{errors.password}</p>}
+                <label htmlFor="password" className="app-label">
+                  Password
+                </label>
+                <input
+                  ref={passwordRef}
+                  id="password"
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  aria-invalid={errors.password ? true : undefined}
+                  aria-describedby={errors.password ? 'password-error' : undefined}
+                  className="app-field"
+                />
+                {errors.password && (
+                  <p id="password-error" className="mt-1.5 text-sm text-rose-700">
+                    {errors.password}
+                  </p>
+                )}
               </div>
               <button type="submit" disabled={pending} className="app-button-primary w-full">
                 <LockKeyhole aria-hidden="true" size={16} />

@@ -31,7 +31,8 @@ const NAVIGATION: Record<Role, NavItem[]> = {
       href: '/employee',
       label: 'My tickets',
       icon: TicketCheck,
-      active: (path) => path === '/employee' || (/^\/employee\/tickets\//.test(path) && !path.endsWith('/new')),
+      active: (path) =>
+        path === '/employee' || (/^\/employee\/tickets\//.test(path) && !path.endsWith('/new')),
     },
     {
       href: '/employee/tickets/new',
@@ -88,15 +89,7 @@ function Navigation({ role, onNavigate }: { role: Role; onNavigate?: () => void 
   );
 }
 
-function UserPanel({
-  name,
-  role,
-  onSignOut,
-}: {
-  name: string;
-  role: Role;
-  onSignOut: () => void;
-}) {
+function UserPanel({ name, role, onSignOut }: { name: string; role: Role; onSignOut: () => void }) {
   return (
     <div className="border-t border-white/10 pt-4">
       <div className="flex items-center gap-3 px-1">
@@ -251,7 +244,11 @@ export function NavShell({ children }: { children: ReactNode }) {
                 <Navigation role={user.role} onNavigate={() => setOpen(false)} />
               </nav>
               <div className="mt-auto">
-                <UserPanel name={user.displayName} role={user.role} onSignOut={() => void onSignOut()} />
+                <UserPanel
+                  name={user.displayName}
+                  role={user.role}
+                  onSignOut={() => void onSignOut()}
+                />
               </div>
             </div>
           </div>
