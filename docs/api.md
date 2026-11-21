@@ -143,6 +143,37 @@ Rules:
   team does not affect the others.
 - Deactivating a team does not alter tickets already routed to it.
 
+## Technician queues
+
+Staff-only (`TECHNICIAN` or `ADMIN`; employees get `403`). Scope is derived from the caller's active
+team memberships, never from the request. Both endpoints return `{ items, total, limit, offset,
+nextOffset }`, where `total` counts every match for the filters. Items carry summary fields only
+(`id`, `title`, `status`, `priority`, `category`, `assignee`, `createdAt`, `ageMinutes`, `version`):
+no description, comments or requester. Unknown query parameters are rejected with `400`.
+
+| Method | Path                         | Purpose                                                       |
+| ------ | ---------------------------- | ------------------------------------------------------------- |
+| GET    | `/api/technician/queue`      | Unresolved tickets of one team (query Q02); `teamId` required |
+| GET    | `/api/technician/unassigned` | OPEN tickets with no team yet (query Q03)                     |
+
+Access rules:
+
+- **Team queue:** a technician must belong to the (active) team, otherwise `403`; an administrator may
+  read any team (`404` if it does not exist).
+- **Unassigned backlog:** administrators, and technicians who belong to at least one active team. It
+  is the same list for every triager regardless of team. A technician with no team gets `403`.
+
+Filters (all optional, combinable): `priority` (comma list, e.g. `CRITICAL,HIGH`), `categoryId`,
+`createdFrom` (inclusive) and `createdTo` (exclusive) as ISO 8601 timestamps with offset, `limit`
+(1–100, default 20) and `offset`. The team queue also accepts `status` (comma list; defaults to
+`OPEN,TRIAGED,IN_PROGRESS`) and `mine=true` (only tickets assigned to the caller). The backlog is
+`OPEN` by definition and has no `status` filter.
+
+Ordering is deterministic, ties always break on creation time then id, so pages never repeat or skip:
+`sort=priority` (team queue default) is `CRITICAL`, `HIGH`, `MEDIUM`, `LOW`, `UNSET`, oldest first
+within a priority; `sort=age` (backlog default) is oldest first. A ticket leaves the backlog and enters
+a team queue as soon as routing is approved, and moves between team queues on reassignment.
+
 ## Common status codes
 
 - `400`: malformed or unexpected input.

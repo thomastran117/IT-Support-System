@@ -64,28 +64,71 @@ export async function listEmployeeTickets(
 
 // --- Q02 --------------------------------------------------------------------------------------
 
+/** Optional, bounded filters shared by Q02 and Q03. Every field defaults to "no restriction". */
+export interface QueueFilter {
+  /** Q02 only; defaults to the unresolved set. Q03 is OPEN by definition. */
+  statuses?: readonly string[];
+  priorities?: readonly string[];
+  categoryId?: string;
+  /** Inclusive lower / exclusive upper bound on creation time. */
+  createdFrom?: Date;
+  createdTo?: Date;
+  /** Q02 only: restrict to one assignee (the "assigned to me" view). */
+  assigneeId?: string;
+}
+
+export type QueueSort = 'priority' | 'age';
+
 export interface QueueRow {
   ticketId: string;
   title: string;
   priority: string;
   status: string;
   assigneeId: string | null;
+  assigneeName: string | null;
+  categoryId: string | null;
+  categoryName: string | null;
   createdAt: Date;
+  version: number;
+  /** Minutes since creation, measured by the database clock. */
+  ageMinutes: number;
 }
 
-/** Q02: unresolved tickets of one team. Admins may read any team; technicians only their own. */
+const minutes = (v: { toString(): string } | number) => Number(v.toString());
+
+async function authorizeTeamQueue(prisma: PrismaClient, actorId: string, teamId: string) {
+  const actor = await loadActor(prisma, actorId);
+  if (actor.role === 'EMPLOYEE') throw forbiddenError();
+  if (actor.role === 'TECHNICIAN') {
+    // Membership of an *active* team: an inactive team's queue is closed to technicians.
+    const member = await prisma.teamMember.count({
+      where: { teamId, userId: actor.id, team: { isActive: true } },
+    });
+    if (member === 0) throw forbiddenError();
+  }
+  return actor;
+}
+
+const teamArgs = (teamId: string, f: QueueFilter) => [
+  teamId,
+  f.statuses ? [...f.statuses] : null,
+  f.priorities ? [...f.priorities] : null,
+  f.categoryId ?? null,
+  f.createdFrom ?? null,
+  f.createdTo ?? null,
+  f.assigneeId ?? null,
+];
+
+/** Q02: unresolved tickets of one team. Admins may read any team; technicians only their own active teams. */
 export async function listTeamQueue(
   prisma: PrismaClient,
   actorId: string,
   teamId: string,
   page?: PageRequest,
+  filter: QueueFilter = {},
+  sort: QueueSort = 'priority',
 ): Promise<QueueRow[]> {
-  const actor = await loadActor(prisma, actorId);
-  if (actor.role === 'EMPLOYEE') throw forbiddenError();
-  if (actor.role === 'TECHNICIAN') {
-    const member = await prisma.teamMember.count({ where: { teamId, userId: actor.id } });
-    if (member === 0) throw forbiddenError();
-  }
+  await authorizeTeamQueue(prisma, actorId, teamId);
   const { limit, offset } = normalizePage(page);
   const rows = await prisma.$queryRawUnsafe<
     {
@@ -94,17 +137,48 @@ export async function listTeamQueue(
       priority: string;
       status: string;
       assignee_id: string | null;
+      assignee_name: string | null;
+      category_id: string | null;
+      category_name: string | null;
       created_at: Date;
+      version: number;
+      age_minutes: { toString(): string } | number;
     }[]
-  >(paginated(loadSql('queries/Q02_team_queue.sql'), 1), teamId, limit, offset);
+  >(
+    paginated(loadSql('queries/Q02_team_queue.sql'), 8),
+    ...teamArgs(teamId, filter),
+    sort,
+    limit,
+    offset,
+  );
   return rows.map((r) => ({
     ticketId: r.ticket_id,
     title: r.title,
     priority: r.priority,
     status: r.status,
     assigneeId: r.assignee_id,
+    assigneeName: r.assignee_name,
+    categoryId: r.category_id,
+    categoryName: r.category_name,
     createdAt: r.created_at,
+    version: r.version,
+    ageMinutes: minutes(r.age_minutes),
   }));
+}
+
+/** Total tickets matching the same team and filters, for pagination. Same authorization as Q02. */
+export async function countTeamQueue(
+  prisma: PrismaClient,
+  actorId: string,
+  teamId: string,
+  filter: QueueFilter = {},
+): Promise<number> {
+  await authorizeTeamQueue(prisma, actorId, teamId);
+  const [row] = await prisma.$queryRawUnsafe<{ total: number }[]>(
+    loadSql('queries/Q02_team_queue_count.sql'),
+    ...teamArgs(teamId, filter),
+  );
+  return row?.total ?? 0;
 }
 
 // --- Q03 --------------------------------------------------------------------------------------
@@ -113,36 +187,81 @@ export interface BacklogRow {
   ticketId: string;
   title: string;
   priority: string;
+  status: string;
+  categoryId: string | null;
+  categoryName: string | null;
   createdAt: Date;
+  version: number;
   /** Minutes since creation, measured by the database clock. */
   ageMinutes: number;
 }
 
-/** Q03: OPEN tickets with no team (staff only). */
+const backlogArgs = (f: QueueFilter) => [
+  f.priorities ? [...f.priorities] : null,
+  f.categoryId ?? null,
+  f.createdFrom ?? null,
+  f.createdTo ?? null,
+];
+
+async function authorizeBacklog(prisma: PrismaClient, actorId: string) {
+  const actor = await loadActor(prisma, actorId);
+  if (actor.role === 'EMPLOYEE') throw forbiddenError();
+  return actor;
+}
+
+/** Q03: OPEN tickets with no team (staff only). Oldest first unless `sort` is 'priority'. */
 export async function listUnassignedBacklog(
   prisma: PrismaClient,
   actorId: string,
   page?: PageRequest,
+  filter: QueueFilter = {},
+  sort: QueueSort = 'age',
 ): Promise<BacklogRow[]> {
-  const actor = await loadActor(prisma, actorId);
-  if (actor.role === 'EMPLOYEE') throw forbiddenError();
+  await authorizeBacklog(prisma, actorId);
   const { limit, offset } = normalizePage(page);
   const rows = await prisma.$queryRawUnsafe<
     {
       ticket_id: string;
       title: string;
       priority: string;
+      status: string;
+      category_id: string | null;
+      category_name: string | null;
       created_at: Date;
+      version: number;
       age_minutes: { toString(): string } | number;
     }[]
-  >(paginated(loadSql('queries/Q03_unassigned_backlog.sql'), 0), limit, offset);
+  >(
+    paginated(loadSql('queries/Q03_unassigned_backlog.sql'), 5),
+    ...backlogArgs(filter),
+    sort,
+    limit,
+    offset,
+  );
   return rows.map((r) => ({
     ticketId: r.ticket_id,
     title: r.title,
     priority: r.priority,
+    status: r.status,
+    categoryId: r.category_id,
+    categoryName: r.category_name,
     createdAt: r.created_at,
-    ageMinutes: Number(r.age_minutes.toString()),
+    version: r.version,
+    ageMinutes: minutes(r.age_minutes),
   }));
+}
+
+export async function countUnassignedBacklog(
+  prisma: PrismaClient,
+  actorId: string,
+  filter: QueueFilter = {},
+): Promise<number> {
+  await authorizeBacklog(prisma, actorId);
+  const [row] = await prisma.$queryRawUnsafe<{ total: number }[]>(
+    loadSql('queries/Q03_unassigned_backlog_count.sql'),
+    ...backlogArgs(filter),
+  );
+  return row?.total ?? 0;
 }
 
 // --- Q04 --------------------------------------------------------------------------------------
