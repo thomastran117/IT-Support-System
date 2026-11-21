@@ -120,3 +120,49 @@ later resolve stamps a new `resolved_at`.
 
 Routing (category, priority, team, assignee) is approved elsewhere (epic E04). Until then a ticket
 that was never routed answers `PREREQUISITE_FAILED` to TRIAGED, which is the intended gate.
+
+## `GET` and `POST /api/tickets/:id/comments` (SD-021)
+
+A conversation is public replies plus staff-only internal notes. Comments are **append-only**: there is
+no edit or delete endpoint, and a database trigger rejects UPDATE and DELETE.
+
+`POST` body (strict; author and timestamps are always server-assigned):
+
+| Field        | Rules                              |
+| ------------ | ---------------------------------- |
+| `body`       | string, trimmed, 1-5000 characters |
+| `isInternal` | boolean, default `false`           |
+
+Result `201` with the `TicketCommentDto` (`id`, `body`, `isInternal`, `author`, `createdAt`).
+
+| Caller                                        | Public comment            | Internal note | Reads internal notes |
+| --------------------------------------------- | ------------------------- | ------------- | -------------------- |
+| Requester (employee)                          | yes, own ticket           | 403           | never                |
+| Technician in scope, admin                    | yes                       | yes           | yes                  |
+| Technician who requested the ticket, no scope | yes, own ticket           | 403           | never                |
+| Anyone else                                   | 404 (ticket not readable) | 404           | 404                  |
+
+`GET` returns the comments the caller may see, ordered by `created_at` then `comment_id`, so equal
+timestamps are deterministic. Internal notes are excluded by the query itself for everyone who may not
+see them. The ticket detail view uses the same list.
+
+The comment and its `COMMENT_ADDED` event commit together or not at all. The event holds the comment
+id, the `isInternal` flag and, for the comment that became the first response, `firstResponse: true`.
+The comment text is never copied into the audit trail. Posting a comment does not change the ticket
+`version`, so a reply never makes a technician's pending transition conflict.
+
+### First public response
+
+Defined once in `backend/src/domain/firstResponse.ts`: the first comment that is **public**, written
+by a **technician or administrator** who is **not the requester**, posted on or after ticket creation
+("first" is the earliest `created_at`). Its time is stored as `tickets.first_response_at` and returned
+as `firstResponseAt` on ticket payloads (null until then).
+
+- It is set in the same transaction as the comment, by a conditional update that can only move it to
+  an earlier time (two replies racing at the same instant settle on the true earliest), never later
+  and never back to null.
+- It is stored rather than derived on read, so it stays the same if the author's role changes later.
+- Internal notes, replies by the requester, and a technician answering their own ticket do not count.
+- Reporting: `SELECT AVG(EXTRACT(EPOCH FROM (first_response_at - created_at)) / 60) FROM tickets
+WHERE first_response_at IS NOT NULL` gives the mean minutes to first response.
+- Migration 0006 backfilled existing tickets, and the seed derives it with the same rule.

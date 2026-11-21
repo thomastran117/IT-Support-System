@@ -388,6 +388,13 @@
           "nullable": true,
           "default": null,
           "meaning": "Optional client key (Idempotency-Key header); unique per requester so a retried submission returns the original ticket."
+        },
+        {
+          "name": "first_response_at",
+          "type": "timestamp(6) with time zone",
+          "nullable": true,
+          "default": null,
+          "meaning": "Posting time of the first public comment by a technician or administrator other than the requester; NULL until then. Stable: set with the comment, never cleared."
         }
       ],
       "primaryKey": ["ticket_id"],
@@ -446,6 +453,10 @@
         {
           "name": "ck_tickets_description_nonblank",
           "rule": "(btrim(description) <> ''::text)"
+        },
+        {
+          "name": "ck_tickets_first_response_after_created",
+          "rule": "((first_response_at IS NULL) OR (first_response_at >= created_at))"
         },
         {
           "name": "ck_tickets_idempotency_key_nonblank",
@@ -515,7 +526,7 @@
     {
       "name": "ticket_comments",
       "area": "Tickets",
-      "description": "Public replies and technician-only internal notes on a ticket.",
+      "description": "Public replies and technician-only internal notes on a ticket. Append-only: UPDATE and DELETE are rejected by a trigger (SD-021).",
       "columns": [
         {
           "name": "comment_id",

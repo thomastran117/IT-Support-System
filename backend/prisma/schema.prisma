@@ -102,6 +102,8 @@ model Ticket {
   version           Int       @default(1)
   /// Client-chosen key that makes a retried submission resolve to the original ticket.
   idempotencyKey    String?   @map("idempotency_key") @db.VarChar(100)
+  /// Posting time of the first public staff response (see domain/firstResponse.ts).
+  firstResponseAt   DateTime? @map("first_response_at") @db.Timestamptz(6)
 
   requester User            @relation("TicketRequester", fields: [requesterId], references: [id], onDelete: Restrict)
   team      SupportTeam?    @relation(fields: [assignedTeamId], references: [id], onDelete: Restrict)

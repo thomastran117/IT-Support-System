@@ -119,6 +119,8 @@ export interface TicketDto {
   createdAt: string;
   updatedAt: string;
   resolvedAt: string | null;
+  /** Time of the first public staff response, or null. Stable once set. */
+  firstResponseAt: string | null;
   version: number;
 }
 
@@ -145,6 +147,8 @@ export interface TicketSummaryDto {
   createdAt: string;
   updatedAt: string;
   resolvedAt: string | null;
+  /** Time of the first public staff response, or null. Stable once set. */
+  firstResponseAt: string | null;
   version: number;
 }
 
@@ -211,3 +215,13 @@ export interface TransitionRequest {
 export type TicketConflictCode = 'VERSION_CONFLICT' | 'INVALID_TRANSITION' | 'PREREQUISITE_FAILED';
 
 export type TicketPrerequisite = 'CATEGORY' | 'PRIORITY' | 'TEAM' | 'ACTIVE_TEAM' | 'ASSIGNEE';
+
+// --- Comments (SD-021) -----------------------------------------------------------------------
+
+export const TICKET_COMMENT_MAX = 5000;
+
+/** Body of POST /api/tickets/:id/comments. Only staff in scope may set `isInternal: true`. */
+export interface CreateCommentRequest {
+  body: string;
+  isInternal?: boolean;
+}
