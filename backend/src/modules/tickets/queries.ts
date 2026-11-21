@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient } from '@smartdesk/db';
 import type {
   NamedRef,
+  TicketCommentDto,
   TicketDetailDto,
   TicketPage,
   TicketPriority,
@@ -21,6 +22,7 @@ const summarySelect = {
   createdAt: true,
   updatedAt: true,
   resolvedAt: true,
+  firstResponseAt: true,
   version: true,
   category: { select: { id: true, name: true } },
   team: { select: { id: true, name: true } },
@@ -45,8 +47,48 @@ function toSummary(t: SummaryRow): TicketSummaryDto {
     createdAt: t.createdAt.toISOString(),
     updatedAt: t.updatedAt.toISOString(),
     resolvedAt: t.resolvedAt?.toISOString() ?? null,
+    firstResponseAt: t.firstResponseAt?.toISOString() ?? null,
     version: t.version,
   };
+}
+
+const commentSelect = {
+  id: true,
+  body: true,
+  isInternal: true,
+  createdAt: true,
+  author: { select: { id: true, displayName: true } },
+} satisfies Prisma.TicketCommentSelect;
+
+type CommentRow = Prisma.TicketCommentGetPayload<{ select: typeof commentSelect }>;
+
+const toCommentDto = (c: CommentRow): TicketCommentDto => ({
+  id: c.id,
+  body: c.body,
+  isInternal: c.isInternal,
+  author: { id: c.author.id, name: c.author.displayName },
+  createdAt: c.createdAt.toISOString(),
+});
+
+/**
+ * Comments in conversation order (created_at, then id, so equal timestamps are deterministic).
+ * Internal notes are only selected for staff who may see them; for everyone else they are filtered
+ * in the query itself, so they never reach serialization.
+ */
+export async function listTicketComments(
+  prisma: PrismaClient,
+  principal: Principal,
+  scope: TicketScope & { id: string },
+): Promise<TicketCommentDto[]> {
+  const rows = await prisma.ticketComment.findMany({
+    where: {
+      ticketId: scope.id,
+      ...(canSeeInternalNotes(principal, scope) ? {} : { isInternal: false }),
+    },
+    select: commentSelect,
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+  });
+  return rows.map(toCommentDto);
 }
 
 export interface ListFilter {
@@ -113,7 +155,6 @@ export async function getTicketDetail(
   principal: Principal,
   scope: TicketScope & { id: string },
 ): Promise<TicketDetailDto | null> {
-  const staff = canSeeInternalNotes(principal, scope);
   const rawAudit = canViewRawAudit(principal, scope);
 
   const [ticket, comments, events] = await Promise.all([
@@ -126,17 +167,7 @@ export async function getTicketDetail(
         requester: { select: { id: true, displayName: true } },
       },
     }),
-    prisma.ticketComment.findMany({
-      where: { ticketId: scope.id, ...(staff ? {} : { isInternal: false }) },
-      select: {
-        id: true,
-        body: true,
-        isInternal: true,
-        createdAt: true,
-        author: { select: { id: true, displayName: true } },
-      },
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-    }),
+    listTicketComments(prisma, principal, scope),
     prisma.ticketEvent.findMany({
       where: { ticketId: scope.id },
       select: {
@@ -174,13 +205,7 @@ export async function getTicketDetail(
     description: ticket.description,
     resolutionSummary: ticket.resolutionSummary,
     requester: { id: ticket.requester.id, name: ticket.requester.displayName },
-    comments: comments.map((c) => ({
-      id: c.id,
-      body: c.body,
-      isInternal: c.isInternal,
-      author: { id: c.author.id, name: c.author.displayName },
-      createdAt: c.createdAt.toISOString(),
-    })),
+    comments,
     timeline,
   };
 }

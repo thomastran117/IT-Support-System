@@ -18,6 +18,7 @@ export function toTicketDto(t: TicketRecord): TicketDto {
     createdAt: t.createdAt.toISOString(),
     updatedAt: t.updatedAt.toISOString(),
     resolvedAt: t.resolvedAt?.toISOString() ?? null,
+    firstResponseAt: t.firstResponseAt?.toISOString() ?? null,
     version: t.version,
   };
 }

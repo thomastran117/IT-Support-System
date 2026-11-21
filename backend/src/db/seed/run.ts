@@ -1,3 +1,4 @@
+import { backfillFirstResponse } from '../repositories/ticketComments.js';
 import type { PrismaClient } from '@smartdesk/db';
 import { hashPassword } from '../../auth/password.js';
 import { buildFixtures, DEMO_PASSWORD, type Profile } from './fixtures.js';
@@ -83,6 +84,9 @@ export async function seedDatabase(
     await tx.ticketCategory.createMany({ data: f.categories, ...opts });
     await tx.ticket.createMany({ data: f.tickets, ...opts });
     await tx.ticketComment.createMany({ data: f.comments, ...opts });
+    // Comments are loaded in bulk here, so derive the stored first-response time the way the
+    // service does when a comment is posted.
+    await backfillFirstResponse(tx);
     await tx.ticketEvent.createMany({ data: f.events, ...opts });
     await tx.aiRecommendation.createMany({ data: f.recommendations, ...opts });
     await tx.knowledgeArticle.createMany({ data: f.articles, ...opts });

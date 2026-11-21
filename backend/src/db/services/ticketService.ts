@@ -5,7 +5,8 @@ import {
   ALLOWED_TRANSITIONS as STATE_MACHINE_TRANSITIONS,
   type TransitionFacts,
 } from '../../domain/ticketStateMachine.js';
-import { canEditTicket } from '../../auth/policies.js';
+import { canAuthorInternalNote, canComment, canEditTicket } from '../../auth/policies.js';
+import { countsAsFirstResponse } from '../../domain/firstResponse.js';
 import {
   DbError,
   forbiddenError,
@@ -23,7 +24,7 @@ import {
   markReviewed,
   type ReviewDecision,
 } from '../repositories/aiRecommendations.js';
-import { insertComment } from '../repositories/ticketComments.js';
+import { insertComment, recordFirstResponse } from '../repositories/ticketComments.js';
 import { appendEvent } from '../repositories/ticketEvents.js';
 import {
   activeTeamIds,
@@ -119,12 +120,18 @@ async function mutate<T>(
  * Staff may work a ticket per the shared policy (admins any; technicians their active teams and the
  * unrouted backlog). This is the same rule the HTTP layer uses, so the two cannot drift apart.
  */
-async function canWork(tx: TransactionClient, actor: Actor, ticket: TicketRow): Promise<boolean> {
+async function policyActor(tx: TransactionClient, actor: Actor) {
   const teamIds = actor.role === 'TECHNICIAN' ? await activeTeamIds(tx, actor.id) : [];
-  return canEditTicket(
-    { id: actor.id, role: actor.role, teamIds },
-    { requesterId: ticket.requesterId, assignedTeamId: ticket.assignedTeamId },
-  );
+  return { id: actor.id, role: actor.role, teamIds };
+}
+
+const scopeOf = (ticket: TicketRow) => ({
+  requesterId: ticket.requesterId,
+  assignedTeamId: ticket.assignedTeamId,
+});
+
+async function canWork(tx: TransactionClient, actor: Actor, ticket: TicketRow): Promise<boolean> {
+  return canEditTicket(await policyActor(tx, actor), scopeOf(ticket));
 }
 
 async function assertCanWork(tx: TransactionClient, actor: Actor, ticket: TicketRow) {
@@ -467,11 +474,13 @@ export function addComment(prisma: PrismaClient, input: AddCommentInput) {
     const ticket = await findTicket(tx, input.ticketId);
     if (!ticket) throw notFoundError('Ticket');
 
-    if (actor.role === 'EMPLOYEE') {
-      if (ticket.requesterId !== actor.id || isInternal) throw forbiddenError();
-    } else {
-      await assertCanWork(tx, actor, ticket);
-    }
+    // The same rules the API applies. Public replies: anyone who can read the ticket (the requester,
+    // staff in scope). Internal notes: staff who can work it. An employee can never write one.
+    const who = await policyActor(tx, actor);
+    const allowed = isInternal
+      ? canAuthorInternalNote(who, scopeOf(ticket))
+      : canComment(who, scopeOf(ticket));
+    if (!allowed) throw forbiddenError();
 
     const comment = await insertComment(tx, {
       ticketId: ticket.id,
@@ -479,11 +488,22 @@ export function addComment(prisma: PrismaClient, input: AddCommentInput) {
       body,
       isInternal,
     });
+    // Stable first response, set in the same transaction as the comment. Conditional and
+    // idempotent (it only ever moves to an earlier time), so it takes no lock and does not touch the
+    // ticket `version`: a reply must not make a technician's pending transition conflict.
+    const firstResponse =
+      countsAsFirstResponse({
+        isInternal,
+        authorId: actor.id,
+        authorRole: actor.role,
+        requesterId: ticket.requesterId,
+      }) && (await recordFirstResponse(tx, comment.id)) > 0;
     await appendEvent(tx, {
       ticketId: ticket.id,
       actorId: actor.id,
       type: 'COMMENT_ADDED',
-      details: { commentId: comment.id, isInternal },
+      // Ids and flags only: the comment text never enters the audit trail.
+      details: { commentId: comment.id, isInternal, ...(firstResponse ? { firstResponse } : {}) },
     });
     return comment;
   });

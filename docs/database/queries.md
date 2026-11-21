@@ -87,3 +87,15 @@ Uncategorized 3, Hardware 2, Software 2, Access/Accounts 1, Network/VPN 1, Q10 7
 [fixtures.md](./fixtures.md) for the arithmetic). Tests also cover empty windows, unlabelled and
 unrouted cohorts, reopened tickets, reassignments, review outcomes and inclusive-start / exclusive-end
 boundaries.
+
+## First public response (SD-021)
+
+`tickets.first_response_at` is the stored time of the first public comment by a technician or
+administrator who is not the requester (see `docs/api/tickets.md`). It is a column, not a Q-query, so
+reports can use it directly, for example mean minutes to first response:
+
+```sql
+SELECT AVG(EXTRACT(EPOCH FROM (first_response_at - created_at)) / 60) AS avg_minutes
+FROM tickets
+WHERE first_response_at IS NOT NULL;
+```

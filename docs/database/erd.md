@@ -51,6 +51,7 @@ erDiagram
     text resolution_summary
     int version
     varchar idempotency_key
+    timestamptz first_response_at
   }
   ticket_comments {
     uuid comment_id PK

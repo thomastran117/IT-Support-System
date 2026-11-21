@@ -1,9 +1,10 @@
 import type { FastifyPluginAsync } from 'fastify';
 import type { PrismaClient } from '@smartdesk/db';
-import type { TicketStatus } from '@smartdesk/contracts';
+import type { TicketCommentDto, TicketStatus } from '@smartdesk/contracts';
 import {
   IDEMPOTENCY_KEY_HEADER,
   TICKET_DESCRIPTION_MAX,
+  TICKET_COMMENT_MAX,
   TICKET_PAGE_SIZE_DEFAULT,
   TICKET_PAGE_SIZE_MAX,
   TICKET_RESOLUTION_MAX,
@@ -11,18 +12,24 @@ import {
 } from '@smartdesk/contracts';
 import { z } from 'zod';
 import { authorizeTicket } from '../../auth/ticketAccess.js';
-import { submitTicket, transitionTicket } from '../../db/services/ticketService.js';
+import { addComment, submitTicket, transitionTicket } from '../../db/services/ticketService.js';
 import { TICKET_STATUSES } from '../../domain/ticketStateMachine.js';
 import { HttpError, envelope } from '../../plugins/errors.js';
 import { parse } from '../../plugins/validate.js';
 import { toTicketDto } from './dto.js';
-import { getTicketDetail, listTickets } from './queries.js';
+import { getTicketDetail, listTicketComments, listTickets } from './queries.js';
 
 const ListQuery = z.strictObject({
   status: z.enum(['OPEN', 'TRIAGED', 'IN_PROGRESS', 'RESOLVED', 'CLOSED']).optional(),
   priority: z.enum(['UNSET', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).optional(),
   limit: z.coerce.number().int().min(1).max(TICKET_PAGE_SIZE_MAX).default(TICKET_PAGE_SIZE_DEFAULT),
   offset: z.coerce.number().int().min(0).default(0),
+});
+
+/** Strict: author and timestamps are server-assigned, never accepted from the client. */
+const CommentBody = z.strictObject({
+  body: z.string().trim().min(1).max(TICKET_COMMENT_MAX),
+  isInternal: z.boolean().default(false),
 });
 
 /** Strict, and `expectedVersion` is mandatory: a transition is always made against a known view. */
@@ -84,6 +91,35 @@ export const ticketRoutes =
       const detail = await getTicketDetail(prisma, req.principal!, scope);
       if (!detail) throw new HttpError(404, 'Ticket not found');
       return envelope('Ticket', detail);
+    });
+
+    app.get('/:id/comments', auth, async (req) => {
+      const { id } = req.params as { id: string };
+      const scope = await authorizeTicket(prisma, req.principal!, id, 'read');
+      return envelope('Comments', await listTicketComments(prisma, req.principal!, scope));
+    });
+
+    app.post('/:id/comments', auth, async (req, reply) => {
+      const { id } = req.params as { id: string };
+      const body = parse(CommentBody, req.body);
+      // 404 for tickets the caller cannot read; the service then enforces who may write what
+      // (403 when an employee asks for an internal note).
+      await authorizeTicket(prisma, req.principal!, id, 'read');
+      const comment = await addComment(prisma, {
+        ticketId: id,
+        authorId: req.principal!.id,
+        body: body.body,
+        isInternal: body.isInternal,
+      });
+      const dto: TicketCommentDto = {
+        id: comment.id,
+        body: comment.body,
+        isInternal: comment.isInternal,
+        author: { id: req.principal!.id, name: req.principal!.displayName },
+        createdAt: comment.createdAt.toISOString(),
+      };
+      reply.header('cache-control', 'no-store');
+      return reply.code(201).send(envelope('Comment added', dto));
     });
 
     app.post('/:id/transitions', auth, async (req, reply) => {
