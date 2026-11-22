@@ -6,18 +6,18 @@ framework or component library, and do not re-create these primitives inside a f
 
 ## Where things live
 
-| Need                                       | Use                                                                 |
-| ------------------------------------------ | ------------------------------------------------------------------- |
-| App shell, role navigation, sign-out       | `components/NavShell.tsx` (one shell for employee, technician, admin) |
-| Page title block                           | `PageHeader` from `components/ui`                                   |
-| Buttons                                    | `Button` / `buttonClass(variant)` (`primary`, `secondary`, `quiet`, `danger`) |
-| Status and priority                        | `StatusBadge`, `PriorityBadge` (always text, colour only reinforces) |
-| Loading, empty, error                      | `LoadingState`, `EmptyState`, `ErrorState`                          |
-| Inline message                             | `Notice` (`info`, `success`, `warning`, `danger`)                   |
-| Modal                                      | `Dialog` (native `<dialog>`: focus trap, Esc, focus restore)        |
-| Transient feedback                         | `useToast().show(message, tone)`; never the only place a result appears |
-| Form error summary, field, counter         | `components/tickets/ui.tsx` (`ErrorSummary`, `Counter`, `inputClass`) |
-| Tables                                     | `app-table`; add `responsive-table` and `data-label` on cells for the mobile card layout |
+| Need                                 | Use                                                                                      |
+| ------------------------------------ | ---------------------------------------------------------------------------------------- |
+| App shell, role navigation, sign-out | `components/NavShell.tsx` (one shell for employee, technician, admin)                    |
+| Page title block                     | `PageHeader` from `components/ui`                                                        |
+| Buttons                              | `Button` / `buttonClass(variant)` (`primary`, `secondary`, `quiet`, `danger`)            |
+| Status and priority                  | `StatusBadge`, `PriorityBadge` (always text, colour only reinforces)                     |
+| Loading, empty, error                | `LoadingState`, `EmptyState`, `ErrorState`                                               |
+| Inline message                       | `Notice` (`info`, `success`, `warning`, `danger`)                                        |
+| Modal                                | `Dialog` (native `<dialog>`: focus trap, Esc, focus restore)                             |
+| Transient feedback                   | `useToast().show(message, tone)`; never the only place a result appears                  |
+| Form error summary, field, counter   | `components/tickets/ui.tsx` (`ErrorSummary`, `Counter`, `inputClass`)                    |
+| Tables                               | `app-table`; add `responsive-table` and `data-label` on cells for the mobile card layout |
 
 Import from `@/components/ui`. Feature components (`tickets/`, `technician/`, `knowledge/`, `admin/`,
 `reports/`) compose these; anything used by a second feature moves into `components/ui`.
