@@ -170,8 +170,11 @@ model AiRecommendation {
   reviewedAt         DateTime? @map("reviewed_at") @db.Timestamptz(6)
   reviewNotes        String?   @map("review_notes")
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// Analysis job that produced this row (SD-036); UNIQUE makes persistence idempotent per attempt.
+  jobId              String?   @unique(map: "uq_ai_recommendations_job") @map("job_id") @db.Uuid
 
   ticket           Ticket          @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  job              AiAnalysisJob?  @relation(fields: [jobId], references: [id], onDelete: Restrict)
   proposedCategory TicketCategory? @relation(fields: [proposedCategoryId], references: [id], onDelete: Restrict)
   proposedTeam     SupportTeam?    @relation(fields: [proposedTeamId], references: [id], onDelete: Restrict)
   reviewer         User?           @relation(fields: [reviewerId], references: [id], onDelete: Restrict)
@@ -258,7 +261,8 @@ model AiAnalysisJob {
   updatedAt   DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
   completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
 
-  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  ticket         Ticket @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  recommendation AiRecommendation?
 
   @@unique([ticketId, requestId], map: "uq_ai_analysis_jobs_ticket_request")
   @@index([state, runAfter], map: "idx_ai_jobs_claim")

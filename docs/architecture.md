@@ -95,6 +95,16 @@ The worker is a second entrypoint of the backend package (`src/worker.ts`, `npm 
 - **Shutdown:** on SIGTERM the worker stops claiming and lets in-flight analyses finish (bounded by their timeout); anything unfinished is retried via lease expiry.
 - **Logging:** structured lines with job, ticket and request ids, attempt, state and reason code only.
 
+### Recommendation persistence (SD-036)
+
+`persistRecommendation` (`recommendationService.ts`) is the worker's `persist` hook. It runs inside the transaction that completes the job, and writes one `ai_recommendations` row plus its `recommendation_articles` links.
+
+- **One row per attempt:** `ai_recommendations.job_id` is unique, so retries and duplicate delivery produce exactly one recommendation and never re-link articles. Re-analysis is a new job and therefore a new row; earlier rows and their review decisions are kept. `job_id` is NULL for rows that did not come from a job (fixtures, history).
+- **Atomic:** the row and its links commit together or not at all. Any validation or database error throws and rolls the whole graph back; the job is then retried as an ordinary failed attempt.
+- **Validated when written:** active category and team, priority in `LOW|MEDIUM|HIGH|CRITICAL`, confidence within 0..1 (rounded to 3 decimals), non-empty troubleshooting text, and a model version of at most 100 characters. Sources must exist, be published and not repeat; ranks are 1..n in retrieval order.
+- **Model metadata:** `model_version` is `<provider>:<model>@prompt-<version>` (for example `openai:gpt-4o-mini@prompt-v2`), so a recommendation can be traced to its prompt.
+- **Immutable proposal:** review state starts `PENDING` and the ticket is not changed. The only later update path, `markReviewed`, writes review columns only; accept, override and reject leave every `proposed_*`, `suggestion`, `confidence` and `model_version` value, and the source links, as they were. This is enforced in the service, not by a database trigger.
+
 ## Development and validation
 
 `docker compose up --build --watch` synchronizes application source. Shared-package, manifest, and

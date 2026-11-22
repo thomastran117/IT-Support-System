@@ -161,6 +161,7 @@ _AI and evaluation._ Immutable AI proposals plus the human review outcome. Propo
 | `reviewed_at` | `timestamp(6) with time zone` | NULL |  |  |  |  | Review time; required once reviewed, never before created_at. |
 | `review_notes` | `text` | NULL |  |  |  |  | Optional reviewer comment. |
 | `created_at` | `timestamp(6) with time zone` | NOT NULL | `CURRENT_TIMESTAMP` |  |  | `idx_ai_recommendations_ticket_created` | When the proposal was saved (UTC). |
+| `job_id` | `uuid` | NULL |  | FK → ai_analysis_jobs.job_id | yes | `uq_ai_recommendations_job` | Analysis job (ai_analysis_jobs) that produced this recommendation (SD-036). UNIQUE, so one analysis attempt yields at most one row however often delivery is retried. NULL for rows not created by a job (fixtures, historical). |
 
 **CHECK constraints**
 
