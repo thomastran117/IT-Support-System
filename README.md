@@ -15,14 +15,15 @@ docker compose up --build --watch
 The defaults work without a `.env` file. Copy `.env.example` to `.env` only when you need to
 override ports, credentials, token lifetimes, logging, or the optional AI provider.
 
-| Service    | Address or role                                    |
-| ---------- | -------------------------------------------------- |
-| Frontend   | <http://localhost:3000>                            |
-| API        | <http://localhost:4000>                            |
-| Liveness   | <http://localhost:4000/health/live>                |
-| Readiness  | <http://localhost:4000/health/ready>               |
-| PostgreSQL | Internal Compose network only (`postgres:5432`)    |
-| Worker     | Internal background process; no published endpoint |
+| Service    | Address or role                                                               |
+| ---------- | ----------------------------------------------------------------------------- |
+| Frontend   | <http://localhost:3000>                                                       |
+| API        | <http://localhost:4000>                                                       |
+| Liveness   | <http://localhost:4000/health/live>                                           |
+| Readiness  | <http://localhost:4000/health/ready>                                          |
+| PostgreSQL | Internal Compose network only (`postgres:5432`)                               |
+| Worker     | Internal background process; no published endpoint                            |
+| Redis      | Optional cache, off by default (`docker compose --profile cache up -d redis`) |
 
 Application source changes are synchronized into the running frontend, backend, and worker.
 Changes to manifests, lockfiles, Prisma files, or shared packages rebuild the affected images.
@@ -50,6 +51,15 @@ docker compose exec backend npm run migrate
 
 # Regenerate the committed ERD and data dictionary
 docker compose --profile tools run --rm docs
+
+# Start the optional Redis cache (off by default), then point the backend at it
+docker compose --profile cache up -d redis
+# set REDIS_URL=redis://redis:6379 in .env (the in-network service name, not localhost), then:
+docker compose up -d backend
+curl http://localhost:4000/health/ready   # checks.cache: "ok" | "unavailable" | "disabled"
+
+# Stop and fully dispose of the cache -- it has no persistence, so nothing survives
+docker compose stop redis && docker compose rm -f redis
 ```
 
 Resetting the database is destructive:

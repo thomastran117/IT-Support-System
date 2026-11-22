@@ -49,6 +49,7 @@ describe.skipIf(!testDatabaseUrl)('RBAC and record-level policies (integration)'
       env,
       prisma,
       checkDb: async () => true,
+      checkCache: async () => 'disabled' as const,
       logger: false,
       extraRoutes: (scope) => {
         const { requireAuth, requireRole } = scope.authGuards;

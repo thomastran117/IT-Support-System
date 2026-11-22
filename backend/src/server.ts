@@ -1,11 +1,17 @@
 import { buildApp } from './app.js';
 import { loadEnv } from './config/env.js';
 import { prismaCheck } from '@smartdesk/db';
+import { createCacheCheck } from './cache/check.js';
 import { closePrisma, initPrisma } from './db/client.js';
 
 const env = loadEnv();
 const prisma = initPrisma(env.databaseUrl);
-const app = await buildApp({ env, prisma, checkDb: prismaCheck(prisma) });
+const app = await buildApp({
+  env,
+  prisma,
+  checkDb: prismaCheck(prisma),
+  checkCache: createCacheCheck(env.redisUrl),
+});
 
 let closing = false;
 async function shutdown(signal: string): Promise<void> {

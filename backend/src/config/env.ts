@@ -3,6 +3,8 @@ export interface Env {
   port: number;
   frontendOrigin: string;
   databaseUrl: string;
+  /** Optional internal cache. Undefined means Redis is disabled; see backend/src/cache/check.ts. */
+  redisUrl: string | undefined;
   logLevel: string;
   production: boolean;
   jwtSecret: string;
@@ -151,6 +153,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     port,
     frontendOrigin: source.FRONTEND_ORIGIN ?? 'http://localhost:3000',
     databaseUrl: source.DATABASE_URL ?? 'postgres://smartdesk:smartdesk@localhost:5432/smartdesk',
+    redisUrl: source.REDIS_URL || undefined,
     logLevel: source.LOG_LEVEL ?? 'info',
     production,
     jwtSecret,

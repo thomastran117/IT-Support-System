@@ -11,7 +11,12 @@ afterEach(async () => app?.close());
 
 describe('api', () => {
   it('serves a successful route in the envelope', async () => {
-    app = await buildApp({ env, checkDb: up, logger: false });
+    app = await buildApp({
+      env,
+      checkDb: up,
+      checkCache: async () => 'disabled' as const,
+      logger: false,
+    });
     const res = await app.inject('/api/ping');
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ message: 'pong', error: null, details: null });
@@ -19,21 +24,36 @@ describe('api', () => {
   });
 
   it('rejects invalid payload with 400', async () => {
-    app = await buildApp({ env, checkDb: up, logger: false });
+    app = await buildApp({
+      env,
+      checkDb: up,
+      checkCache: async () => 'disabled' as const,
+      logger: false,
+    });
     const res = await app.inject({ method: 'POST', url: '/api/echo', payload: { nope: 1 } });
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toBe('Bad Request');
   });
 
   it('returns a safe 404 for unknown routes', async () => {
-    app = await buildApp({ env, checkDb: up, logger: false });
+    app = await buildApp({
+      env,
+      checkDb: up,
+      checkCache: async () => 'disabled' as const,
+      logger: false,
+    });
     const res = await app.inject('/api/missing');
     expect(res.statusCode).toBe(404);
     expect(res.json()).toMatchObject({ error: 'Not Found', data: null });
   });
 
   it('returns 400 for malformed JSON', async () => {
-    app = await buildApp({ env, checkDb: up, logger: false });
+    app = await buildApp({
+      env,
+      checkDb: up,
+      checkCache: async () => 'disabled' as const,
+      logger: false,
+    });
     const res = await app.inject({
       method: 'POST',
       url: '/api/echo',
@@ -48,6 +68,7 @@ describe('api', () => {
     app = await buildApp({
       env,
       checkDb: up,
+      checkCache: async () => 'disabled' as const,
       logger: false,
       extraRoutes: (scope) => {
         scope.get('/crash', async () => {
@@ -63,7 +84,12 @@ describe('api', () => {
   });
 
   it('restricts CORS to the configured origin', async () => {
-    app = await buildApp({ env, checkDb: up, logger: false });
+    app = await buildApp({
+      env,
+      checkDb: up,
+      checkCache: async () => 'disabled' as const,
+      logger: false,
+    });
     const ok = await app.inject({ url: '/api/ping', headers: { origin: 'http://app.test' } });
     expect(ok.headers['access-control-allow-origin']).toBe('http://app.test');
     const bad = await app.inject({ url: '/api/ping', headers: { origin: 'http://evil.test' } });
@@ -81,6 +107,7 @@ describe('api', () => {
     app = await buildApp({
       env,
       checkDb: up,
+      checkCache: async () => 'disabled' as const,
       logger: { level: 'info', redact: { paths: REDACT_PATHS, censor: '[Redacted]' }, stream },
     });
     await app.inject({
@@ -96,19 +123,58 @@ describe('api', () => {
 
 describe('health', () => {
   it('live is ok even when the database is down', async () => {
-    app = await buildApp({ env, checkDb: async () => false, logger: false });
+    app = await buildApp({
+      env,
+      checkDb: async () => false,
+      checkCache: async () => 'disabled' as const,
+      logger: false,
+    });
     expect((await app.inject('/health/live')).statusCode).toBe(200);
   });
 
   it('ready is 200 when the db is up', async () => {
-    app = await buildApp({ env, checkDb: up, logger: false });
+    app = await buildApp({
+      env,
+      checkDb: up,
+      checkCache: async () => 'disabled' as const,
+      logger: false,
+    });
     expect((await app.inject('/health/ready')).statusCode).toBe(200);
   });
 
   it('ready is 503 when the db is down', async () => {
-    app = await buildApp({ env, checkDb: async () => false, logger: false });
+    app = await buildApp({
+      env,
+      checkDb: async () => false,
+      checkCache: async () => 'disabled' as const,
+      logger: false,
+    });
     const res = await app.inject('/health/ready');
     expect(res.statusCode).toBe(503);
     expect(res.json().checks.database).toBe('unavailable');
+  });
+
+  it('reports the cache check result without it affecting overall status', async () => {
+    app = await buildApp({
+      env,
+      checkDb: up,
+      checkCache: async () => 'unavailable' as const,
+      logger: false,
+    });
+    const res = await app.inject('/health/ready');
+    expect(res.statusCode).toBe(200);
+    expect(res.json().checks.cache).toBe('unavailable');
+  });
+
+  it('reports cache as disabled when Redis is not configured', async () => {
+    app = await buildApp({
+      env,
+      checkDb: up,
+      checkCache: async () => 'disabled' as const,
+      logger: false,
+    });
+    const res = await app.inject('/health/ready');
+    expect(res.statusCode).toBe(200);
+    expect(res.json().checks.cache).toBe('disabled');
   });
 });

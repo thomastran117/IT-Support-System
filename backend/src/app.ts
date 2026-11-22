@@ -6,6 +6,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { API_PREFIX } from '@smartdesk/contracts';
 import type { Env } from './config/env.js';
 import type { DbCheck, PrismaClient } from '@smartdesk/db';
+import type { CacheCheck } from './cache/check.js';
 import { createAuthGuards } from './auth/guard.js';
 import { TokenService } from './auth/tokens.js';
 import { adminRoutes } from './modules/admin/routes.js';
@@ -29,6 +30,7 @@ import { ticketRoutes } from './modules/tickets/routes.js';
 export interface AppOptions {
   env: Env;
   checkDb: DbCheck;
+  checkCache: CacheCheck;
   /** Database client; the auth routes are only mounted when provided. */
   prisma?: PrismaClient;
   /** Per-IP request budgets for the auth endpoints (tests lower these). */
@@ -73,7 +75,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     reply.header('x-request-id', req.id);
   });
 
-  await app.register(healthRoutes(opts.checkDb));
+  await app.register(healthRoutes(opts.checkDb, opts.checkCache));
   await app.register(pingRoutes, { prefix: API_PREFIX });
   if (opts.prisma) {
     const tokens = new TokenService(opts.env);

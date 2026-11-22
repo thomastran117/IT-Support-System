@@ -38,6 +38,7 @@ export interface Paginated<T> {
 }
 
 export type HealthStatus = 'ok' | 'unavailable';
+export type CacheHealthStatus = HealthStatus | 'disabled';
 
 export interface LiveHealth {
   status: 'ok';
@@ -45,7 +46,7 @@ export interface LiveHealth {
 
 export interface ReadyHealth {
   status: HealthStatus;
-  checks: { database: HealthStatus };
+  checks: { database: HealthStatus; cache: CacheHealthStatus };
 }
 
 export const API_PREFIX = '/api';
