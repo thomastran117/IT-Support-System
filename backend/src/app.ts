@@ -6,7 +6,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { API_PREFIX } from '@smartdesk/contracts';
 import type { Env } from './config/env.js';
 import type { DbCheck, PrismaClient } from '@smartdesk/db';
-import type { CacheCheck } from './cache/check.js';
+import type { CacheCheck } from './cache/client.js';
 import { createAuthGuards } from './auth/guard.js';
 import { TokenService } from './auth/tokens.js';
 import { adminRoutes } from './modules/admin/routes.js';
