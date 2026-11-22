@@ -661,3 +661,30 @@ export const reviewRecommendationSchema = z
       });
     }
   });
+
+// --- Administrator reporting (SD-044) ----------------------------------------------------------
+
+/** Longest reporting window the API accepts, in days. */
+export const REPORT_MAX_WINDOW_DAYS = 366;
+
+/** Aggregate figures for one half-open UTC window `[start, end)`. No requester data is included. */
+export interface ReportSummaryDto {
+  window: { start: string; end: string };
+  /** Tickets created in the window; the denominator for routing and first response. */
+  submitted: number;
+  routing: { routed: number; avgMinutes: number | null };
+  firstResponse: { responded: number; avgMinutes: number | null };
+  /** Cohort: tickets currently RESOLVED/CLOSED whose latest resolution falls in the window. */
+  resolution: { resolvedTickets: number; avgHours: number | null };
+  aiAccuracy: {
+    labelledTickets: number;
+    withRecommendation: number;
+    correct: number;
+    accuracyPct: number | null;
+  };
+  aiAcceptance: { reviewed: number; accepted: number; acceptancePct: number | null };
+  categories: { category: string; ticketCount: number }[];
+  /** One entry per UTC day in the window, zero-filled. */
+  dailyIntake: { date: string; submittedTickets: number }[];
+  units: { routing: 'minutes'; firstResponse: 'minutes'; resolution: 'hours'; rates: 'percent' };
+}

@@ -216,6 +216,34 @@ All `/api/admin` endpoints require the `ADMIN` role.
 User listing accepts `role`, `active`, `q`, `limit` (maximum 200), and `offset`. The server prevents
 self-demotion, self-deactivation, self-password-reset, and removal of the last active administrator.
 
+## Administrator reports
+
+`GET /api/admin/reports/summary?start=<iso>&end=<iso>` (ADMIN only; 401 anonymous, 403 otherwise).
+Responses are `Cache-Control: no-store` and contain aggregates only: no ticket text, requester names,
+emails or ids.
+
+**Window.** Half-open UTC `[start, end)`. Each bound is an ISO-8601 date (`2026-03-01`, read as UTC
+midnight) or a date-time with an explicit offset; values without an offset are rejected. `start` must
+be strictly before `end` and the window may not exceed 366 days (`400` otherwise).
+
+**Cohorts and denominators.**
+
+| Block           | Cohort                                                                   | Denominator / rule                                                                                                                                 |
+| --------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `submitted`     | Tickets created in the window                                            | Shared denominator for routing and first response                                                                                                  |
+| `routing`       | Same cohort (Q05)                                                        | `routed` = has a first `TEAM_ASSIGNED` event; unrouted tickets stay in `submitted`; reroutes never replace the first routing                       |
+| `firstResponse` | Same cohort (Q11)                                                        | `responded` = `first_response_at` set: first public comment by a technician/admin who is not the requester; unanswered tickets stay in `submitted` |
+| `resolution`    | Tickets currently RESOLVED/CLOSED with `resolved_at` in the window (Q06) | A reopened ticket has no `resolved_at` and is excluded until resolved again                                                                        |
+| `aiAccuracy`    | Independently labelled tickets created in the window (Q07)               | Tickets with no valid AI recommendation stay in `labelledTickets` and count as not correct                                                         |
+| `aiAcceptance`  | Recommendations reviewed in the window (Q08)                             | Separate from accuracy                                                                                                                             |
+| `categories`    | Tickets created in the window by approved category (Q09)                 | `Uncategorized` for tickets without one                                                                                                            |
+| `dailyIntake`   | One entry per UTC day touched by the window (Q10)                        | Zero-filled                                                                                                                                        |
+
+Averages and percentages are `null` when the denominator is zero (never `0`). Counts are numbers.
+Units are in `units`: routing and first response in minutes, resolution in hours, rates in percent.
+AI processing latency is not measured as API time. The queries are the version-controlled
+`backend/sql/reports/Q05`-`Q11` files.
+
 ## Support teams and reference data
 
 Staff (`TECHNICIAN` or `ADMIN`) can read the reference lists that assignment forms need. Employees

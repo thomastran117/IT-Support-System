@@ -720,6 +720,7 @@ export const EXPECTED = {
   /** Unassigned OPEN backlog (Q03): printer, aiDown, token, afterWindow. */
   backlog: [TICKETS.printer, TICKETS.aiDown, TICKETS.token, TICKETS.afterWindow],
   q05: { submitted: 9, routed: 6, avgMinutes: '25.00' },
+  q11: { submitted: 9, responded: 3, avgMinutes: '196.67' }, // (35 + 90 + 465) / 3 minutes
   q06: { resolvedTickets: 2, avgHours: '16.00' },
   q07: { labelledTickets: 5, withRecommendation: 4, correct: 2, accuracyPct: '40.00' },
   q08: { reviewed: 4, accepted: 2, acceptancePct: '50.00' },

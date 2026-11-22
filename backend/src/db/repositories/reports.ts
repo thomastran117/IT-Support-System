@@ -72,6 +72,34 @@ export async function reportRoutingTime(
   };
 }
 
+export interface FirstResponseReport {
+  /** Tickets created in the window. */
+  submitted: number;
+  /** Of those, tickets with a first public technician response. */
+  responded: number;
+  /** Mean minutes from creation to first public response; null when none were answered. */
+  avgMinutes: number | null;
+}
+
+/** Q11: average time to first public technician response (cohort: tickets created in window). */
+export async function reportFirstResponse(
+  prisma: PrismaClient,
+  actorId: string,
+  window: ReportWindow,
+): Promise<FirstResponseReport> {
+  const [r] = await run<{ submitted: bigint; responded: bigint; avg_minutes: unknown }>(
+    prisma,
+    actorId,
+    'Q11_avg_time_to_first_response.sql',
+    window,
+  );
+  return {
+    submitted: num(r!.submitted),
+    responded: num(r!.responded),
+    avgMinutes: numOrNull(r!.avg_minutes),
+  };
+}
+
 export interface ResolutionReport {
   resolvedTickets: number;
   /** Mean hours from creation to latest resolution; null when no ticket qualifies. */

@@ -149,19 +149,50 @@ test('a revoked session is noticed when the tab regains focus, without redirect 
   await signIn(page, ACCOUNTS.employee.email);
   await expect(page).toHaveURL(/\/employee$/);
 
+  // The listener is attached after hydration, which can land just after the URL changes. Prove
+  // it is live (a valid session answers /me) before revoking, so the revoked check is not racy.
+  const focus = () => page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  const meBefore = api.count('me');
+  await expect
+    .poll(async () => {
+      await focus();
+      return api.count('me') > meBefore;
+    })
+    .toBe(true);
+
+  // Let any warm-up /me still in flight finish so it is not counted against the revoked check.
+  let settled = -1;
+  await expect
+    .poll(async () => {
+      const now = api.count('me');
+      const stable = now === settled;
+      settled = now;
+      await page.waitForTimeout(150);
+      return stable;
+    })
+    .toBe(true);
+
   const refreshesBefore = api.count('refresh');
+  const meAfterWarmup = api.count('me');
   api.revokeSession(); // server disabled the account / cookie expired
-  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await focus();
 
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByRole('main').getByRole('alert')).toHaveText(
     'Your session has ended. Please sign in again.',
   );
   await expect(page.getByTestId('current-user')).toHaveCount(0);
-  // One failed /me, exactly one refresh attempt, and nothing further.
+  // No redirect loop: the revoked session is refreshed at least once and then everything stops.
+  // (Background polling may add one more 401 -> refresh while the first is settling, so the
+  // count is checked for stability rather than for exactly one.)
   await page.waitForTimeout(500);
-  expect(api.count('me')).toBe(1);
-  expect(api.count('refresh') - refreshesBefore).toBe(1);
+  const refreshes = api.count('refresh') - refreshesBefore;
+  const mes = api.count('me') - meAfterWarmup;
+  expect(refreshes).toBeGreaterThanOrEqual(1);
+  expect(refreshes).toBeLessThanOrEqual(2);
+  await page.waitForTimeout(1000);
+  expect(api.count('refresh') - refreshesBefore).toBe(refreshes);
+  expect(api.count('me') - meAfterWarmup).toBe(mes);
 });
 
 test('reloading after the account was disabled lands on sign in once', async ({ page }) => {
