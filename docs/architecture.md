@@ -57,8 +57,14 @@ approved category, priority, team and assignee are edited in one form and saved 
 summary. Internal notes are visibly distinct and are never returned to the requester. Every write
 sends the ticket `version`: on a `VERSION_CONFLICT` the page reloads the latest ticket and says so
 instead of overwriting. If a change hands a ticket to a team the technician does not belong to, the
-page explains that it can no longer be opened. Manual triage never depends on AI. The AI suggestion
-card (accept, override, reject) arrives with the recommendation endpoints (SD-027, SD-036, SD-038).
+page explains that it can no longer be opened. Manual triage never depends on AI: the AI suggestions
+card loads separately, and if it fails the rest of the page still works. The card is labelled "AI
+suggestion — requires review", shows the original proposal beside the currently approved values, and
+offers accept, override (with the technician's own values) and reject, each sent against the ticket
+`version` through `POST .../recommendations/:id/review`. Suggestions whose category or team is no
+longer active cannot be accepted, and resolved or closed tickets can only reject. Earlier suggestions
+and their decisions stay visible under "Earlier suggestions". Triggering an analysis from the page
+and showing queued, running or failed job states belong to SD-038.
 
 ## AI provider (backend and worker only)
 

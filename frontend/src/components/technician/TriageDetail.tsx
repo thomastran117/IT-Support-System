@@ -3,6 +3,7 @@
 import type {
   ApproveRoutingRequest,
   CategoryRefDto,
+  RecommendationDto,
   TeamMemberRefDto,
   TeamRefDto,
   TicketDetailDto,
@@ -26,6 +27,7 @@ import {
 } from '@/lib/technician/format';
 import { Counter, inputClass, primaryButton, secondaryButton, StatusBadge } from '../tickets/ui';
 import { PriorityChip } from './PriorityChip';
+import { RecommendationCard, type ReviewSubmit } from './RecommendationCard';
 
 interface RoutingForm {
   categoryId: string;
@@ -58,6 +60,8 @@ export function TriageDetail() {
     assigneeId: '',
   });
   const [notice, setNotice] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
+  const [recs, setRecs] = useState<RecommendationDto[] | null>(null);
+  const [recsFailed, setRecsFailed] = useState(false);
   const [moved, setMoved] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
@@ -86,6 +90,20 @@ export function TriageDetail() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  /** AI suggestions are advisory: a failure here never blocks the rest of the page. */
+  const loadRecs = useCallback(async () => {
+    try {
+      setRecs(await tech.recommendations(id));
+      setRecsFailed(false);
+    } catch {
+      setRecsFailed(true);
+    }
+  }, [tech, id]);
+
+  useEffect(() => {
+    void loadRecs();
+  }, [loadRecs]);
 
   // Reference data for the form. The page still works read-only if these fail.
   useEffect(() => {
@@ -131,6 +149,7 @@ export function TriageDetail() {
     setNotice(null);
     try {
       await work();
+      void loadRecs();
       const reloadProblem = await load();
       if (reloadProblem?.kind === 'gone') {
         // The change was saved, but the ticket now belongs to a team this technician is not in
@@ -146,6 +165,8 @@ export function TriageDetail() {
     } catch (err) {
       const problem = describeTriageError(err);
       if (problem.kind === 'conflict') await load();
+      // A failed write may mean someone else already acted (e.g. reviewed the same suggestion).
+      void loadRecs();
       setNotice({ tone: 'error', text: problem.message });
       return false;
     } finally {
@@ -172,6 +193,23 @@ export function TriageDetail() {
           expectedVersion: ticket.version,
         }),
       'Routing approved.',
+    );
+  }
+
+  function onReview(rec: RecommendationDto, submit: ReviewSubmit) {
+    if (!ticket) return;
+    const verb = { ACCEPTED: 'accepted', OVERRIDDEN: 'overridden', REJECTED: 'rejected' }[
+      submit.decision
+    ];
+    void act(
+      () =>
+        tech.reviewRecommendation(id, rec.id, {
+          decision: submit.decision,
+          expectedVersion: ticket.version,
+          ...(submit.override ? { override: submit.override } : {}),
+          ...(submit.notes ? { notes: submit.notes } : {}),
+        }),
+      `AI suggestion ${verb}.`,
     );
   }
 
@@ -432,10 +470,17 @@ export function TriageDetail() {
             </div>
           </form>
         )}
-        <p className="text-sm text-slate-600" data-testid="ai-note">
-          AI suggestions will appear here once analysis is available. Manual routing never depends
-          on them.
-        </p>
+        <RecommendationCard
+          key={recs?.[0]?.id ?? 'none'}
+          ticket={ticket}
+          recommendations={recs}
+          loadFailed={recsFailed}
+          categories={categories}
+          teams={teams}
+          busy={busy}
+          onReview={onReview}
+          onRetry={() => void loadRecs()}
+        />
       </section>
 
       <section aria-labelledby="status-title" className="app-card space-y-4 p-5 sm:p-6">

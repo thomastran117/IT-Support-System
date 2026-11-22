@@ -164,6 +164,25 @@ describe('technicianApi', () => {
     expect(request).toHaveBeenCalledWith('/api/technician/unassigned?limit=10');
   });
 
+  it('reads recommendations and posts a review against the ticket version', async () => {
+    const { request, api } = fake();
+    await api.recommendations('t/1');
+    expect(request).toHaveBeenLastCalledWith('/api/tickets/t%2F1/recommendations');
+    await api.reviewRecommendation('t1', 'r1', {
+      decision: 'OVERRIDDEN',
+      expectedVersion: 4,
+      override: { priority: 'HIGH' },
+    });
+    const [path, init] = request.mock.calls.at(-1)! as [string, RequestInit];
+    expect(path).toBe('/api/tickets/t1/recommendations/r1/review');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body as string)).toEqual({
+      decision: 'OVERRIDDEN',
+      expectedVersion: 4,
+      override: { priority: 'HIGH' },
+    });
+  });
+
   it('posts routing and transitions with the version', async () => {
     const { request, api } = fake();
     await api.approveRouting('a/b', {

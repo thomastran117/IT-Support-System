@@ -3,6 +3,9 @@ import type {
   CategoryRefDto,
   CreateCommentRequest,
   QueuePage,
+  RecommendationDto,
+  ReviewRecommendationRequest,
+  ReviewResultDto,
   TeamMemberRefDto,
   TeamRefDto,
   TicketCommentDto,
@@ -63,6 +66,16 @@ export function technicianApi(api: ApiClient) {
     },
     ticket(id: string) {
       return api.request<TicketDetailDto>(`/api/tickets/${enc(id)}`);
+    },
+    /** Current and historical AI recommendations, newest first. Staff only. */
+    recommendations(id: string) {
+      return api.request<RecommendationDto[]>(`/api/tickets/${enc(id)}/recommendations`);
+    },
+    reviewRecommendation(id: string, recommendationId: string, body: ReviewRecommendationRequest) {
+      return api.request<ReviewResultDto>(
+        `/api/tickets/${enc(id)}/recommendations/${enc(recommendationId)}/review`,
+        { method: 'POST', body: JSON.stringify(body) },
+      );
     },
     approveRouting(id: string, body: ApproveRoutingRequest) {
       return api.request<TicketDto>(`/api/tickets/${enc(id)}/routing`, {

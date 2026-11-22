@@ -359,6 +359,40 @@ export interface ReviewResultDto {
   decision: ReviewDecision;
 }
 
+export type RecommendationReviewStatus = 'PENDING' | ReviewDecision;
+
+/** A category or team an AI proposal points at. `isActive` false means the proposal is stale. */
+export interface ProposedRef extends NamedRef {
+  isActive: boolean;
+}
+
+/**
+ * One AI recommendation as staff see it (`GET /api/tickets/:id/recommendations`, newest first).
+ * `proposed` and `suggestion` are exactly what the model returned and never change; the approved
+ * values live on the ticket. Requesters never receive recommendations.
+ */
+export interface RecommendationDto {
+  id: string;
+  createdAt: string;
+  modelVersion: string;
+  /** The model's self-reported score (0..1), not a calibrated probability. */
+  confidence: number | null;
+  suggestion: string | null;
+  proposed: {
+    category: ProposedRef | null;
+    team: ProposedRef | null;
+    priority: TicketPriority | null;
+  };
+  review: {
+    status: RecommendationReviewStatus;
+    reviewer: NamedRef | null;
+    reviewedAt: string | null;
+    notes: string | null;
+  };
+  /** Published knowledge articles the proposal cites, most relevant first. */
+  articles: { id: string; title: string }[];
+}
+
 /**
  * Machine-readable reason in `details.code` of a 409 from a ticket mutation:
  * - VERSION_CONFLICT: stale `expectedVersion` (`details.currentVersion` has the current one)
