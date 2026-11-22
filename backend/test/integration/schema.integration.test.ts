@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const url = process.env.TEST_DATABASE_URL;
 
-const EXTENSION_TABLES = ['admin_audit_log', 'ai_analysis_jobs'];
+const EXTENSION_TABLES = ['admin_audit_log', 'ai_analysis_jobs', 'notifications'];
 
 const CORE_TABLES = [
   'ai_recommendations',

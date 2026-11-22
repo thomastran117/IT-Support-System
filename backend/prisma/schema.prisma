@@ -37,6 +37,7 @@ model User {
   classificationLabels ClassificationLabel[]
   auditActions         AdminAuditLog[]        @relation("AuditActor")
   auditedChanges       AdminAuditLog[]        @relation("AuditTarget")
+  notifications        Notification[]
 
   @@map("users")
 }
@@ -117,6 +118,7 @@ model Ticket {
   events          TicketEvent[]
   recommendations AiRecommendation[]
   analysisJobs    AiAnalysisJob[]
+  notifications   Notification[]
   label           ClassificationLabel?
 
   @@index([requesterId, createdAt(sort: Desc)], map: "idx_tickets_requester_created")
@@ -151,6 +153,7 @@ model TicketEvent {
 
   ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Restrict)
   actor  User?  @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  notifications Notification[]
 
   @@index([ticketId, occurredAt, id], map: "idx_ticket_events_ticket_occurred")
   @@map("ticket_events")
@@ -268,4 +271,25 @@ model AiAnalysisJob {
   @@index([state, runAfter], map: "idx_ai_jobs_claim")
   @@index([ticketId, createdAt(sort: Desc)], map: "idx_ai_jobs_ticket")
   @@map("ai_analysis_jobs")
+}
+
+/// In-app employee notification (SD-040), written in the same transaction as its ticket event.
+/// (recipientId, eventId, type) deduplicates; no message text is stored.
+model Notification {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @map("notification_id") @db.Uuid
+  recipientId String    @map("recipient_id") @db.Uuid
+  ticketId    String    @map("ticket_id") @db.Uuid
+  eventId     String    @map("event_id") @db.Uuid
+  type        String    @db.VarChar(24)
+  readAt      DateTime? @map("read_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  recipient User        @relation(fields: [recipientId], references: [id], onDelete: Restrict)
+  ticket    Ticket      @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  event     TicketEvent @relation(fields: [eventId], references: [id], onDelete: Restrict)
+
+  @@unique([recipientId, eventId, type], map: "uq_notifications_recipient_event_type")
+  @@index([recipientId, createdAt(sort: Desc), id(sort: Desc)], map: "idx_notifications_recipient_created")
+  @@index([ticketId], map: "idx_notifications_ticket")
+  @@map("notifications")
 }

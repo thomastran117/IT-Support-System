@@ -260,3 +260,21 @@ _AI and evaluation._ Durable queue for AI ticket analysis (SD-035), a transactio
 - `ck_ai_jobs_lease`: `(((state)::text = 'RUNNING'::text) = ((lease_token IS NOT NULL) AND (locked_until IS NOT NULL)))`
 - `ck_ai_jobs_state`: `((state)::text = ANY ((ARRAY['QUEUED'::character varying, 'RUNNING'::character varying, 'COMPLETED'::character varying, 'FAILED'::character varying])::text[]))`
 - `ck_ai_jobs_terminal`: `(((state)::text = ANY ((ARRAY['COMPLETED'::character varying, 'FAILED'::character varying])::text[])) = (completed_at IS NOT NULL))`
+
+## `notifications`
+
+_Tickets._ In-app employee notifications (SD-040). A row is inserted in the same transaction as the ticket event that caused it, so a rolled-back change leaves none and a committed one always has one. (recipient_id, event_id, type) is the deduplication key. Stores no message text: wording is derived from type and ticket when read, so internal notes and private details cannot leak. The recipient is the ticket requester, never the actor and never a deactivated account.
+
+| Column | Type | Null | Default | Key | Unique | Indexes | Meaning |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `notification_id` | `uuid` | NOT NULL | `gen_random_uuid()` | PK |  | `idx_notifications_recipient_created` | Primary key. |
+| `recipient_id` | `uuid` | NOT NULL |  | FK → users.user_id | with event_id, type | `idx_notifications_recipient_created`, `uq_notifications_recipient_event_type` | Employee who sees the notification (the ticket requester). |
+| `ticket_id` | `uuid` | NOT NULL |  | FK → tickets.ticket_id |  | `idx_notifications_ticket` | Ticket the notification is about. |
+| `event_id` | `uuid` | NOT NULL |  | FK → ticket_events.event_id | with recipient_id, type | `uq_notifications_recipient_event_type` | Audit event that produced it; with recipient and type it deduplicates. |
+| `type` | `character varying(24)` | NOT NULL |  |  | with recipient_id, event_id | `uq_notifications_recipient_event_type` | TICKET_ASSIGNED, TICKET_STATUS_CHANGED, TICKET_RESOLVED, TICKET_REOPENED or TECHNICIAN_REPLY. |
+| `read_at` | `timestamp(6) with time zone` | NULL |  |  |  |  | When the recipient marked it read; NULL while unread. |
+| `created_at` | `timestamp(6) with time zone` | NOT NULL | `CURRENT_TIMESTAMP` |  |  | `idx_notifications_recipient_created` | When the notification was recorded. |
+
+**CHECK constraints**
+
+- `ck_notifications_type`: `((type)::text = ANY ((ARRAY['TICKET_ASSIGNED'::character varying, 'TICKET_STATUS_CHANGED'::character varying, 'TICKET_RESOLVED'::character varying, 'TICKET_REOPENED'::character varying, 'TECHNICIAN_REPLY'::character varying])::text[]))`

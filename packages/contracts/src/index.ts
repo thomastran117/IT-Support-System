@@ -246,6 +246,19 @@ export const TICKET_EVENT_TYPES = [
 export type TicketEventType = (typeof TICKET_EVENT_TYPES)[number];
 
 /**
+ * Kinds of in-app employee notification (SD-040). A notification stores no text: the wording shown
+ * to the employee is derived from the type and the ticket, so private details cannot leak into it.
+ */
+export const NOTIFICATION_TYPES = [
+  'TICKET_ASSIGNED',
+  'TICKET_STATUS_CHANGED',
+  'TICKET_RESOLVED',
+  'TICKET_REOPENED',
+  'TECHNICIAN_REPLY',
+] as const;
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+
+/**
  * One timeline entry (`GET /api/tickets/:id/events`, and `timeline` in the ticket detail).
  * Staff in scope get every event, the actor (null for a system action) and the sanitized details.
  * Requesters get a reduced view: some event types are hidden, the actor is always null and the

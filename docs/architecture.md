@@ -147,3 +147,20 @@ Compose profiles add one-shot services without affecting the normal stack:
 - `tools`: generated documentation commands whose output is mounted back into the repository.
 
 GitHub Actions invokes these same services rather than maintaining a separate host npm workflow.
+
+## Employee notifications (SD-040)
+
+A ticket's requester gets an in-app notification when something they can see changes. The notification row is inserted by `appendEvent` **in the same transaction as the audit event**, so a rolled-back change leaves neither, and a committed one always has its notification. The recipient is always the ticket's requester, read from the ticket row inside the insert, never supplied by a caller.
+
+| Ticket event                       | Notification type       | Notes                                              |
+| ---------------------------------- | ----------------------- | -------------------------------------------------- |
+| `TEAM_ASSIGNED`, `TEAM_REASSIGNED` | `TICKET_ASSIGNED`       |                                                    |
+| `STATUS_CHANGED`                   | `TICKET_STATUS_CHANGED` | includes auto-triage and close                     |
+| `RESOLVED`                         | `TICKET_RESOLVED`       |                                                    |
+| `REOPENED`                         | `TICKET_REOPENED`       | only when someone other than the requester reopens |
+| `COMMENT_ADDED` (public)           | `TECHNICIAN_REPLY`      | only when someone other than the requester replies |
+
+- **No self-notification, no inactive recipients:** the actor is never notified of their own action, and a deactivated requester gets nothing.
+- **Never notified:** internal notes, AI review decisions, assignee, category and priority changes, and ticket creation. A comment whose `isInternal` flag is missing or malformed is treated as internal.
+- **Deduplication:** `(recipient_id, event_id, type)` is unique and the insert uses `ON CONFLICT DO NOTHING`, so recording the same event twice yields one user-visible item.
+- **No stored text:** `notifications` holds ids, the type and `read_at`. The wording is derived from the type and the ticket when it is read, so comment bodies and internal-note text cannot reach a notification.
