@@ -164,3 +164,9 @@ A ticket's requester gets an in-app notification when something they can see cha
 - **Never notified:** internal notes, AI review decisions, assignee, category and priority changes, and ticket creation. A comment whose `isInternal` flag is missing or malformed is treated as internal.
 - **Deduplication:** `(recipient_id, event_id, type)` is unique and the insert uses `ON CONFLICT DO NOTHING`, so recording the same event twice yields one user-visible item.
 - **No stored text:** `notifications` holds ids, the type and `read_at`. The wording is derived from the type and the ticket when it is read, so comment bodies and internal-note text cannot reach a notification.
+
+### Notification centre (SD-042)
+
+Employees get a bell with an unread badge in the shell (sidebar on desktop, header on mobile). One shared state (`useNotificationCentre`) feeds both layouts, so there is a single poller: `GET /api/notifications?limit=10` every `NEXT_PUBLIC_TICKET_POLL_MS` (default 15 s) while the tab is visible, on every navigation and whenever the panel opens. The badge and the unread count always come from the server's `unreadCount`, never from local arithmetic, and a failed poll keeps the last known badge. Each item links to the employee's own ticket page (`/employee/tickets/:id`), which the API already restricts to the requester, and opening it marks the notice read. Wording comes from the server and carries no comment text. There are no WebSockets or push services. Technicians and administrators have no bell, because notifications go to ticket requesters.
+
+The panel is a non-modal dialog rendered into `<body>`: Escape or an outside click closes it and focus returns to the bell that opened it. It shows loading, empty and error states (with "Try again") and the 10 most recent notifications.

@@ -17,6 +17,11 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { ROLE_LABEL } from '@/lib/auth/roles';
+import {
+  NotificationBell,
+  NotificationPanel,
+  useNotificationCentre,
+} from './notifications/NotificationCentre';
 import { Avatar, BrandMark, cx } from './ui';
 
 interface NavItem {
@@ -139,6 +144,8 @@ export function NavShell({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLButtonElement>(null);
+  // Notifications are for employees (ticket requesters); one shared state feeds both layouts.
+  const centre = useNotificationCentre(user?.role === 'EMPLOYEE');
 
   async function onSignOut() {
     setOpen(false);
@@ -188,9 +195,17 @@ export function NavShell({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-[#f4f7fb] lg:grid lg:grid-cols-[15.5rem_minmax(0,1fr)]">
       {skipLink}
       <aside className="sticky top-0 hidden h-screen flex-col overflow-y-auto bg-[#0b1f3a] px-4 py-5 text-white lg:flex">
-        <Link href={NAVIGATION[user.role][0].href} className="px-2" aria-label="SmartDesk home">
-          <BrandMark />
-        </Link>
+        <div className="flex items-center justify-between gap-2">
+          <Link href={NAVIGATION[user.role][0].href} className="px-2" aria-label="SmartDesk home">
+            <BrandMark />
+          </Link>
+          {user.role === 'EMPLOYEE' && (
+            <NotificationBell
+              centre={centre}
+              className="text-slate-300 hover:bg-white/10 hover:text-white"
+            />
+          )}
+        </div>
         <p className="mt-8 px-3 text-[0.7rem] font-bold tracking-[0.14em] text-slate-300 uppercase">
           Workspace
         </p>
@@ -213,18 +228,27 @@ export function NavShell({ children }: { children: ReactNode }) {
           <Link href={NAVIGATION[user.role][0].href} aria-label="SmartDesk home">
             <BrandMark />
           </Link>
-          <button
-            ref={menuRef}
-            type="button"
-            aria-label="Open navigation"
-            aria-expanded={open}
-            aria-controls="mobile-navigation"
-            onClick={() => setOpen(true)}
-            className="grid size-10 place-items-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm"
-          >
-            <Menu aria-hidden="true" size={20} />
-          </button>
+          <div className="flex items-center gap-2">
+            {user.role === 'EMPLOYEE' && (
+              <NotificationBell
+                centre={centre}
+                className="border border-slate-200 bg-white text-slate-700 shadow-sm"
+              />
+            )}
+            <button
+              ref={menuRef}
+              type="button"
+              aria-label="Open navigation"
+              aria-expanded={open}
+              aria-controls="mobile-navigation"
+              onClick={() => setOpen(true)}
+              className="grid size-10 place-items-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm"
+            >
+              <Menu aria-hidden="true" size={20} />
+            </button>
+          </div>
         </header>
+        {user.role === 'EMPLOYEE' && <NotificationPanel centre={centre} />}
 
         {open && (
           <div className="fixed inset-0 z-50 lg:hidden">

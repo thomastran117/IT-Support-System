@@ -130,7 +130,20 @@ export interface MockArticle {
   updatedAt: string;
 }
 
+export interface MockNotification {
+  id: string;
+  recipientId: string;
+  type: string;
+  message: string;
+  ticketId: string;
+  ticketTitle: string;
+  readAt: string | null;
+  createdAt: string;
+}
+
 export interface MockApi {
+  /** The server-side notifications (all recipients), oldest first. */
+  notifications(): readonly MockNotification[];
   /** The server-side knowledge articles (published and draft). */
   knowledge: {
     articles(): readonly MockArticle[];
@@ -183,8 +196,11 @@ export interface MockApi {
   limitAnalysis(on: boolean): void;
   /** The request ids of every POST /analysis that reached the server, in order. */
   analysisRequests(): readonly (string | undefined)[];
+  /** Every notifications request fails with this status (or `'network'`) until set to `null`. */
+  setNotificationsDown(status: number | 'network' | null): void;
   failNext(
-    endpoint: 'create' | 'reply' | 'list' | 'detail' | 'queue' | 'recs' | 'analysis',
+    endpoint:
+      'create' | 'reply' | 'list' | 'detail' | 'queue' | 'recs' | 'analysis' | 'notifications',
     status: number | 'network',
   ): void;
   /** Number of POST /api/tickets requests that reached the server (including idempotent replays). */
@@ -427,6 +443,31 @@ export async function installMockApi(page: Page): Promise<MockApi> {
     t.events.push({ id: uuid(6, ++ticketSeq + 1000), type, occurredAt: at, details });
     t.updatedAt = at;
     t.version++;
+  };
+
+  // --- Notifications (SD-040/041): the same policy as the backend, in memory ------------------
+  const notifications: MockNotification[] = [];
+  let notificationSeq = 0;
+  let notificationsDown: number | 'network' | null = null;
+  const NOTICE_TEXT: Record<string, string> = {
+    TICKET_ASSIGNED: 'Your ticket was assigned to a support team.',
+    TICKET_STATUS_CHANGED: 'The status of your ticket changed.',
+    TICKET_RESOLVED: 'Your ticket was resolved.',
+    TICKET_REOPENED: 'Your ticket was reopened.',
+    TECHNICIAN_REPLY: 'A technician replied to your ticket.',
+  };
+  /** A technician acted on the ticket, so its requester gets a notification of `type`. */
+  const notify = (t: MockTicket, type: string) => {
+    notifications.push({
+      id: uuid(8, ++notificationSeq),
+      recipientId: t.requesterId,
+      type,
+      message: NOTICE_TEXT[type]!,
+      ticketId: t.id,
+      ticketTitle: t.title,
+      readAt: null,
+      createdAt: tick(),
+    });
   };
 
   const REQUESTER_EVENTS = new Set([
@@ -1174,7 +1215,77 @@ export async function installMockApi(page: Page): Promise<MockApi> {
     return reply(route, 404, null, 'Not found');
   });
 
+  await page.route(/\/api\/notifications/, async (route) => {
+    const req = route.request();
+    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors(route) });
+    if (offline) return route.abort('failed');
+    const auth = req.headers()['authorization'];
+    if (!session || auth !== `Bearer ${currentToken}`) {
+      return reply(route, 401, null, 'Authentication required');
+    }
+    const failure = notificationsDown ?? failures.get('notifications');
+    if (failure !== undefined) {
+      failures.delete('notifications');
+      return failure === 'network'
+        ? route.abort('failed')
+        : reply(route, failure, null, 'Server error');
+    }
+    const url = new URL(req.url());
+    const path = url.pathname.replace('/api/notifications', '');
+    const mine = notifications.filter((n) => n.recipientId === session!.id);
+    const unreadCount = () => mine.filter((n) => !n.readAt).length;
+    const dto = (n: MockNotification) => ({
+      id: n.id,
+      type: n.type,
+      message: n.message,
+      ticketId: n.ticketId,
+      trackingId: n.ticketId,
+      ticketTitle: n.ticketTitle,
+      read: n.readAt !== null,
+      readAt: n.readAt,
+      createdAt: n.createdAt,
+    });
+
+    if (req.method() === 'GET' && path === '') {
+      const limit = Number(url.searchParams.get('limit') ?? 20);
+      const offset = Number(url.searchParams.get('offset') ?? 0);
+      const unreadOnly = url.searchParams.get('unreadOnly') === 'true';
+      const matching = [...mine].reverse().filter((n) => !unreadOnly || !n.readAt);
+      const items = matching.slice(offset, offset + limit).map(dto);
+      return reply(route, 200, {
+        items,
+        total: matching.length,
+        limit,
+        offset,
+        nextOffset: offset + items.length < matching.length ? offset + items.length : null,
+        unreadCount: unreadCount(),
+      });
+    }
+    if (req.method() === 'POST' && path === '/read-all') {
+      let updated = 0;
+      for (const n of mine) {
+        if (!n.readAt) {
+          n.readAt = tick();
+          updated++;
+        }
+      }
+      return reply(route, 200, { unreadCount: 0, updated }, 'Notifications marked read');
+    }
+    const read = /^\/([^/]+)\/read$/.exec(path);
+    if (req.method() === 'PATCH' && read) {
+      const target = mine.find((n) => n.id === read[1]);
+      if (!target) return reply(route, 404, null, 'Notification not found');
+      target.readAt ??= tick();
+      return reply(route, 200, { unreadCount: unreadCount() }, 'Notification marked read');
+    }
+    return reply(route, 404, null, 'Not found');
+  });
+
   const api: MockApi = {
+    notifications: () => notifications,
+    setNotificationsDown: (status) => {
+      notificationsDown = status;
+    },
     knowledge: { articles: () => articles, seed: addArticle },
     tickets: () => tickets,
     seedTickets: (n, requesterId = ACCOUNTS.employee.id) =>
@@ -1196,6 +1307,7 @@ export async function installMockApi(page: Page): Promise<MockApi> {
           addEvent(t, 'TEAM_ASSIGNED', { to: team?.id ?? 't1' });
           t.team = { id: team?.id ?? 't1', name: change.team };
           t.assignee = { id: 'u-tara', name: ACCOUNTS.technician.displayName };
+          notify(t, 'TICKET_ASSIGNED');
         }
         if (change.priority) {
           addEvent(t, 'PRIORITY_UPDATED', { from: t.priority, to: change.priority });
@@ -1207,8 +1319,10 @@ export async function installMockApi(page: Page): Promise<MockApi> {
             t.resolvedAt = tick();
             t.resolutionSummary = change.resolutionSummary ?? 'Fixed.';
             addEvent(t, 'RESOLVED', { from });
+            notify(t, 'TICKET_RESOLVED');
           } else {
             addEvent(t, 'STATUS_CHANGED', { from, to: change.status });
+            notify(t, 'TICKET_STATUS_CHANGED');
           }
           t.status = change.status;
         }
@@ -1275,6 +1389,7 @@ export async function installMockApi(page: Page): Promise<MockApi> {
           createdAt: tick(),
         });
         addEvent(t, 'COMMENT_ADDED', { isInternal });
+        if (!isInternal) notify(t, 'TECHNICIAN_REPLY');
       },
     },
     setAiEnabled: (v) => {
