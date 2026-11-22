@@ -305,7 +305,7 @@ All `/api/admin/teams` endpoints require the `ADMIN` role.
 
 | Method | Path                                   | Purpose                                                     |
 | ------ | -------------------------------------- | ----------------------------------------------------------- |
-| GET    | `/api/admin/teams`                     | All teams, inactive included, with member counts            |
+| GET    | `/api/admin/teams`                     | All teams, inactive included, with member and ticket counts |
 | POST   | `/api/admin/teams`                     | Create a team (`name`, optional `description`)              |
 | GET    | `/api/admin/teams/:id`                 | One team                                                    |
 | PATCH  | `/api/admin/teams/:id`                 | Rename or change the description                            |
@@ -326,7 +326,32 @@ Rules:
 - A technician **may belong to several teams**. Their working scope is the union of those teams'
   queues plus the shared unassigned backlog (see `docs/authentication.md`). Removing them from one
   team does not affect the others.
-- Deactivating a team does not alter tickets already routed to it.
+- Deactivating a team does not alter tickets already routed to it, and the admin list shows
+  `ticketCount` (tickets of any status assigned to the team) so the effect is visible beforehand. A
+  deactivated team is no longer accepted for new routing (`422`) and is not listed by `/api/teams`.
+
+### Category administration
+
+All `/api/admin/categories` endpoints require the `ADMIN` role (`401` anonymous, `403` otherwise).
+
+| Method | Path                                   | Purpose                                                                 |
+| ------ | -------------------------------------- | ----------------------------------------------------------------------- |
+| GET    | `/api/admin/categories`                | All categories, inactive last, with `ticketCount`                       |
+| POST   | `/api/admin/categories`                | Create (`name` up to 100 characters, optional `description`)            |
+| GET    | `/api/admin/categories/:id`            | One category                                                            |
+| PATCH  | `/api/admin/categories/:id`            | Rename or change the description                                        |
+| POST   | `/api/admin/categories/:id/activate`   | Offer the category again (idempotent)                                   |
+| POST   | `/api/admin/categories/:id/deactivate` | Stop offering it; tickets, articles, recommendations and labels keep it |
+
+- Names are unique; a clash on create or rename is `409` with a message that names the problem.
+  Unknown keys and empty or overlong names are `400`.
+- There is **no delete**: categories are referenced by tickets, knowledge articles, AI
+  recommendations and evaluation labels, so they are only deactivated.
+- An inactive category is not listed by `/api/categories` and is rejected for new triage and when
+  accepting or overriding an AI suggestion (`409`/`422`), while every existing reference keeps resolving it.
+
+The administrator pages for this are `/admin/categories` and `/admin/teams` (membership included).
+Deactivating asks for confirmation and states these effects first.
 
 ## Knowledge base
 

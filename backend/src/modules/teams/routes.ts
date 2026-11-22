@@ -1,9 +1,16 @@
 import type { FastifyPluginAsync } from 'fastify';
 import type { PrismaClient } from '@smartdesk/db';
-import { addTeamMemberSchema, createTeamSchema, updateTeamSchema } from '@smartdesk/contracts';
+import {
+  addTeamMemberSchema,
+  createCategorySchema,
+  createTeamSchema,
+  updateCategorySchema,
+  updateTeamSchema,
+} from '@smartdesk/contracts';
 import { z } from 'zod';
 import { envelope } from '../../plugins/errors.js';
 import { parse } from '../../plugins/validate.js';
+import { createCategoryService } from './categoryService.js';
 import { createTeamService } from './service.js';
 
 const TeamParams = z.object({ id: z.uuid() });
@@ -97,4 +104,38 @@ export const adminTeamRoutes =
       await service.removeMember(p.id, p.userId);
       return envelope('Member removed');
     });
+  };
+
+/** Administrator-only category management. Mounted under /api/admin/categories. */
+export const adminCategoryRoutes =
+  (prisma: PrismaClient): FastifyPluginAsync =>
+  async (app) => {
+    const service = createCategoryService(prisma);
+    const opts = { preHandler: app.authGuards.requireRole('ADMIN') };
+    const categoryId = (params: unknown) => parse(TeamParams, params).id;
+
+    app.get('/', opts, async () => envelope('Categories', await service.list()));
+
+    app.post('/', opts, async (req, reply) => {
+      const category = await service.create(parse(createCategorySchema, req.body));
+      return reply.code(201).send(envelope('Category created', category));
+    });
+
+    app.get('/:id', opts, async (req) =>
+      envelope('Category', await service.get(categoryId(req.params))),
+    );
+
+    app.patch('/:id', opts, async (req) =>
+      envelope(
+        'Category updated',
+        await service.update(categoryId(req.params), parse(updateCategorySchema, req.body)),
+      ),
+    );
+
+    app.post('/:id/activate', opts, async (req) =>
+      envelope('Category activated', await service.setActive(categoryId(req.params), true)),
+    );
+    app.post('/:id/deactivate', opts, async (req) =>
+      envelope('Category deactivated', await service.setActive(categoryId(req.params), false)),
+    );
   };
