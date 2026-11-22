@@ -173,3 +173,36 @@ export async function findLatestForTicket(db: Db, ticketId: string): Promise<Ana
     ORDER BY created_at DESC, job_id DESC LIMIT 1`;
   return rows[0] ? toJob(rows[0]) : null;
 }
+
+/** The job that is currently waiting or being worked on for a ticket, if any. */
+export async function findActiveForTicket(db: Db, ticketId: string): Promise<AnalysisJob | null> {
+  const rows = await db.$queryRaw<JobRow[]>`
+    SELECT * FROM ai_analysis_jobs
+    WHERE ticket_id = ${ticketId}::uuid AND state IN ('QUEUED', 'RUNNING')
+    ORDER BY created_at DESC LIMIT 1`;
+  return rows[0] ? toJob(rows[0]) : null;
+}
+
+export async function findByRequest(
+  db: Db,
+  ticketId: string,
+  requestId: string,
+): Promise<AnalysisJob | null> {
+  const rows = await db.$queryRaw<JobRow[]>`
+    SELECT * FROM ai_analysis_jobs
+    WHERE ticket_id = ${ticketId}::uuid AND request_id = ${requestId}::uuid`;
+  return rows[0] ? toJob(rows[0]) : null;
+}
+
+/** Jobs created for a ticket in the last `windowMs`, for per-ticket request limiting. */
+export async function countRecentForTicket(
+  db: Db,
+  ticketId: string,
+  windowMs: number,
+): Promise<number> {
+  const rows = await db.$queryRaw<{ n: bigint }[]>`
+    SELECT count(*) AS n FROM ai_analysis_jobs
+    WHERE ticket_id = ${ticketId}::uuid
+      AND created_at > clock_timestamp() - make_interval(secs => ${windowMs / 1000}::float8)`;
+  return Number(rows[0]?.n ?? 0);
+}
