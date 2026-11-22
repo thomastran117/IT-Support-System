@@ -75,6 +75,7 @@ services:
       REDIS_URL: ${REDIS_URL:-}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
       JWT_SECRET: ${JWT_SECRET:-change-me-dev-only-change-me-dev-only}
       JWT_ISSUER: ${JWT_ISSUER:-smartdesk-api}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-smartdesk-web}

@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { PrismaClient } from '@smartdesk/db';
 import type { ReviewResultDto, TicketCommentDto, TicketStatus } from '@smartdesk/contracts';
 import {
@@ -52,9 +52,26 @@ const IdempotencyKey = z
 
 /** Mounted under /api/tickets. */
 export const ticketRoutes =
-  (prisma: PrismaClient, analysis?: { maxAttempts: number }): FastifyPluginAsync =>
+  (
+    prisma: PrismaClient,
+    analysis?: { maxAttempts: number },
+    aiAnalysisRateLimit: { max: number; windowMs: number } = { max: 10, windowMs: 60_000 },
+  ): FastifyPluginAsync =>
   async (app) => {
     const auth = { preHandler: app.authGuards.requireAuth };
+    // Keyed by account, not IP: the endpoint is only reachable once authenticated, and a shared
+    // IP (NAT, office network) should not share one budget across unrelated accounts. Runs as a
+    // preHandler, after `requireAuth` above has populated req.principal.
+    const aiAnalysisLimit = {
+      config: {
+        rateLimit: {
+          max: aiAnalysisRateLimit.max,
+          timeWindow: aiAnalysisRateLimit.windowMs,
+          hook: 'preHandler' as const,
+          keyGenerator: (req: FastifyRequest) => `user:${req.principal!.id}`,
+        },
+      },
+    };
 
     app.post('/', auth, async (req, reply) => {
       const body = parse(CreateBody, req.body);
@@ -176,7 +193,7 @@ export const ticketRoutes =
       );
     });
 
-    app.post('/:id/analysis', auth, async (req, reply) => {
+    app.post('/:id/analysis', { ...auth, ...aiAnalysisLimit }, async (req, reply) => {
       const params = parse(z.object({ id: z.string() }), req.params);
       const body = parse(z.strictObject({ requestId: z.uuid().optional() }), req.body ?? {});
       await authorizeTicket(prisma, req.principal!, params.id, 'edit');
