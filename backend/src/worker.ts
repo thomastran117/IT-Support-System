@@ -4,9 +4,11 @@ import { createAnalysisService } from './modules/ai/analysisService.js';
 import { createProvider } from './modules/ai/index.js';
 import { createJobRunner, type JobLogEntry } from './modules/ai/jobRunner.js';
 import { persistDraft } from './modules/ai/recommendationService.js';
+import { createEmailDispatcher } from './modules/notifications/email/dispatcher.js';
+import { createEmailTransport } from './modules/notifications/email/transport.js';
 
 /**
- * Background AI analysis worker: a separate process from the HTTP API (`npm run start:worker`).
+ * Background worker (AI analysis and, when enabled, notification email): a separate process from the HTTP API (`npm run start:worker`).
  * It claims jobs from the PostgreSQL queue, so work queued while it was down is picked up on start,
  * and several workers can run side by side. It never imports Fastify.
  */
@@ -32,6 +34,28 @@ const runner = createJobRunner({
   log: (entry) => write(entry.errorKind && entry.state !== 'COMPLETED' ? 'error' : 'info', entry),
 });
 
+// Optional email channel (SD-043). Off by default: with EMAIL_TRANSPORT=none no loop starts and
+// nothing is ever sent, and the in-app notification centre works exactly the same.
+const { email } = env;
+const transport = createEmailTransport(email);
+const sendTimeoutMs = 30_000;
+const mailer = transport
+  ? createEmailDispatcher({
+      prisma,
+      transport,
+      config: {
+        appBaseUrl: email.appBaseUrl,
+        maxAttempts: email.maxAttempts,
+        backoffBaseMs: email.backoffBaseMs,
+        maxAgeMs: email.maxAgeMs,
+        pollIntervalMs: ai.worker.pollIntervalMs,
+        sendTimeoutMs,
+        leaseMs: sendTimeoutMs + 30_000,
+      },
+      log: (entry) => write(entry.errorKind && entry.state !== 'SENT' ? 'error' : 'info', entry),
+    })
+  : null;
+
 let closing = false;
 async function shutdown(signal: string): Promise<void> {
   if (closing) return;
@@ -42,7 +66,7 @@ async function shutdown(signal: string): Promise<void> {
   const force = setTimeout(() => process.exit(1), handlerTimeoutMs + 5_000);
   force.unref();
   try {
-    await runner.stop();
+    await Promise.all([runner.stop(), mailer?.stop()]);
     await prisma.$disconnect();
     process.exit(0);
   } catch {
@@ -54,3 +78,6 @@ process.on('SIGTERM', () => void shutdown('SIGTERM'));
 
 write('info', { msg: `ai provider: ${ai.provider}` });
 runner.start();
+// Only the transport kind is logged. Host, user and password never are.
+write('info', { msg: `email transport: ${email.transport}` });
+mailer?.start();

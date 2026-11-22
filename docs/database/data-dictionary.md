@@ -278,3 +278,29 @@ _Tickets._ In-app employee notifications (SD-040). A row is inserted in the same
 **CHECK constraints**
 
 - `ck_notifications_type`: `((type)::text = ANY ((ARRAY['TICKET_ASSIGNED'::character varying, 'TICKET_STATUS_CHANGED'::character varying, 'TICKET_RESOLVED'::character varying, 'TICKET_REOPENED'::character varying, 'TECHNICIAN_REPLY'::character varying])::text[]))`
+
+## `notification_deliveries`
+
+_Tickets._ Delivery queue for the optional email channel (SD-043). At most one row per notification (unique notification_id), so a notification is never queued or sent twice. The in-app notification exists and is complete before any delivery row does, so a disabled or failing mail server never affects tickets or the notification centre. Workers claim rows with FOR UPDATE SKIP LOCKED and a time-limited lease. Holds reason codes only, never addresses, message text or credentials.
+
+| Column | Type | Null | Default | Key | Unique | Indexes | Meaning |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `delivery_id` | `uuid` | NOT NULL | `gen_random_uuid()` | PK |  |  | Primary key. |
+| `notification_id` | `uuid` | NOT NULL |  | FK → notifications.notification_id | yes | `uq_notification_deliveries_notification` | Notification being emailed; unique, so it is queued at most once. |
+| `state` | `character varying(10)` | NOT NULL | `'QUEUED'::character varying` |  |  | `idx_notification_deliveries_claim` | QUEUED, RUNNING, SENT, FAILED or SKIPPED. |
+| `attempts` | `integer` | NOT NULL | `0` |  |  |  | Number of times the delivery has been claimed. |
+| `max_attempts` | `integer` | NOT NULL | `5` |  |  |  | Claims allowed before the delivery fails terminally. |
+| `run_after` | `timestamp(6) with time zone` | NOT NULL | `CURRENT_TIMESTAMP` |  |  | `idx_notification_deliveries_claim` | Earliest time the delivery may be claimed (retry backoff). |
+| `lease_token` | `uuid` | NULL |  |  |  |  | Rotated on every claim; only the holder may finish or fail the delivery. NULL unless RUNNING. |
+| `locked_until` | `timestamp(6) with time zone` | NULL |  |  |  |  | Lease expiry. A RUNNING delivery past this time is re-claimed. NULL unless RUNNING. |
+| `error_kind` | `character varying(24)` | NULL |  |  |  |  | Reason code of the latest failure or skip (for example temporary, unavailable, rate_limited, auth_failed, rejected, already_read, expired). Never message text. |
+| `created_at` | `timestamp(6) with time zone` | NOT NULL | `CURRENT_TIMESTAMP` |  |  |  | When the delivery was queued. |
+| `updated_at` | `timestamp(6) with time zone` | NOT NULL | `CURRENT_TIMESTAMP` |  |  |  | Last state change. |
+| `completed_at` | `timestamp(6) with time zone` | NULL |  |  |  |  | When the delivery reached SENT, FAILED or SKIPPED; NULL otherwise. |
+
+**CHECK constraints**
+
+- `ck_notification_deliveries_attempts`: `((attempts >= 0) AND (max_attempts > 0))`
+- `ck_notification_deliveries_lease`: `(((state)::text = 'RUNNING'::text) = ((lease_token IS NOT NULL) AND (locked_until IS NOT NULL)))`
+- `ck_notification_deliveries_state`: `((state)::text = ANY ((ARRAY['QUEUED'::character varying, 'RUNNING'::character varying, 'SENT'::character varying, 'FAILED'::character varying, 'SKIPPED'::character varying])::text[]))`
+- `ck_notification_deliveries_terminal`: `(((state)::text = ANY ((ARRAY['SENT'::character varying, 'FAILED'::character varying, 'SKIPPED'::character varying])::text[])) = (completed_at IS NOT NULL))`

@@ -137,6 +137,20 @@ erDiagram
     timestamptz read_at
     timestamptz created_at
   }
+  notification_deliveries {
+    uuid delivery_id PK
+    uuid notification_id FK
+    varchar state
+    int attempts
+    int max_attempts
+    timestamptz run_after
+    uuid lease_token
+    timestamptz locked_until
+    varchar error_kind
+    timestamptz created_at
+    timestamptz updated_at
+    timestamptz completed_at
+  }
   support_teams ||--o{ team_members : "team_id"
   users ||--o{ team_members : "user_id"
   team_members |o--o{ tickets : "assigned_team_id, assignee_id"
@@ -165,6 +179,7 @@ erDiagram
   ticket_events ||--o{ notifications : "event_id"
   users ||--o{ notifications : "recipient_id"
   tickets ||--o{ notifications : "ticket_id"
+  notifications ||--o{ notification_deliveries : "notification_id"
 ```
 
 ## Relationships
@@ -204,3 +219,4 @@ the assigned team.
 | `notifications` | `event_id` | `ticket_events` (`event_id`) | 1 : N | required | RESTRICT |
 | `notifications` | `recipient_id` | `users` (`user_id`) | 1 : N | required | RESTRICT |
 | `notifications` | `ticket_id` | `tickets` (`ticket_id`) | 1 : N | required | RESTRICT |
+| `notification_deliveries` | `notification_id` | `notifications` (`notification_id`) | 1 : N | required | RESTRICT |
