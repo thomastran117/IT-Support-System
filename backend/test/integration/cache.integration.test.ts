@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
+import { createCacheAside } from '../../src/cache/cacheAside.js';
 import { createRedisCache, type CacheClient } from '../../src/cache/redisCache.js';
 
 const redisUrl = process.env.REDIS_URL;
@@ -67,5 +68,39 @@ describe.skipIf(!redisUrl)('createRedisCache (integration)', () => {
     } finally {
       await unreachable.close();
     }
+  });
+
+  it('increments a counter atomically, starting from 0', async () => {
+    cache = createRedisCache({ url: redisUrl! });
+    const key = `test:counter:${randomUUID()}`;
+    await expect(cache.incr(key)).resolves.toBe(1);
+    await expect(cache.incr(key)).resolves.toBe(2);
+  });
+});
+
+describe.skipIf(!redisUrl)('createCacheAside (integration, real Redis)', () => {
+  let cache: CacheClient | undefined;
+  afterEach(async () => {
+    await cache?.close();
+    cache = undefined;
+  });
+
+  it('caches a hit and invalidates it against a real Redis instance', async () => {
+    cache = createRedisCache({ url: redisUrl! });
+    const namespace = `test:ref:${randomUUID()}`;
+    const aside = createCacheAside(cache, namespace, 60);
+    let calls = 0;
+    const fetch = async () => {
+      calls++;
+      return { teams: calls };
+    };
+
+    await expect(aside.read('active', fetch)).resolves.toEqual({ teams: 1 });
+    await expect(aside.read('active', fetch)).resolves.toEqual({ teams: 1 }); // cache hit
+    expect(calls).toBe(1);
+
+    await aside.invalidate();
+    await expect(aside.read('active', fetch)).resolves.toEqual({ teams: 2 }); // re-fetched
+    expect(calls).toBe(2);
   });
 });

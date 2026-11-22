@@ -1,0 +1,150 @@
+import { describe, expect, it } from 'vitest';
+import { createCacheAside, entryKey } from '../../../src/cache/cacheAside.js';
+import { createNoopCache, type CacheClient } from '../../../src/cache/redisCache.js';
+
+interface Entry {
+  value: string;
+  expiresAt: number | undefined;
+}
+
+/** Deterministic in-memory CacheClient for exercising cacheAside's logic without any real
+ * socket I/O (a real ioredis connection's background timers can outlive a fast unit test). */
+function createFakeCache(): CacheClient {
+  const store = new Map<string, Entry>();
+  const live = (entry: Entry | undefined): entry is Entry =>
+    entry !== undefined && (entry.expiresAt === undefined || entry.expiresAt > Date.now());
+
+  return {
+    async get<T>(key: string): Promise<T | undefined> {
+      const entry = store.get(key);
+      if (!live(entry)) {
+        store.delete(key);
+        return undefined;
+      }
+      return JSON.parse(entry.value) as T;
+    },
+    async set<T>(key: string, value: T, ttlSeconds: number): Promise<void> {
+      store.set(key, { value: JSON.stringify(value), expiresAt: Date.now() + ttlSeconds * 1000 });
+    },
+    async del(key: string): Promise<void> {
+      store.delete(key);
+    },
+    async incr(key: string): Promise<number> {
+      const entry = store.get(key);
+      const current = live(entry) ? (JSON.parse(entry.value) as number) : 0;
+      const next = current + 1;
+      store.set(key, { value: JSON.stringify(next), expiresAt: undefined });
+      return next;
+    },
+    async setIfAbsent(key: string, value: string, ttlMs: number): Promise<boolean> {
+      if (live(store.get(key))) return false;
+      store.set(key, { value, expiresAt: Date.now() + ttlMs });
+      return true;
+    },
+    async releaseIfOwner(key: string, token: string): Promise<void> {
+      const entry = store.get(key);
+      if (live(entry) && entry.value === token) store.delete(key);
+    },
+    ping: async () => 'ok',
+    close: async () => {},
+  };
+}
+
+describe('createCacheAside', () => {
+  it('fetches once on a miss, then serves the cached hit', async () => {
+    const aside = createCacheAside(createFakeCache(), 'ref:teams', 60);
+    let calls = 0;
+    const fetch = async () => {
+      calls++;
+      return { id: 1 };
+    };
+
+    await expect(aside.read('active', fetch)).resolves.toEqual({ id: 1 });
+    await expect(aside.read('active', fetch)).resolves.toEqual({ id: 1 });
+    expect(calls).toBe(1);
+  });
+
+  it('re-fetches once the entry expires', async () => {
+    const aside = createCacheAside(createFakeCache(), 'ref:teams', 0.05);
+    let calls = 0;
+    const fetch = async () => ++calls;
+
+    await expect(aside.read('active', fetch)).resolves.toBe(1);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await expect(aside.read('active', fetch)).resolves.toBe(2);
+    expect(calls).toBe(2);
+  });
+
+  it('caches different key suffixes independently', async () => {
+    const aside = createCacheAside(createFakeCache(), 'ref:teams', 60);
+    await expect(aside.read('teams', async () => 'a')).resolves.toBe('a');
+    await expect(aside.read('categories', async () => 'b')).resolves.toBe('b');
+  });
+
+  it('never serves a stale refill that lands after invalidation (concurrent update/read)', async () => {
+    const aside = createCacheAside(createFakeCache(), 'ref:teams', 60);
+
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const slowFetch = async () => {
+      await gate; // held open until the invalidation below has already landed
+      return 'stale';
+    };
+
+    const inFlight = aside.read('active', slowFetch); // resolves the current (pre-bump) generation
+    await aside.invalidate(); // bumps the generation while the read above is still fetching
+    release();
+    await expect(inFlight).resolves.toBe('stale'); // the caller still gets its own fetch's result
+
+    // The next read is on the new generation and must not see that now-orphaned write.
+    let calls = 0;
+    const fresh = await aside.read('active', async () => {
+      calls++;
+      return 'fresh';
+    });
+    expect(fresh).toBe('fresh');
+    expect(calls).toBe(1);
+  });
+
+  it('is always a miss when disabled (noop cache), and invalidate stays a no-op', async () => {
+    const aside = createCacheAside(createNoopCache(), 'ref:teams', 60);
+    let calls = 0;
+    const fetch = async () => {
+      calls++;
+      return 'value';
+    };
+
+    await aside.read('active', fetch);
+    await aside.read('active', fetch);
+    expect(calls).toBe(2);
+    await expect(aside.invalidate()).resolves.toBeUndefined();
+  });
+
+  it('models commit/rollback discipline: only a committed write invalidates the cache', async () => {
+    const aside = createCacheAside(createFakeCache(), 'ref:teams', 60);
+    let version = 0;
+    const fetch = async () => `v${version}`;
+
+    await expect(aside.read('active', fetch)).resolves.toBe('v0');
+
+    // A write that fails before commit must never reach invalidate().
+    version = 1;
+    try {
+      throw new Error('simulated rollback');
+    } catch {
+      // intentionally does not call aside.invalidate() on this path
+    }
+    await expect(aside.read('active', fetch)).resolves.toBe('v0'); // untouched by the rollback
+
+    // A write that commits invalidates only once the commit has actually happened.
+    version = 2;
+    await aside.invalidate();
+    await expect(aside.read('active', fetch)).resolves.toBe('v2');
+  });
+
+  it('builds keys from the namespace, generation and suffix', () => {
+    expect(entryKey('ref:teams', 3, 'active')).toBe('smartdesk:ref:teams:v3:active');
+  });
+});

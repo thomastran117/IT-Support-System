@@ -13,6 +13,12 @@ describe('createNoopCache', () => {
     await expect(cache.del('k')).resolves.toBeUndefined();
   });
 
+  it('increments independently of get/set, since nothing is ever actually stored', async () => {
+    const cache = createNoopCache();
+    await expect(cache.incr('v')).resolves.toBe(1);
+    await expect(cache.incr('v')).resolves.toBe(2);
+  });
+
   it('always grants a lease, and release is a no-op', async () => {
     const cache = createNoopCache();
     await expect(cache.setIfAbsent('lock', 'token', 1000)).resolves.toBe(true);

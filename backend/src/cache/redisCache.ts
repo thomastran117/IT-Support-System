@@ -7,6 +7,9 @@ export interface CacheClient {
   /** Stores `value` as JSON with a TTL. Rejects on a Redis-level failure. */
   set<T>(key: string, value: T, ttlSeconds: number): Promise<void>;
   del(key: string): Promise<void>;
+  /** Atomic increment, starting from 0 if the key is absent. Used as a namespace generation
+   * counter for cache-aside invalidation (see cacheAside.ts), not as a general counter. */
+  incr(key: string): Promise<number>;
   /** Lease acquisition: `SET key value PX ttlMs NX`. Resolves false when already held. */
   setIfAbsent(key: string, value: string, ttlMs: number): Promise<boolean>;
   /** Releases a lease only if `token` still matches (CAS), so a lock is never released by a
@@ -65,6 +68,9 @@ export function createRedisCache(opts: RedisCacheOptions): CacheClient {
     async del(key: string): Promise<void> {
       await redis.del(key);
     },
+    async incr(key: string): Promise<number> {
+      return redis.incr(key);
+    },
     async setIfAbsent(key: string, value: string, ttlMs: number): Promise<boolean> {
       const result = await redis.set(key, value, 'PX', ttlMs, 'NX');
       return result === 'OK';
@@ -93,10 +99,12 @@ export function createRedisCache(opts: RedisCacheOptions): CacheClient {
 /** Disabled mode: every read misses, writes and locks are no-ops that never throw. Callers write
  * against `CacheClient` once and get "no cache" for free, with no scattered `if (redis)` checks. */
 export function createNoopCache(): CacheClient {
+  let counter = 0;
   return {
     get: async () => undefined,
     set: async () => {},
     del: async () => {},
+    incr: async () => ++counter,
     setIfAbsent: async () => true,
     releaseIfOwner: async () => {},
     ping: async () => 'disabled',
