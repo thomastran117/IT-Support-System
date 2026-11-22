@@ -128,7 +128,7 @@ export function renderReport(run: EvaluationRun): string {
     '',
     '## How this relates to SQL report Q07',
     '',
-    'Q07 uses the same definition on real labelled tickets in the database (first saved recommendation, missing counts as wrong, denominator is all labelled tickets). This offline harness measures a fixed synthetic dataset; Q07 measures production. They are comparable in method, not in data.',
+    'Q07 uses the same definition on real labelled tickets in the database (first valid recommendation, missing counts as wrong, denominator is all labelled tickets). This offline harness measures a fixed synthetic dataset; Q07 measures production. They are comparable in method, not in data.',
     '',
   );
   return lines.join('\n');

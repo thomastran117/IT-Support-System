@@ -249,6 +249,45 @@ The administrator UI for this endpoint is `/admin/reports`. It takes inclusive U
 after `to`. The chosen range is kept in the URL and for the browser session. Undefined averages and
 rates are shown as `N/A`, never `0`.
 
+## Independent AI evaluation
+
+All endpoints are ADMIN only (401 anonymous, 403 otherwise). A label is the correct category as judged
+by an administrator, kept in `classification_labels`, separate from AI recommendations and from the
+technician-approved category.
+
+| Method | Path                                          | Purpose                                                            |
+| ------ | --------------------------------------------- | ------------------------------------------------------------------ |
+| POST   | `/api/admin/tickets/:id/classification-label` | Create the label (`409` if one exists)                             |
+| PUT    | `/api/admin/tickets/:id/classification-label` | Create or replace the label, recording the new editor and time     |
+| GET    | `/api/admin/tickets/:id/classification-label` | Read one label                                                     |
+| GET    | `/api/admin/classification-labels`            | Newest labels first (`limit` max 200, `offset`)                    |
+| GET    | `/api/admin/reports/ai-evaluation`            | Accuracy, acceptance, per-model figures and confusion for a window |
+
+The body is `{ "referenceCategoryId": "<uuid>" }` and nothing else (unknown keys such as `labelledBy`
+are rejected with `400`). `labelledBy` and the time always come from the authenticated session. The
+category must exist and be active (`422` otherwise); an unknown ticket is `404`. Writing a label never
+reads or changes AI recommendations or the ticket.
+
+**Report (`start`/`end` as for the summary report).**
+
+- _Accuracy cohort:_ labelled tickets created in the window. The prediction is the **first valid
+  recommendation** (earliest saved one that proposes a category). A ticket with no valid recommendation
+  stays in `labelledTickets` and counts as not correct (`withoutRecommendation`), so missing or unusable
+  output lowers accuracy rather than leaving the denominator. SQL: Q07 (overall), Q12 (per model), Q14
+  (confusion).
+- _Per model:_ a labelled ticket is attributed to the `model_version` that produced its first valid
+  recommendation; tickets without one appear only in the overall figure.
+- _Acceptance cohort:_ recommendations reviewed in the window (Q08, per model Q13). It is reported next to
+  accuracy but is a different measure: accepting a suggestion is not the same as it being correct.
+- `accuracyPct` and `acceptancePct` are `null` when their denominator is zero.
+- `confusion` lists reference category by first valid predicted category; `predictedCategory: null`
+  means no valid recommendation.
+
+**Limits.** The figures are only as good as the label set: small, hand-picked or single-labeller sets
+prove little, and the denominators are shown so that is visible. The 90% category-accuracy target is
+**unverified** until a representative independently labelled set measures it. See
+[ai-evaluation.md](ai-evaluation.md) for the offline dataset and the evaluated model/prompt versions.
+
 ## Support teams and reference data
 
 Staff (`TECHNICIAN` or `ADMIN`) can read the reference lists that assignment forms need. Employees

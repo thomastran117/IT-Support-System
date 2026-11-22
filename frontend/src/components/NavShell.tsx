@@ -4,6 +4,7 @@ import type { Role } from '@smartdesk/contracts';
 import {
   BookOpen,
   BarChart3,
+  FlaskConical,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -76,13 +77,20 @@ const NAVIGATION: Record<Role, NavItem[]> = {
       active: (path) =>
         path.startsWith('/admin') &&
         !path.startsWith('/admin/knowledge') &&
-        !path.startsWith('/admin/reports'),
+        !path.startsWith('/admin/reports') &&
+        !path.startsWith('/admin/evaluation'),
     },
     {
       href: '/admin/reports',
       label: 'Reports',
       icon: BarChart3,
       active: (path) => path.startsWith('/admin/reports'),
+    },
+    {
+      href: '/admin/evaluation',
+      label: 'AI evaluation',
+      icon: FlaskConical,
+      active: (path) => path.startsWith('/admin/evaluation'),
     },
     {
       href: '/admin/knowledge',

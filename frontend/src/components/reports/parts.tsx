@@ -98,8 +98,8 @@ export function DataTable({
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => (
-            <tr key={r[0]} className="border-b border-slate-100">
+          {rows.map((r, n) => (
+            <tr key={n} className="border-b border-slate-100">
               {r.map((c, i) =>
                 i === 0 ? (
                   <th key={i} scope="row" className="py-2 pr-4 font-normal">

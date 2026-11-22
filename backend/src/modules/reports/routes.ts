@@ -1,10 +1,17 @@
 import type { FastifyPluginAsync } from 'fastify';
 import type { PrismaClient } from '@smartdesk/db';
-import { REPORT_MAX_WINDOW_DAYS, type ReportSummaryDto } from '@smartdesk/contracts';
+import {
+  REPORT_MAX_WINDOW_DAYS,
+  type AiEvaluationReportDto,
+  type ReportSummaryDto,
+} from '@smartdesk/contracts';
 import { z } from 'zod';
 import {
   reportAiAcceptance,
+  reportAiAcceptanceByModel,
   reportAiAccuracy,
+  reportAiAccuracyByModel,
+  reportAiConfusion,
   reportDailyIntake,
   reportFirstResponse,
   reportRecurringCategories,
@@ -108,4 +115,55 @@ export const reportRoutes =
       reply.header('cache-control', 'no-store');
       return envelope('Report summary', body);
     });
+
+    app.get(
+      '/ai-evaluation',
+      { preHandler: app.authGuards.requireRole('ADMIN') },
+      async (req, reply) => {
+        const { start, end } = parse(SummaryQuery, req.query);
+        const actor = req.principal!.id;
+        const w = { start, end };
+        const [accuracy, acceptance, accByModel, accepByModel, confusion] = await Promise.all([
+          reportAiAccuracy(prisma, actor, w),
+          reportAiAcceptance(prisma, actor, w),
+          reportAiAccuracyByModel(prisma, actor, w),
+          reportAiAcceptanceByModel(prisma, actor, w),
+          reportAiConfusion(prisma, actor, w),
+        ]);
+        // A model appears if it has labelled tickets or reviews in the window.
+        const versions = [
+          ...new Set([
+            ...accByModel.map((m) => m.modelVersion),
+            ...accepByModel.map((m) => m.modelVersion),
+          ]),
+        ].sort();
+        const body: AiEvaluationReportDto = {
+          window: { start: start.toISOString(), end: end.toISOString() },
+          overall: {
+            labelledTickets: accuracy.labelledTickets,
+            withRecommendation: accuracy.withRecommendation,
+            withoutRecommendation: accuracy.labelledTickets - accuracy.withRecommendation,
+            correct: accuracy.correct,
+            accuracyPct: accuracy.accuracyPct,
+          },
+          acceptance,
+          byModel: versions.map((modelVersion) => {
+            const a = accByModel.find((m) => m.modelVersion === modelVersion);
+            const r = accepByModel.find((m) => m.modelVersion === modelVersion);
+            return {
+              modelVersion,
+              labelledTickets: a?.labelledTickets ?? 0,
+              correct: a?.correct ?? 0,
+              accuracyPct: a?.accuracyPct ?? null,
+              reviewed: r?.reviewed ?? 0,
+              accepted: r?.accepted ?? 0,
+              acceptancePct: r?.acceptancePct ?? null,
+            };
+          }),
+          confusion,
+        };
+        reply.header('cache-control', 'no-store');
+        return envelope('AI evaluation report', body);
+      },
+    );
   };
