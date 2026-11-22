@@ -244,6 +244,11 @@ Units are in `units`: routing and first response in minutes, resolution in hours
 AI processing latency is not measured as API time. The queries are the version-controlled
 `backend/sql/reports/Q05`-`Q11` files.
 
+The administrator UI for this endpoint is `/admin/reports`. It takes inclusive UTC calendar days
+(`?from=YYYY-MM-DD&to=YYYY-MM-DD`) and requests the half-open window ending at the start of the day
+after `to`. The chosen range is kept in the URL and for the browser session. Undefined averages and
+rates are shown as `N/A`, never `0`.
+
 ## Support teams and reference data
 
 Staff (`TECHNICIAN` or `ADMIN`) can read the reference lists that assignment forms need. Employees

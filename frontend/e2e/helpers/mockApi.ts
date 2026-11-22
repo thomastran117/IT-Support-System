@@ -200,7 +200,15 @@ export interface MockApi {
   setNotificationsDown(status: number | 'network' | null): void;
   failNext(
     endpoint:
-      'create' | 'reply' | 'list' | 'detail' | 'queue' | 'recs' | 'analysis' | 'notifications',
+      | 'create'
+      | 'reply'
+      | 'list'
+      | 'detail'
+      | 'queue'
+      | 'recs'
+      | 'analysis'
+      | 'notifications'
+      | 'report',
     status: number | 'network',
   ): void;
   /** Number of POST /api/tickets requests that reached the server (including idempotent replays). */
@@ -209,6 +217,8 @@ export interface MockApi {
   createKeys(): readonly (string | undefined)[];
   /** Live view of the mocked accounts (what the admin API would return). */
   adminUsers(): readonly AdminUserRow[];
+  /** The `start`/`end` query of every report request that reached the server, in order. */
+  reportRequests(): readonly { start: string; end: string }[];
   /** Simulates the server disabling the account / expiring the refresh cookie. */
   revokeSession(): void;
   /** While true every request fails like an unreachable server. */
@@ -225,6 +235,86 @@ const publicUser = ({ id, email, displayName, role }: Account) => ({
   role,
 });
 
+// --- Report fixtures (SD-045): a few tickets the mock aggregates for any requested window ------
+interface ReportTicket {
+  created: string;
+  category: string;
+  routedAfterMin: number | null;
+  respondedAfterMin: number | null;
+  resolvedAt: string | null;
+}
+export const REPORT_TICKETS: ReportTicket[] = [
+  {
+    created: '2026-03-02T09:00:00Z',
+    category: 'Network/VPN',
+    routedAfterMin: 10,
+    respondedAfterMin: 35,
+    resolvedAt: null,
+  },
+  {
+    created: '2026-03-02T14:00:00Z',
+    category: 'Hardware',
+    routedAfterMin: 20,
+    respondedAfterMin: null,
+    resolvedAt: null,
+  },
+  {
+    created: '2026-03-04T08:00:00Z',
+    category: 'Software',
+    routedAfterMin: 30,
+    respondedAfterMin: 90,
+    resolvedAt: '2026-03-04T20:00:00Z',
+  },
+  {
+    created: '2026-03-09T13:00:00Z',
+    category: 'Hardware',
+    routedAfterMin: null,
+    respondedAfterMin: null,
+    resolvedAt: null,
+  },
+];
+
+function summarize(start: string, end: string) {
+  const s = Date.parse(start);
+  const e = Date.parse(end);
+  const inWin = (iso: string) => Date.parse(iso) >= s && Date.parse(iso) < e;
+  const cohort = REPORT_TICKETS.filter((t) => inWin(t.created));
+  const mean = (xs: number[]) =>
+    xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 100) / 100 : null;
+  const routed = cohort.flatMap((t) => (t.routedAfterMin === null ? [] : [t.routedAfterMin]));
+  const responded = cohort.flatMap((t) =>
+    t.respondedAfterMin === null ? [] : [t.respondedAfterMin],
+  );
+  const resolved = REPORT_TICKETS.filter((t) => t.resolvedAt && inWin(t.resolvedAt));
+  const counts = new Map<string, number>();
+  for (const t of cohort) counts.set(t.category, (counts.get(t.category) ?? 0) + 1);
+  const dailyIntake: { date: string; submittedTickets: number }[] = [];
+  for (let d = Math.floor(s / 86_400_000) * 86_400_000; d < e; d += 86_400_000) {
+    const date = new Date(d).toISOString().slice(0, 10);
+    dailyIntake.push({
+      date,
+      submittedTickets: cohort.filter((t) => t.created.slice(0, 10) === date).length,
+    });
+  }
+  return {
+    window: { start: new Date(s).toISOString(), end: new Date(e).toISOString() },
+    submitted: cohort.length,
+    routing: { routed: routed.length, avgMinutes: mean(routed) },
+    firstResponse: { responded: responded.length, avgMinutes: mean(responded) },
+    resolution: {
+      resolvedTickets: resolved.length,
+      avgHours: mean(
+        resolved.map((t) => (Date.parse(t.resolvedAt!) - Date.parse(t.created)) / 3_600_000),
+      ),
+    },
+    aiAccuracy: { labelledTickets: 0, withRecommendation: 0, correct: 0, accuracyPct: null },
+    aiAcceptance: { reviewed: 0, accepted: 0, acceptancePct: null },
+    categories: [...counts].map(([category, ticketCount]) => ({ category, ticketCount })),
+    dailyIntake,
+    units: { routing: 'minutes', firstResponse: 'minutes', resolution: 'hours', rates: 'percent' },
+  };
+}
+
 export async function installMockApi(page: Page): Promise<MockApi> {
   let session: Account | null = null;
   let offline = false;
@@ -232,6 +322,7 @@ export async function installMockApi(page: Page): Promise<MockApi> {
   let tokenSeq = 0;
   let currentToken = '';
   const counts = { login: 0, refresh: 0, logout: 0, me: 0 };
+  const reportLog: { start: string; end: string }[] = [];
 
   const cors = (route: Route) => {
     const origin = route.request().headers()['origin'] ?? '*';
@@ -339,6 +430,18 @@ export async function installMockApi(page: Page): Promise<MockApi> {
       return reply(route, 200, { items: users, total: users.length });
     }
     if (req.method() === 'GET' && path === '/audit-log') return reply(route, 200, auditLog);
+    if (req.method() === 'GET' && path === '/reports/summary') {
+      const start = url.searchParams.get('start') ?? '';
+      const end = url.searchParams.get('end') ?? '';
+      reportLog.push({ start, end });
+      if (failures.get('report')) {
+        const status = failures.get('report')!;
+        failures.delete('report');
+        if (status === 'network') return route.abort('failed');
+        return reply(route, status, null, 'Report failed');
+      }
+      return reply(route, 200, summarize(start, end), 'Report summary');
+    }
     if (req.method() === 'POST' && path === '/users') {
       const body = req.postDataJSON() as { email: string; displayName: string; role: string };
       const email = body.email.trim().toLowerCase();
@@ -1405,6 +1508,7 @@ export async function installMockApi(page: Page): Promise<MockApi> {
     createRequests: () => createRequests,
     createKeys: () => createKeys,
     adminUsers: () => users,
+    reportRequests: () => reportLog,
     revokeSession: () => {
       session = null;
     },
