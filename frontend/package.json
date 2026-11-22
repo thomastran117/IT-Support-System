@@ -10,7 +10,8 @@
     "lint": "eslint src test e2e playwright.config.ts",
     "test": "npm run test:unit",
     "test:unit": "vitest run test/unit",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "check:bundle": "node scripts/check-bundle.mjs"
   },
   "dependencies": {
     "@smartdesk/contracts": "file:../packages/contracts",

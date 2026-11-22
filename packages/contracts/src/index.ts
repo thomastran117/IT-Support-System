@@ -9,6 +9,34 @@ export interface ApiEnvelope<T = unknown> {
   data: T | null;
 }
 
+/**
+ * Per-field validation messages: `details` of a 400 "Validation failed" (and of a 422), keyed by the
+ * request field (`{ title: ['Too long'] }`).
+ */
+export type FieldErrors = Record<string, string[]>;
+
+/** Failure envelope: `error` is the HTTP reason phrase and `data` is always null. */
+export interface ApiErrorEnvelope extends ApiEnvelope<null> {
+  error: string;
+}
+
+/** `details` of a 409 raised by the domain layer; clients branch on `code`, never on the message. */
+export interface ConflictDetails {
+  code: string;
+  [key: string]: unknown;
+}
+
+/** Offset pagination shared by every list endpoint. */
+export interface Paginated<T> {
+  items: T[];
+  /** Everything matching the filters, not just this page. */
+  total: number;
+  limit: number;
+  offset: number;
+  /** Offset of the next page, or null on the last page. */
+  nextOffset: number | null;
+}
+
 export type HealthStatus = 'ok' | 'unavailable';
 
 export interface LiveHealth {
@@ -39,6 +67,17 @@ export interface LoginRequest {
   password: string;
 }
 
+/** Body of POST /api/auth/login. The address is normalised exactly as the account lookup expects. */
+export const loginSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .min(1)
+    .max(255)
+    .transform((e) => e.toLowerCase()),
+  password: z.string().min(1).max(1024),
+});
+
 /** Returned by login and refresh. The refresh token travels only in an HttpOnly cookie. */
 export interface AuthSession {
   accessToken: string;
@@ -60,6 +99,24 @@ export interface CreateUserRequest {
   displayName: string;
   role: Role;
 }
+
+export const ROLES = ['EMPLOYEE', 'TECHNICIAN', 'ADMIN'] as const;
+export const roleSchema = z.enum(ROLES);
+
+/** Body of POST /api/admin/users. */
+export const createUserSchema = z.strictObject({
+  email: z
+    .string()
+    .trim()
+    .max(255)
+    .pipe(z.email())
+    .transform((e) => e.toLowerCase()),
+  displayName: z.string().trim().min(1).max(120),
+  role: roleSchema,
+});
+
+/** Body of PATCH /api/admin/users/:id/role. */
+export const changeRoleSchema = z.strictObject({ role: roleSchema });
 
 /** Create and password-reset responses. The temporary password is shown exactly once. */
 export interface UserWithTemporaryPassword {
@@ -219,14 +276,7 @@ export interface TicketSummaryDto {
 }
 
 /** `GET /api/tickets`. Newest first; `total` counts everything the caller may see with the filters. */
-export interface TicketPage {
-  items: TicketSummaryDto[];
-  total: number;
-  limit: number;
-  offset: number;
-  /** Offset of the next page, or null on the last page. */
-  nextOffset: number | null;
-}
+export type TicketPage = Paginated<TicketSummaryDto>;
 
 export interface TicketCommentDto {
   id: string;
@@ -287,12 +337,7 @@ export interface NotificationDto {
 }
 
 /** `GET /api/notifications`. Newest first; `unreadCount` ignores the filter and paging. */
-export interface NotificationPage {
-  items: NotificationDto[];
-  total: number;
-  limit: number;
-  offset: number;
-  nextOffset: number | null;
+export interface NotificationPage extends Paginated<NotificationDto> {
   unreadCount: number;
 }
 
@@ -346,14 +391,7 @@ export interface QueueItemDto {
 }
 
 /** `GET /api/technician/queue` and `GET /api/technician/unassigned`. */
-export interface QueuePage {
-  items: QueueItemDto[];
-  /** Everything matching the filters, not just this page. */
-  total: number;
-  limit: number;
-  offset: number;
-  nextOffset: number | null;
-}
+export type QueuePage = Paginated<QueueItemDto>;
 
 // --- Ticket transitions (SD-020) -------------------------------------------------------------
 
@@ -369,6 +407,15 @@ export interface TransitionRequest {
   /** Required for RESOLVED. Optional for CLOSED (the existing summary is kept). */
   resolutionSummary?: string;
 }
+
+export const TICKET_STATUSES = ['OPEN', 'TRIAGED', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'] as const;
+
+/** Strict, and `expectedVersion` is mandatory: a transition is always made against a known view. */
+export const transitionSchema = z.strictObject({
+  to: z.enum(TICKET_STATUSES),
+  expectedVersion: z.number().int().min(1),
+  resolutionSummary: z.string().max(TICKET_RESOLUTION_MAX).optional(),
+});
 
 /** Priorities a technician can approve; `UNSET` is only the initial state. */
 export const APPROVABLE_PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as const;
@@ -609,14 +656,7 @@ export interface AdminKnowledgeArticleSummaryDto extends KnowledgeArticleSummary
 }
 
 /** `GET /api/knowledge` and `GET /api/admin/knowledge`. */
-export interface ArticlePage<T> {
-  items: T[];
-  /** Everything matching the filters, not just this page. */
-  total: number;
-  limit: number;
-  offset: number;
-  nextOffset: number | null;
-}
+export type ArticlePage<T> = Paginated<T>;
 
 export const SEARCH_QUERY_MAX = 200;
 export const SEARCH_PAGE_SIZE_DEFAULT = 10;

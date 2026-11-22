@@ -10,4 +10,5 @@ npm --prefix frontend run lint
 npm --prefix frontend run typecheck
 npm --prefix frontend run test:unit
 npm --prefix frontend run build
+npm --prefix frontend run check:bundle
 npm --prefix frontend run test:e2e

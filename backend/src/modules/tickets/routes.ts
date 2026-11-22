@@ -9,7 +9,7 @@ import {
   reviewRecommendationSchema,
   TICKET_PAGE_SIZE_DEFAULT,
   TICKET_PAGE_SIZE_MAX,
-  TICKET_RESOLUTION_MAX,
+  transitionSchema,
 } from '@smartdesk/contracts';
 import { z } from 'zod';
 import { authorizeTicket } from '../../auth/ticketAccess.js';
@@ -20,7 +20,6 @@ import {
   submitTicket,
   transitionTicket,
 } from '../../db/services/ticketService.js';
-import { TICKET_STATUSES } from '../../domain/ticketStateMachine.js';
 import { HttpError, envelope } from '../../plugins/errors.js';
 import { parse } from '../../plugins/validate.js';
 import { toTicketDto } from './dto.js';
@@ -38,12 +37,7 @@ const ListQuery = z.strictObject({
 /** Strict: author and timestamps are server-assigned, never accepted from the client. */
 const CommentBody = createCommentSchema;
 
-/** Strict, and `expectedVersion` is mandatory: a transition is always made against a known view. */
-const TransitionBody = z.strictObject({
-  to: z.enum(TICKET_STATUSES as [string, ...string[]]),
-  expectedVersion: z.number().int().min(1),
-  resolutionSummary: z.string().max(TICKET_RESOLUTION_MAX).optional(),
-});
+const TransitionBody = transitionSchema;
 
 /**
  * Strict: unknown fields (role, requesterId, status, assignee, team...) are rejected rather than

@@ -477,3 +477,43 @@ internal-note text. Marking an already-read notification read again succeeds and
 - `429`: authentication rate limit exceeded.
 
 Canonical payload types and validation limits live in `packages/contracts/src/index.ts`.
+
+## Error shape and client mapping
+
+Validation failures (`400`, or `422`) carry `details` as per-field messages, for example
+`{ "title": ["Too long"] }` (`FieldErrors`). Domain conflicts (`409`) carry `details.code`
+(`VERSION_CONFLICT`, `INVALID_TRANSITION`, `PREREQUISITE_FAILED`); clients branch on the code, never on
+the message. The browser client (`frontend/src/lib/auth/client.ts`) turns every failure into one of two
+classes, each with a stable `kind`:
+
+| Situation                        | Thrown         | `kind`                                 |
+| -------------------------------- | -------------- | -------------------------------------- |
+| 401 after the single refresh try | `ApiError`     | `unauthenticated`                      |
+| 403 / 404 / 409                  | `ApiError`     | `forbidden` / `not_found` / `conflict` |
+| 400 or 422                       | `ApiError`     | `validation` (`fieldErrors` filled)    |
+| 429 / 5xx                        | `ApiError`     | `rate_limited` / `server`              |
+| No response / offline            | `NetworkError` | `network`                              |
+| No response within 30 s          | `NetworkError` | `timeout`                              |
+
+`ApiError.code` holds `details.code` and `ApiError.isVersionConflict` is true for a stale write. A request
+cancelled through its own `AbortSignal` rethrows the `AbortError` and is not reported as a failure.
+
+## Changing the contract
+
+`packages/contracts` is the only source of transport types and request schemas; apps must not hand-write
+a second copy of a field shape.
+
+1. Change `packages/contracts/src/index.ts`. Request bodies are Zod schemas (`createTicketSchema`, ...)
+   used by the backend to validate and by the frontend to pre-check; responses are interfaces.
+2. List endpoints return `Paginated<T>`; do not invent another page shape.
+3. Renaming or removing an export, or tightening a response field, is a breaking change: update the
+   backend and frontend in the same pull request and refresh the export snapshot
+   (`npm --prefix packages/contracts test -- -u`) so the change is visible in review.
+4. Build it before the consumers compile (`npm --prefix packages/contracts run build`; Docker builds do
+   this in `Dockerfile.dev`). If dependencies change, update each consumer's `package-lock.json`.
+5. Keep the package browser-safe: no `node:*`, Prisma, Fastify or environment access.
+   `npm --prefix frontend run check:bundle` fails the frontend CI when server-only packages or credential
+   names reach the browser bundle.
+
+Contract tests (`packages/contracts/test`) cover schema behaviour, the stable export list, and
+`@ts-expect-error` cases that fail the typecheck if a DTO stops rejecting an incompatible shape.
