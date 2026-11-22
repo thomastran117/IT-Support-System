@@ -1,31 +1,13 @@
 'use client';
 
-import type { TicketStatus } from '@smartdesk/contracts';
 import { forwardRef } from 'react';
-import { STATUS_LABEL } from '@/lib/tickets/format';
 
 export const inputClass = 'app-field';
 export const primaryButton = 'app-button-primary';
 export const secondaryButton = 'app-button-secondary';
 
-const BADGE: Record<TicketStatus, string> = {
-  OPEN: 'border-slate-200 bg-slate-100 text-slate-700',
-  TRIAGED: 'border-blue-200 bg-blue-50 text-blue-800',
-  IN_PROGRESS: 'border-amber-200 bg-amber-50 text-amber-800',
-  RESOLVED: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-  CLOSED: 'border-slate-300 bg-slate-200 text-slate-800',
-};
-
-/** The status is always spelled out; colour only reinforces it. */
-export function StatusBadge({ status }: { status: TicketStatus }) {
-  return (
-    <span
-      className={`inline-flex min-h-6 items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${BADGE[status]}`}
-    >
-      {STATUS_LABEL[status]}
-    </span>
-  );
-}
+/** Kept for existing imports; the badge itself lives in the shared UI kit. */
+export { StatusBadge } from '@/components/ui';
 
 export interface SummaryItem {
   field: string;

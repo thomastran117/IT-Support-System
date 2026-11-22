@@ -58,6 +58,21 @@ for (const route of ['/login', '/employee', '/technician', '/admin'] as const) {
   });
 }
 
+for (const key of ['employee', 'technician', 'admin'] as const) {
+  test(`${key} portal fits the viewport and exposes sign-out`, async ({ page, isMobile }) => {
+    await installMockApi(page);
+    await signIn(page, key);
+    if (isMobile) await page.getByRole('button', { name: 'Open navigation' }).click();
+    await expect(page.getByRole('navigation', { name: 'Main' }).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
+    if (isMobile) await page.keyboard.press('Escape');
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+  });
+}
+
 test('core surfaces match their visual baselines', async ({ page, isMobile }) => {
   test.skip(process.platform !== 'linux', 'Visual baselines use the Linux Playwright CI image');
   await installMockApi(page);
