@@ -87,6 +87,17 @@ export interface MockTicket {
   comments: MockComment[];
   events: MockEvent[];
   recommendations: MockRecommendation[];
+  analysis: MockAnalysis;
+}
+
+export interface MockAnalysis {
+  state: 'NONE' | 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+  requestId: string | null;
+  attempts: number;
+  maxAttempts: number;
+  retryAt: string | null;
+  failure: { reason: string; message: string } | null;
+  updatedAt: string | null;
 }
 
 export interface MockRecommendation {
@@ -155,12 +166,25 @@ export interface MockApi {
       id: string,
       proposal: { category?: string; team?: string; priority?: string; suggestion?: string },
     ): MockRecommendation;
+    /** Set the AI analysis job state, as the worker would. */
+    setAnalysis(id: string, change: Partial<MockAnalysis>): void;
+    /** The worker finished: marks the analysis COMPLETED and adds the recommendation. */
+    finishAnalysis(
+      id: string,
+      proposal: { category?: string; team?: string; priority?: string; suggestion?: string },
+    ): MockRecommendation;
     /** Mark a category or team inactive so proposals that point at it become stale. */
     deactivate(kind: 'category' | 'team', name: string): void;
   };
   /** The next call to this endpoint fails with the HTTP status, or `'network'` to drop the request. */
+  /** Pretend no AI provider is configured (analysis disabled). */
+  setAiEnabled(enabled: boolean): void;
+  /** Make POST analysis answer 429 and `canRetry` false (hourly limit reached). */
+  limitAnalysis(on: boolean): void;
+  /** The request ids of every POST /analysis that reached the server, in order. */
+  analysisRequests(): readonly (string | undefined)[];
   failNext(
-    endpoint: 'create' | 'reply' | 'list' | 'detail' | 'queue' | 'recs',
+    endpoint: 'create' | 'reply' | 'list' | 'detail' | 'queue' | 'recs' | 'analysis',
     status: number | 'network',
   ): void;
   /** Number of POST /api/tickets requests that reached the server (including idempotent replays). */
@@ -354,6 +378,9 @@ export async function installMockApi(page: Page): Promise<MockApi> {
   const idempotent = new Map<string, MockTicket>();
   const createKeys: (string | undefined)[] = [];
   const failures = new Map<string, number | 'network'>();
+  let aiEnabled = true;
+  let analysisLimited = false;
+  const analysisRequestIds: (string | undefined)[] = [];
   let createRequests = 0;
   let ticketSeq = 0;
   let commentSeq = 0;
@@ -381,6 +408,15 @@ export async function installMockApi(page: Page): Promise<MockApi> {
       version: 1,
       comments: [],
       recommendations: [],
+      analysis: {
+        state: 'NONE',
+        requestId: null,
+        attempts: 0,
+        maxAttempts: 0,
+        retryAt: null,
+        failure: null,
+        updatedAt: null,
+      },
       events: [{ id: uuid(6, ++ticketSeq + 1000), type: 'CREATED', occurredAt: at, details: {} }],
     };
     tickets.push(t);
@@ -631,7 +667,7 @@ export async function installMockApi(page: Page): Promise<MockApi> {
 
     if (session.role === 'TECHNICIAN') {
       const m =
-        /^\/([^/]+)(?:\/(comments|routing|transitions|recommendations(?:\/[^/]+\/review)?))?$/.exec(
+        /^\/([^/]+)(?:\/(comments|routing|transitions|recommendations(?:\/[^/]+\/review)?|analysis))?$/.exec(
           path,
         );
       const t = m && tickets.find((x) => x.id === m[1]);
@@ -675,6 +711,54 @@ export async function installMockApi(page: Page): Promise<MockApi> {
         firstResponseAt: null,
         version: t.version,
       });
+
+      if (sub === 'analysis') {
+        const inFlight = t.analysis.state === 'QUEUED' || t.analysis.state === 'RUNNING';
+        const status = () => ({
+          enabled: aiEnabled,
+          ...t.analysis,
+          canRetry: aiEnabled && !inFlight && !analysisLimited,
+          manualCue: /ransomware|phishing|outage/i.test(`${t.title} ${t.description}`)
+            ? { highRisk: true, reasons: ['Possible security incident'] }
+            : { highRisk: false, reasons: [] },
+        });
+        const failure = failures.get('analysis');
+        if (failure !== undefined) {
+          failures.delete('analysis');
+          return failure === 'network'
+            ? route.abort('failed')
+            : reply(route, failure, null, 'Server error');
+        }
+        if (method === 'GET') return reply(route, 200, status());
+        const b = (req.postDataJSON() ?? {}) as { requestId?: string };
+        analysisRequestIds.push(b.requestId);
+        if (!aiEnabled) {
+          return reply(route, 409, null, 'AI analysis is not enabled', { code: 'AI_DISABLED' });
+        }
+        if (b.requestId && b.requestId === t.analysis.requestId) {
+          return reply(route, 200, status());
+        }
+        if (inFlight) {
+          return reply(route, 409, null, 'An analysis is already in progress for this ticket', {
+            code: 'ANALYSIS_IN_PROGRESS',
+          });
+        }
+        if (analysisLimited) {
+          return reply(route, 429, null, 'Too many analysis requests for this ticket', {
+            code: 'ANALYSIS_RATE_LIMITED',
+          });
+        }
+        t.analysis = {
+          state: 'QUEUED',
+          requestId: b.requestId ?? null,
+          attempts: 0,
+          maxAttempts: 3,
+          retryAt: null,
+          failure: null,
+          updatedAt: tick(),
+        };
+        return reply(route, 202, status());
+      }
 
       if (method === 'GET' && sub === 'recommendations') {
         const failure = failures.get('recs');
@@ -1090,7 +1174,7 @@ export async function installMockApi(page: Page): Promise<MockApi> {
     return reply(route, 404, null, 'Not found');
   });
 
-  return {
+  const api: MockApi = {
     knowledge: { articles: () => articles, seed: addArticle },
     tickets: () => tickets,
     seedTickets: (n, requesterId = ACCOUNTS.employee.id) =>
@@ -1151,6 +1235,23 @@ export async function installMockApi(page: Page): Promise<MockApi> {
         t.recommendations.unshift(rec);
         return rec;
       },
+      setAnalysis(id, change) {
+        const t = tickets.find((x) => x.id === id);
+        if (!t) throw new Error(`no ticket ${id}`);
+        t.analysis = { ...t.analysis, ...change, updatedAt: tick() };
+      },
+      finishAnalysis(id, proposal) {
+        const t = tickets.find((x) => x.id === id);
+        if (!t) throw new Error(`no ticket ${id}`);
+        t.analysis = {
+          ...t.analysis,
+          state: 'COMPLETED',
+          failure: null,
+          retryAt: null,
+          updatedAt: tick(),
+        };
+        return api.technician.suggest(id, proposal);
+      },
       deactivate(kind, name) {
         const list = kind === 'category' ? CATEGORIES : TEAMS;
         const item = list.find((x) => x.name === name);
@@ -1176,6 +1277,13 @@ export async function installMockApi(page: Page): Promise<MockApi> {
         addEvent(t, 'COMMENT_ADDED', { isInternal });
       },
     },
+    setAiEnabled: (v) => {
+      aiEnabled = v;
+    },
+    limitAnalysis: (v) => {
+      analysisLimited = v;
+    },
+    analysisRequests: () => analysisRequestIds,
     failNext: (endpoint, status) => {
       failures.set(endpoint, status);
     },
@@ -1193,4 +1301,5 @@ export async function installMockApi(page: Page): Promise<MockApi> {
     },
     count: (e) => counts[e],
   };
+  return api;
 }

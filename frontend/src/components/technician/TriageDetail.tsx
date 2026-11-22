@@ -1,6 +1,7 @@
 'use client';
 
 import type {
+  AnalysisStatusDto,
   ApproveRoutingRequest,
   CategoryRefDto,
   RecommendationDto,
@@ -12,6 +13,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useAuth } from '@/lib/auth/AuthProvider';
+import { ApiError } from '@/lib/auth/client';
 import { PRIORITY_LABEL, STATUS_HELP, formatDateTime } from '@/lib/tickets/format';
 import { LIMITS, validateReply } from '@/lib/tickets/validation';
 import { technicianApi } from '@/lib/technician/api';
@@ -43,6 +45,9 @@ const formFrom = (t: TicketDetailDto): RoutingForm => ({
   assigneeId: t.assignee?.id ?? '',
 });
 
+/** How often to check on a queued or running analysis. */
+const ANALYSIS_POLL_MS = 2000;
+
 export function TriageDetail() {
   const { id } = useParams<{ id: string }>();
   const { api, user } = useAuth();
@@ -62,6 +67,12 @@ export function TriageDetail() {
   const [notice, setNotice] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
   const [recs, setRecs] = useState<RecommendationDto[] | null>(null);
   const [recsFailed, setRecsFailed] = useState(false);
+  const [analysis, setAnalysis] = useState<AnalysisStatusDto | null>(null);
+  const [analysisFailed, setAnalysisFailed] = useState(false);
+  const [analysisNotice, setAnalysisNotice] = useState<string | null>(null);
+  const [requesting, setRequesting] = useState(false);
+  const requestingRef = useRef(false);
+  const lastAnalysisState = useRef<string | null>(null);
   const [moved, setMoved] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
@@ -104,6 +115,66 @@ export function TriageDetail() {
   useEffect(() => {
     void loadRecs();
   }, [loadRecs]);
+
+  /**
+   * Status of the AI analysis job. Like the suggestions, it is advisory: a failure to load it never
+   * blocks triage. When a running analysis finishes, the suggestions are reloaded.
+   */
+  const loadAnalysis = useCallback(async () => {
+    try {
+      const next = await tech.analysisStatus(id);
+      setAnalysis(next);
+      setAnalysisFailed(false);
+      const was = lastAnalysisState.current;
+      lastAnalysisState.current = next.state;
+      if ((was === 'QUEUED' || was === 'RUNNING') && next.state === 'COMPLETED') void loadRecs();
+    } catch {
+      setAnalysisFailed(true);
+    }
+  }, [tech, id, loadRecs]);
+
+  useEffect(() => {
+    void loadAnalysis();
+  }, [loadAnalysis]);
+
+  // While a job is waiting or running, check on it until it settles.
+  const inFlight = analysis?.state === 'QUEUED' || analysis?.state === 'RUNNING';
+  useEffect(() => {
+    if (!inFlight) return;
+    const timer = setTimeout(() => void loadAnalysis(), ANALYSIS_POLL_MS);
+    return () => clearTimeout(timer);
+  }, [inFlight, analysis, loadAnalysis]);
+
+  /** One request at a time; the id makes a retried submit idempotent on the server. */
+  async function onRequestAnalysis() {
+    if (requestingRef.current) return;
+    requestingRef.current = true;
+    setRequesting(true);
+    setAnalysisNotice(null);
+    try {
+      const next = await tech.requestAnalysis(id, crypto.randomUUID());
+      lastAnalysisState.current = next.state;
+      setAnalysis(next);
+      setAnalysisFailed(false);
+    } catch (err) {
+      const code = err instanceof ApiError ? (err.details as { code?: string } | null)?.code : null;
+      if (code === 'ANALYSIS_IN_PROGRESS') {
+        setAnalysisNotice('An analysis is already running for this ticket.');
+      } else if (code === 'ANALYSIS_RATE_LIMITED') {
+        setAnalysisNotice('This ticket has had too many analyses recently. Try again later.');
+      } else if (code === 'AI_DISABLED') {
+        setAnalysisNotice('AI analysis is switched off.');
+      } else {
+        setAnalysisNotice(
+          'The analysis could not be requested. Triage is not affected; try again.',
+        );
+      }
+      void loadAnalysis();
+    } finally {
+      requestingRef.current = false;
+      setRequesting(false);
+    }
+  }
 
   // Reference data for the form. The page still works read-only if these fail.
   useEffect(() => {
@@ -480,6 +551,12 @@ export function TriageDetail() {
           busy={busy}
           onReview={onReview}
           onRetry={() => void loadRecs()}
+          analysis={analysis}
+          analysisFailed={analysisFailed}
+          analysisNotice={analysisNotice}
+          requesting={requesting}
+          onRequestAnalysis={() => void onRequestAnalysis()}
+          onRetryAnalysis={() => void loadAnalysis()}
         />
       </section>
 
