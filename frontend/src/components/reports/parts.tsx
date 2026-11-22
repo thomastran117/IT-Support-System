@@ -86,7 +86,12 @@ export function DataTable({
   rows: string[][];
 }) {
   return (
-    <div className="overflow-x-auto">
+    <div
+      className="overflow-x-auto"
+      role="region"
+      aria-label={`${caption} (scrollable)`}
+      tabIndex={0}
+    >
       <table aria-label={caption} className="w-full text-left text-sm">
         <thead>
           <tr className="border-b border-slate-200 text-slate-600">

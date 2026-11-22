@@ -39,7 +39,7 @@ export function Pagination({
       >
         Next
       </button>
-      <p role="status" className="ml-auto text-sm text-slate-500">
+      <p role="status" className="ml-auto text-sm text-slate-600">
         Showing {first}–{last} of {total}
       </p>
     </nav>

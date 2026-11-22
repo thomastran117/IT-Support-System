@@ -230,8 +230,9 @@ export function NavShell({ children }: { children: ReactNode }) {
       {skipLink}
       <aside className="sticky top-0 hidden h-screen flex-col overflow-y-auto bg-[#0b1f3a] px-4 py-5 text-white lg:flex">
         <div className="flex items-center justify-between gap-2">
-          <Link href={NAVIGATION[user.role][0].href} className="px-2" aria-label="SmartDesk home">
+          <Link href={NAVIGATION[user.role][0].href} className="px-2">
             <BrandMark />
+            <span className="sr-only"> home</span>
           </Link>
           {user.role === 'EMPLOYEE' && (
             <NotificationBell
@@ -259,8 +260,9 @@ export function NavShell({ children }: { children: ReactNode }) {
 
       <div className="min-w-0">
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200/90 bg-white/95 px-4 backdrop-blur lg:hidden">
-          <Link href={NAVIGATION[user.role][0].href} aria-label="SmartDesk home">
+          <Link href={NAVIGATION[user.role][0].href}>
             <BrandMark />
+            <span className="sr-only"> home</span>
           </Link>
           <div className="flex items-center gap-2">
             {user.role === 'EMPLOYEE' && (
