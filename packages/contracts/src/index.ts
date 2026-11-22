@@ -259,6 +259,40 @@ export const NOTIFICATION_TYPES = [
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 /**
+ * One notification in `GET /api/notifications`. `message` is built on the server from the type
+ * alone and never contains comment text, so internal notes cannot appear in it.
+ */
+export interface NotificationDto {
+  id: string;
+  type: NotificationType;
+  message: string;
+  ticketId: string;
+  /** Same value as `ticketId`, the tracking ID shown to people. */
+  trackingId: string;
+  ticketTitle: string;
+  read: boolean;
+  readAt: string | null;
+  createdAt: string;
+}
+
+/** `GET /api/notifications`. Newest first; `unreadCount` ignores the filter and paging. */
+export interface NotificationPage {
+  items: NotificationDto[];
+  total: number;
+  limit: number;
+  offset: number;
+  nextOffset: number | null;
+  unreadCount: number;
+}
+
+/** `PATCH /api/notifications/:id/read` and `POST /api/notifications/read-all`. */
+export interface NotificationReadResult {
+  unreadCount: number;
+  /** Notifications changed by this call (read-all only). */
+  updated?: number;
+}
+
+/**
  * One timeline entry (`GET /api/tickets/:id/events`, and `timeline` in the ticket detail).
  * Staff in scope get every event, the actor (null for a system action) and the sanitized details.
  * Requesters get a reduced view: some event types are hidden, the actor is always null and the

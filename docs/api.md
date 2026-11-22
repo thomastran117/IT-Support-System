@@ -347,6 +347,28 @@ Ordering is deterministic, ties always break on creation time then id, so pages 
 within a priority; `sort=age` (backlog default) is oldest first. A ticket leaves the backlog and enters
 a team queue as soon as routing is approved, and moves between team queues on reassignment.
 
+## Notifications
+
+Any signed-in user reads and acknowledges **only their own** notifications. The recipient is always
+the authenticated principal; nobody can name another user. A notification id that does not exist or
+belongs to someone else is `404`. Notifications are created by ticket events (see
+`docs/architecture.md`); there is no endpoint to create one.
+
+| Method | Path                          | Purpose                                           |
+| ------ | ----------------------------- | ------------------------------------------------- |
+| GET    | `/api/notifications`          | Newest-first list with paging and `unreadCount`   |
+| PATCH  | `/api/notifications/:id/read` | Mark one read (idempotent); returns `unreadCount` |
+| POST   | `/api/notifications/read-all` | Mark all of the caller's notifications read       |
+
+`GET` accepts `unreadOnly=true`, `limit` (1–100, default 20) and `offset`; unknown parameters are
+`400`. It returns `{ items, total, limit, offset, nextOffset, unreadCount }`. `total` counts what the
+filter matches, while `unreadCount` is always the caller's full unread total, so the two stay
+consistent after a mark-read. Ordering is newest first with the id as tie-breaker, so pages never
+repeat or skip. Each item has `id`, `type`, `message`, `ticketId`, `trackingId`, `ticketTitle`,
+`read`, `readAt` and `createdAt`. `message` depends on `type` only and never contains comment or
+internal-note text. Marking an already-read notification read again succeeds and keeps the first
+`readAt`.
+
 ## Common status codes
 
 - `400`: malformed or unexpected input.
