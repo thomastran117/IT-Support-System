@@ -1,0 +1,5 @@
+observation_id,category,started_at,assigned_at,note
+# One row per ticket the triager handled. started_at: when the ticket was handed over.
+# assigned_at: when the triager confirmed the team; leave BLANK if it was never routed (it is then
+# counted as unrouted, not as zero). Times are ISO-8601 with an offset. Delete these comment lines
+# and add your rows below. Example row shape (not data): M-001,Hardware,2026-03-02T09:00:00Z,2026-03-02T09:12:30Z,

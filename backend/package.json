@@ -22,7 +22,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "docs:db": "tsx scripts/generate-database-docs.ts",
     "test:db": "tsx scripts/test-db.ts",
-    "eval:ai": "tsx scripts/evaluate-ai.ts"
+    "eval:ai": "tsx scripts/evaluate-ai.ts",
+    "baseline:routing": "tsx scripts/routing-baseline.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.5",
