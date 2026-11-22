@@ -83,6 +83,7 @@ erDiagram
     timestamptz reviewed_at
     text review_notes
     timestamptz created_at
+    uuid job_id FK
   }
   knowledge_articles {
     uuid article_id PK
@@ -142,6 +143,7 @@ erDiagram
   support_teams |o--o{ ai_recommendations : "proposed_team_id"
   users |o--o{ ai_recommendations : "reviewer_id"
   tickets ||--o{ ai_recommendations : "ticket_id"
+  ai_analysis_jobs |o--o{ ai_recommendations : "job_id"
   ticket_categories |o--o{ knowledge_articles : "category_id"
   knowledge_articles ||--o{ recommendation_articles : "article_id"
   ai_recommendations ||--o{ recommendation_articles : "recommendation_id"
@@ -177,6 +179,7 @@ the assigned team.
 | `ai_recommendations` | `proposed_team_id` | `support_teams` (`team_id`) | 0..1 : N | optional | RESTRICT |
 | `ai_recommendations` | `reviewer_id` | `users` (`user_id`) | 0..1 : N | optional | RESTRICT |
 | `ai_recommendations` | `ticket_id` | `tickets` (`ticket_id`) | 1 : N | required | RESTRICT |
+| `ai_recommendations` | `job_id` | `ai_analysis_jobs` (`job_id`) | 0..1 : N | optional | RESTRICT |
 | `knowledge_articles` | `category_id` | `ticket_categories` (`category_id`) | 0..1 : N | optional | RESTRICT |
 | `recommendation_articles` | `article_id` | `knowledge_articles` (`article_id`) | 1 : N | required | RESTRICT |
 | `recommendation_articles` | `recommendation_id` | `ai_recommendations` (`recommendation_id`) | 1 : N | required | RESTRICT |

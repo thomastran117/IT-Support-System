@@ -3,6 +3,7 @@ import { loadEnv } from './config/env.js';
 import { createAnalysisService } from './modules/ai/analysisService.js';
 import { createProvider } from './modules/ai/index.js';
 import { createJobRunner, type JobLogEntry } from './modules/ai/jobRunner.js';
+import { persistDraft } from './modules/ai/recommendationService.js';
 
 /**
  * Background AI analysis worker: a separate process from the HTTP API (`npm run start:worker`).
@@ -20,6 +21,7 @@ const handlerTimeoutMs = ai.timeoutMs + 10_000;
 const runner = createJobRunner({
   prisma,
   analysis: createAnalysisService({ prisma, provider: createProvider(env) }),
+  persist: persistDraft,
   config: {
     concurrency: ai.worker.concurrency,
     pollIntervalMs: ai.worker.pollIntervalMs,

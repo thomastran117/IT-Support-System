@@ -38,3 +38,38 @@ export async function markReviewed(
         review_notes = ${review.notes ?? null}
     WHERE recommendation_id = ${id}::uuid AND review_status = 'PENDING'`);
 }
+
+/**
+ * Insert the recommendation for an analysis job, once. `job_id` is UNIQUE, so a repeat for the same
+ * job inserts nothing and returns null (the caller then looks the existing row up and must not
+ * link articles again). Using ON CONFLICT rather than catching the unique violation keeps an
+ * enclosing transaction usable.
+ */
+export async function insertRecommendationForJob(
+  db: Db,
+  data: {
+    jobId: string;
+    ticketId: string;
+    proposedCategoryId: string;
+    proposedTeamId: string;
+    proposedPriority: string;
+    suggestion: string;
+    confidence: number | null;
+    modelVersion: string;
+  },
+): Promise<string | null> {
+  const rows = await db.$queryRaw<{ recommendation_id: string }[]>`
+    INSERT INTO ai_recommendations
+      (job_id, ticket_id, proposed_category_id, proposed_team_id, proposed_priority,
+       suggestion, confidence, model_version)
+    VALUES
+      (${data.jobId}::uuid, ${data.ticketId}::uuid, ${data.proposedCategoryId}::uuid,
+       ${data.proposedTeamId}::uuid, ${data.proposedPriority}, ${data.suggestion},
+       ${data.confidence}::numeric(4,3), ${data.modelVersion})
+    ON CONFLICT (job_id) DO NOTHING
+    RETURNING recommendation_id`;
+  return rows[0]?.recommendation_id ?? null;
+}
+
+export const findRecommendationByJob = (db: Db, jobId: string) =>
+  db.aiRecommendation.findUnique({ where: { jobId } });

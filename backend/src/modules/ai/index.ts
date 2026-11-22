@@ -28,3 +28,4 @@ export function createProvider(env: Pick<Env, 'ai'>): AIProvider {
 export * from './analysisService.js';
 export { redactText } from './redact.js';
 export { PROMPT_VERSION } from './prompt.js';
+export * from './recommendationService.js';

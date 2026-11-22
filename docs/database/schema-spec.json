@@ -798,6 +798,13 @@
           "nullable": false,
           "default": "CURRENT_TIMESTAMP",
           "meaning": "When the proposal was saved (UTC)."
+        },
+        {
+          "name": "job_id",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "meaning": "Analysis job (ai_analysis_jobs) that produced this recommendation (SD-036). UNIQUE, so one analysis attempt yields at most one row however often delivery is retried. NULL for rows not created by a job (fixtures, historical)."
         }
       ],
       "primaryKey": ["recommendation_id"],
@@ -835,6 +842,15 @@
           "references": {
             "table": "tickets",
             "columns": ["ticket_id"]
+          },
+          "onDelete": "RESTRICT"
+        },
+        {
+          "name": "ai_recommendations_job_id_fkey",
+          "columns": ["job_id"],
+          "references": {
+            "table": "ai_analysis_jobs",
+            "columns": ["job_id"]
           },
           "onDelete": "RESTRICT"
         }
@@ -875,6 +891,11 @@
           "name": "idx_ai_recommendations_ticket_created",
           "columns": ["ticket_id", "created_at", "recommendation_id"],
           "unique": false
+        },
+        {
+          "name": "uq_ai_recommendations_job",
+          "columns": ["job_id"],
+          "unique": true
         }
       ]
     },
