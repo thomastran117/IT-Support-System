@@ -1,11 +1,12 @@
 import type { FastifyPluginAsync } from 'fastify';
 import type { PrismaClient } from '@smartdesk/db';
-import type { TicketCommentDto, TicketStatus } from '@smartdesk/contracts';
+import type { ReviewResultDto, TicketCommentDto, TicketStatus } from '@smartdesk/contracts';
 import {
   IDEMPOTENCY_KEY_HEADER,
   approveRoutingSchema,
   createCommentSchema,
   createTicketSchema,
+  reviewRecommendationSchema,
   TICKET_PAGE_SIZE_DEFAULT,
   TICKET_PAGE_SIZE_MAX,
   TICKET_RESOLUTION_MAX,
@@ -15,6 +16,7 @@ import { authorizeTicket } from '../../auth/ticketAccess.js';
 import {
   addComment,
   approveRouting,
+  reviewRecommendation,
   submitTicket,
   transitionTicket,
 } from '../../db/services/ticketService.js';
@@ -165,5 +167,29 @@ export const ticketRoutes =
       });
       reply.header('cache-control', 'no-store');
       return envelope('Routing approved', toTicketDto(ticket));
+    });
+
+    app.post('/:id/recommendations/:recommendationId/review', auth, async (req, reply) => {
+      const params = parse(z.object({ id: z.string(), recommendationId: z.uuid() }), req.params);
+      const body = parse(reviewRecommendationSchema, req.body);
+      // 404 for tickets the caller cannot read, 403 for readers who may not edit (requesters).
+      await authorizeTicket(prisma, req.principal!, params.id, 'edit');
+      const result = await reviewRecommendation(prisma, {
+        recommendationId: params.recommendationId,
+        // The recommendation must belong to the ticket in the URL; the reviewer is the caller.
+        ticketId: params.id,
+        reviewerId: req.principal!.id,
+        decision: body.decision,
+        notes: body.notes || undefined,
+        override: body.override,
+        expectedVersion: body.expectedVersion,
+      });
+      const dto: ReviewResultDto = {
+        ticket: toTicketDto(result.ticket),
+        recommendationId: result.recommendationId,
+        decision: result.decision,
+      };
+      reply.header('cache-control', 'no-store');
+      return envelope('Recommendation reviewed', dto);
     });
   };

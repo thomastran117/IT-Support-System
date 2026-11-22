@@ -118,6 +118,36 @@ optional assignee, in one request:
   succeeds.
 - AI suggestions are never modified by this endpoint, and it works whether or not AI has run.
 
+### Reviewing an AI recommendation
+
+`POST /api/tickets/:id/recommendations/:recommendationId/review` records a technician's decision on
+an AI recommendation:
+
+```json
+{
+  "decision": "ACCEPTED | OVERRIDDEN | REJECTED",
+  "expectedVersion": 3,
+  "override": { "priority": "HIGH" },
+  "notes": "optional"
+}
+```
+
+- `ACCEPTED` approves the proposed category, priority and team. `OVERRIDDEN` applies the proposal
+  with the technician's `override` values on top (at least one of `categoryId`, `priority`,
+  `teamId`, `assigneeId`). `REJECTED` keeps the approved values as they are. `override` is only
+  valid with `OVERRIDDEN`, and `notes` is limited to 2000 characters. The body is strict.
+- Same access as routing approval: staff who can edit the ticket. The requester gets `403`; anyone
+  who cannot read the ticket, and a recommendation that belongs to another ticket, get `404`. The
+  reviewer is always the authenticated user.
+- A recommendation can be decided once. A second decision, including a concurrent one, is `409`
+  with `details.code = "STALE_WRITE"`; a stale `expectedVersion` is `409 VERSION_CONFLICT`.
+- Everything is one transaction: the review status, reviewer and time, the approved ticket values
+  (with the same events as manual routing) and an `AI_REVIEWED` event. If any part fails, none of it
+  is applied and the recommendation stays pending. A proposal that points at a category or team
+  that is no longer active therefore fails with `422`; override the stale value or reject instead.
+- The original `proposed_*` values, suggestion, confidence and linked articles are never changed.
+- The response is `{ ticket, recommendationId, decision }` with the ticket as approved afterwards.
+
 ## Administration
 
 All `/api/admin` endpoints require the `ADMIN` role.

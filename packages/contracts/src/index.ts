@@ -328,6 +328,37 @@ export interface ApproveRoutingRequest {
   expectedVersion: number;
 }
 
+export const REVIEW_DECISIONS = ['ACCEPTED', 'OVERRIDDEN', 'REJECTED'] as const;
+export type ReviewDecision = (typeof REVIEW_DECISIONS)[number];
+export const REVIEW_NOTES_MAX = 2000;
+
+/** The technician's own approved values for an OVERRIDDEN review; they win over the AI proposal. */
+export interface ReviewOverride {
+  categoryId?: string;
+  priority?: (typeof APPROVABLE_PRIORITIES)[number];
+  teamId?: string;
+  assigneeId?: string | null;
+}
+
+/**
+ * `POST /api/tickets/:id/recommendations/:recommendationId/review` (SD-027). ACCEPTED applies the
+ * proposal, OVERRIDDEN applies it with `override` on top, REJECTED keeps the approved values.
+ * `expectedVersion` is the ticket version the technician last read.
+ */
+export interface ReviewRecommendationRequest {
+  decision: ReviewDecision;
+  expectedVersion: number;
+  override?: ReviewOverride;
+  notes?: string;
+}
+
+/** The outcome of a review: the ticket as approved afterwards, and the recorded decision. */
+export interface ReviewResultDto {
+  ticket: TicketDto;
+  recommendationId: string;
+  decision: ReviewDecision;
+}
+
 /**
  * Machine-readable reason in `details.code` of a 409 from a ticket mutation:
  * - VERSION_CONFLICT: stale `expectedVersion` (`details.currentVersion` has the current one)
@@ -472,4 +503,36 @@ export const updateArticleSchema = z
   })
   .refine((v) => v.title !== undefined || v.body !== undefined || v.categoryId !== undefined, {
     message: 'Provide a title, body or category',
+  });
+
+export const reviewRecommendationSchema = z
+  .strictObject({
+    decision: z.enum(REVIEW_DECISIONS),
+    expectedVersion: z.number().int().min(1),
+    override: z
+      .strictObject({
+        categoryId: z.uuid().optional(),
+        priority: z.enum(APPROVABLE_PRIORITIES).optional(),
+        teamId: z.uuid().optional(),
+        assigneeId: z.uuid().nullable().optional(),
+      })
+      .optional(),
+    notes: z.string().trim().max(REVIEW_NOTES_MAX).optional(),
+  })
+  .superRefine((v, ctx) => {
+    const values = v.override ? Object.values(v.override).filter((x) => x !== undefined) : [];
+    if (v.decision === 'OVERRIDDEN' && values.length === 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['override'],
+        message: 'An override must change a value',
+      });
+    }
+    if (v.decision !== 'OVERRIDDEN' && v.override !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['override'],
+        message: 'Only an overridden review can carry override values',
+      });
+    }
   });
