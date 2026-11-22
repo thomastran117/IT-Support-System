@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import type { PrismaClient } from '@smartdesk/db';
-import type { AuthSession } from '@smartdesk/contracts';
+import { loginSchema, type AuthSession } from '@smartdesk/contracts';
 import { z } from 'zod';
 import type { Env } from '../../config/env.js';
 import { loadValidUser, toAuthUser } from '../../auth/guard.js';
@@ -18,15 +18,7 @@ export interface AuthRouteOptions {
   rateLimit: { login: number; refresh: number; windowMs: number };
 }
 
-const LoginBody = z.object({
-  email: z
-    .string()
-    .trim()
-    .min(1)
-    .max(255)
-    .transform((e) => e.toLowerCase()),
-  password: z.string().min(1).max(1024),
-});
+const LoginBody = loginSchema;
 
 const INVALID_CREDENTIALS = () => new HttpError(401, 'Invalid email or password');
 const INVALID_SESSION = () => new HttpError(401, 'Session is invalid or expired');

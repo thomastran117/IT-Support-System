@@ -1,23 +1,14 @@
 import type { FastifyPluginAsync, FastifyReply } from 'fastify';
 import type { PrismaClient } from '@smartdesk/db';
+import { changeRoleSchema, createUserSchema, roleSchema } from '@smartdesk/contracts';
 import { z } from 'zod';
 import { envelope } from '../../plugins/errors.js';
 import { parse } from '../../plugins/validate.js';
 import { createUserService } from './userService.js';
 
-const RoleSchema = z.enum(['EMPLOYEE', 'TECHNICIAN', 'ADMIN']);
-
-const CreateBody = z.strictObject({
-  email: z
-    .string()
-    .trim()
-    .max(255)
-    .pipe(z.email())
-    .transform((e) => e.toLowerCase()),
-  displayName: z.string().trim().min(1).max(120),
-  role: RoleSchema,
-});
-const RoleBody = z.strictObject({ role: RoleSchema });
+const RoleSchema = roleSchema;
+const CreateBody = createUserSchema;
+const RoleBody = changeRoleSchema;
 const IdParams = z.object({ id: z.uuid() });
 const ListQuery = z.object({
   role: RoleSchema.optional(),

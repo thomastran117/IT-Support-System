@@ -1,7 +1,40 @@
-import type { ApiEnvelope, AuthSession, AuthUser } from '@smartdesk/contracts';
+import type { ApiEnvelope, AuthSession, AuthUser, FieldErrors } from '@smartdesk/contracts';
+
+/** Stable classification of every failure the UI has to handle. */
+export type ApiErrorKind =
+  | 'unauthenticated' // 401, after the single refresh retry
+  | 'forbidden' // 403
+  | 'not_found' // 404
+  | 'conflict' // 409
+  | 'validation' // 400/422 with per-field messages
+  | 'rate_limited' // 429
+  | 'server' // 5xx
+  | 'network' // never reached the server
+  | 'timeout' // no answer in time
+  | 'unknown';
+
+export function kindForStatus(status: number): ApiErrorKind {
+  if (status === 401) return 'unauthenticated';
+  if (status === 403) return 'forbidden';
+  if (status === 404) return 'not_found';
+  if (status === 409) return 'conflict';
+  if (status === 400 || status === 422) return 'validation';
+  if (status === 429) return 'rate_limited';
+  if (status >= 500) return 'server';
+  return 'unknown';
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
 
 /** The server answered with an error status. Messages are safe to show to the user. */
 export class ApiError extends Error {
+  readonly kind: ApiErrorKind;
+  /** Machine-readable domain code (`VERSION_CONFLICT`, ...) from `details.code`, if any. */
+  readonly code: string | null;
+  /** Per-field messages of a validation failure, keyed by request field. Empty otherwise. */
+  readonly fieldErrors: FieldErrors;
+
   constructor(
     public readonly status: number,
     message: string,
@@ -9,21 +42,49 @@ export class ApiError extends Error {
   ) {
     super(message);
     this.name = 'ApiError';
+    this.kind = kindForStatus(status);
+    this.code = isRecord(details) && typeof details.code === 'string' ? details.code : null;
+    this.fieldErrors = {};
+    if (this.kind === 'validation' && isRecord(details)) {
+      for (const [field, value] of Object.entries(details)) {
+        if (Array.isArray(value) && value.every((m) => typeof m === 'string')) {
+          this.fieldErrors[field] = value as string[];
+        }
+      }
+    }
+  }
+
+  /** A write made against a stale view of the record (409 `VERSION_CONFLICT`). */
+  get isVersionConflict(): boolean {
+    return this.kind === 'conflict' && this.code === 'VERSION_CONFLICT';
   }
 }
 
-/** The request never reached the server (offline, DNS, CORS, server down). */
+/** The request never reached the server (offline, DNS, CORS, server down) or timed out. */
 export class NetworkError extends Error {
-  constructor() {
-    super('Unable to reach the server');
+  readonly kind: 'network' | 'timeout';
+  constructor(readonly timedOut = false) {
+    super(timedOut ? 'The server took too long to respond' : 'Unable to reach the server');
     this.name = 'NetworkError';
+    this.kind = timedOut ? 'timeout' : 'network';
   }
 }
+
+/** Classifies any thrown value; non-API failures are `unknown`. */
+export function errorKind(err: unknown): ApiErrorKind {
+  if (err instanceof ApiError || err instanceof NetworkError) return err.kind;
+  return 'unknown';
+}
+
+/** Default per-request timeout; a hung connection must not leave a form pending forever. */
+export const DEFAULT_TIMEOUT_MS = 30_000;
 
 export interface ApiClientOptions {
   /** Resolves an API path such as `/api/auth/me` to a full URL. */
   url: (path: string) => string;
   fetchImpl?: typeof fetch;
+  /** Per-request timeout in milliseconds. Defaults to {@link DEFAULT_TIMEOUT_MS}. */
+  timeoutMs?: number;
   /** Called when the session can no longer be restored (refresh rejected). */
   onSessionEnded?: () => void;
 }
@@ -56,10 +117,14 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       headers.set('content-type', 'application/json');
     }
     if (token) headers.set('authorization', `Bearer ${token}`);
+    const timeout = AbortSignal.timeout(options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+    const signal = init.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
     try {
-      return await doFetch(options.url(path), { ...init, headers, credentials: 'include' });
-    } catch {
-      throw new NetworkError();
+      return await doFetch(options.url(path), { ...init, headers, signal, credentials: 'include' });
+    } catch (err) {
+      // The caller cancelled (navigated away, superseded search): not a failure to report.
+      if (init.signal?.aborted) throw err;
+      throw new NetworkError(timeout.aborted);
     }
   }
 
