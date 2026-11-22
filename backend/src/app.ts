@@ -16,6 +16,7 @@ import { healthRoutes } from './modules/health/routes.js';
 import { pingRoutes } from './modules/ping.js';
 import { adminTeamRoutes, categoryRoutes, teamRoutes } from './modules/teams/routes.js';
 import { notificationRoutes } from './modules/notifications/routes.js';
+import { reportRoutes } from './modules/reports/routes.js';
 import { technicianRoutes } from './modules/technician/routes.js';
 import { ticketRoutes } from './modules/tickets/routes.js';
 
@@ -81,6 +82,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
       { prefix: `${API_PREFIX}/auth` },
     );
     await app.register(adminRoutes(opts.prisma), { prefix: `${API_PREFIX}/admin` });
+    await app.register(reportRoutes(opts.prisma), { prefix: `${API_PREFIX}/admin/reports` });
     await app.register(adminKnowledgeRoutes(opts.prisma), {
       prefix: `${API_PREFIX}/admin/knowledge`,
     });

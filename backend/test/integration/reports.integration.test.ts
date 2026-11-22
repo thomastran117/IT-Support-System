@@ -304,6 +304,7 @@ describe.skipIf(!testDatabaseUrl)('report queries Q05-Q10 (integration)', () => 
         'Q08_ai_acceptance_rate',
         'Q09_recurring_categories',
         'Q10_daily_ticket_intake',
+        'Q11_avg_time_to_first_response',
       ]) {
         const text = loadSql(`reports/${file}.sql`);
         expect(text).toMatch(/^-- Q\d\d/);
