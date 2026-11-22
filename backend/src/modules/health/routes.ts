@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import type { LiveHealth, ReadyHealth } from '@smartdesk/contracts';
 import type { DbCheck } from '@smartdesk/db';
-import type { CacheCheck } from '../../cache/check.js';
+import type { CacheCheck } from '../../cache/client.js';
 
 export const healthRoutes =
   (checkDb: DbCheck, checkCache: CacheCheck): FastifyPluginAsync =>

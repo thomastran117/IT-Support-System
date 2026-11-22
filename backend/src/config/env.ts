@@ -3,7 +3,7 @@ export interface Env {
   port: number;
   frontendOrigin: string;
   databaseUrl: string;
-  /** Optional internal cache. Undefined means Redis is disabled; see backend/src/cache/check.ts. */
+  /** Optional internal cache. Undefined means Redis is disabled; see backend/src/cache/client.ts. */
   redisUrl: string | undefined;
   logLevel: string;
   production: boolean;
