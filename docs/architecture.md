@@ -170,3 +170,33 @@ A ticket's requester gets an in-app notification when something they can see cha
 Employees get a bell with an unread badge in the shell (sidebar on desktop, header on mobile). One shared state (`useNotificationCentre`) feeds both layouts, so there is a single poller: `GET /api/notifications?limit=10` every `NEXT_PUBLIC_TICKET_POLL_MS` (default 15 s) while the tab is visible, on every navigation and whenever the panel opens. The badge and the unread count always come from the server's `unreadCount`, never from local arithmetic, and a failed poll keeps the last known badge. Each item links to the employee's own ticket page (`/employee/tickets/:id`), which the API already restricts to the requester, and opening it marks the notice read. Wording comes from the server and carries no comment text. There are no WebSockets or push services. Technicians and administrators have no bell, because notifications go to ticket requesters.
 
 The panel is a non-modal dialog rendered into `<body>`: Escape or an outside click closes it and focus returns to the bell that opened it. It shows loading, empty and error states (with "Try again") and the 10 most recent notifications.
+
+## Notification email, optional (SD-043)
+
+Email is an extra channel, off by default (`EMAIL_TRANSPORT=none`). With it off the worker starts no email loop, nothing is ever sent, and the notification centre is exactly as complete as with it on. Local development and CI never send mail.
+
+**Flow.** The in-app notification is written in the ticket's own transaction (SD-040) and is complete before email is considered. The worker then sweeps recent notifications into `notification_deliveries`, a queue with at most one row per notification (a unique key), claimed with `FOR UPDATE SKIP LOCKED` and a lease exactly like `ai_analysis_jobs`. The dispatcher only reads notifications and writes its own delivery rows, so a failing or unreachable mail server cannot roll back or delay a ticket change and cannot hide an in-app item.
+
+- **No duplicates:** one delivery row per notification, so sweeping repeatedly, running several workers, or retrying never queues or sends a notification that was already delivered. Each email carries a stable `Message-ID` derived from the notification id. One unavoidable limit: if the worker dies after the mail server accepted a message but before the row is marked `SENT`, the lease expires and that one message is sent again.
+- **Retries:** each claim is an attempt (`EMAIL_JOB_MAX_ATTEMPTS`, default 5). Temporary and network failures, timeouts and Gmail's daily limit go back to `QUEUED` after `EMAIL_JOB_BACKOFF_MS * 2^(attempt-1)` (default 30 s, capped at 1 hour). A rejected login or recipient fails immediately. Stored reasons are codes (`temporary`, `unavailable`, `rate_limited`, `auth_failed`, `rejected`, ...), never server text.
+- **Skipped, not sent:** the employee already read it in the app (`already_read`), the account was deactivated (`no_recipient`), or the delivery is older than `EMAIL_MAX_AGE_HOURS` (default 24, `expired`). The same age limit means switching email on later does not mail the existing history.
+- **Content:** the wording and subject are fixed per notification type. The only free text is the requester's own ticket title and name (HTML-escaped, line breaks flattened). Comment text, resolution summaries, internal notes, AI prompts and credentials are not inputs. Links point to `APP_BASE_URL/employee/tickets/:id`.
+- **Logs** carry delivery and notification ids, attempt numbers and reason codes only: never addresses, titles, message text, the SMTP host or any credential. Nodemailer's own logging is off.
+
+### Using Gmail
+
+1. On the sending Google account, turn on **2-Step Verification**, then create an **App Password** (Google Account > Security > App passwords). Your normal password does not work over SMTP.
+2. Put the values in an untracked `.env` (never commit them):
+
+   ```
+   EMAIL_TRANSPORT=smtp
+   SMTP_USER=your.address@gmail.com
+   SMTP_PASSWORD=<the 16-character app password>
+   APP_BASE_URL=http://localhost:3000
+   ```
+
+   `SMTP_HOST` (`smtp.gmail.com`), `SMTP_PORT` (587, STARTTLS required) and `SMTP_FROM` (defaults to `SMTP_USER`) are already right for Gmail. For implicit TLS use `SMTP_PORT=465`.
+
+3. Start the worker (`docker compose up worker`). It logs `email transport: smtp` on start.
+
+Limits to know: a personal Gmail account allows roughly 500 messages per day (Google Workspace more), and Gmail sends from the authenticated account regardless of `SMTP_FROM` unless the alias is verified. The Compose `worker` is on the `public` network so it can reach `smtp.gmail.com`; the database stays on the internal network.

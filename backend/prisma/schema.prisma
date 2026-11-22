@@ -287,9 +287,33 @@ model Notification {
   recipient User        @relation(fields: [recipientId], references: [id], onDelete: Restrict)
   ticket    Ticket      @relation(fields: [ticketId], references: [id], onDelete: Restrict)
   event     TicketEvent @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  delivery  NotificationDelivery?
 
   @@unique([recipientId, eventId, type], map: "uq_notifications_recipient_event_type")
   @@index([recipientId, createdAt(sort: Desc), id(sort: Desc)], map: "idx_notifications_recipient_created")
   @@index([ticketId], map: "idx_notifications_ticket")
   @@map("notifications")
+}
+
+/// Email delivery queue for notifications (SD-043): at most one row per notification, claimed with
+/// SKIP LOCKED and a lease. Holds reason codes only, never addresses, message text or credentials.
+model NotificationDelivery {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @map("delivery_id") @db.Uuid
+  notificationId String    @map("notification_id") @db.Uuid
+  state          String    @default("QUEUED") @db.VarChar(10)
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(5) @map("max_attempts")
+  runAfter       DateTime  @default(now()) @map("run_after") @db.Timestamptz(6)
+  leaseToken     String?   @map("lease_token") @db.Uuid
+  lockedUntil    DateTime? @map("locked_until") @db.Timestamptz(6)
+  errorKind      String?   @map("error_kind") @db.VarChar(24)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  completedAt    DateTime? @map("completed_at") @db.Timestamptz(6)
+
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Restrict)
+
+  @@unique([notificationId], map: "uq_notification_deliveries_notification")
+  @@index([state, runAfter], map: "idx_notification_deliveries_claim")
+  @@map("notification_deliveries")
 }

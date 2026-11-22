@@ -92,10 +92,24 @@ services:
       AI_WORKER_CONCURRENCY: ${AI_WORKER_CONCURRENCY:-2}
       AI_JOB_MAX_ATTEMPTS: ${AI_JOB_MAX_ATTEMPTS:-3}
       AI_JOB_BACKOFF_MS: ${AI_JOB_BACKOFF_MS:-5000}
+      # Optional email channel (SD-043), off by default. See docs/architecture.md for Gmail setup.
+      EMAIL_TRANSPORT: ${EMAIL_TRANSPORT:-none}
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
+      EMAIL_JOB_MAX_ATTEMPTS: ${EMAIL_JOB_MAX_ATTEMPTS:-5}
+      EMAIL_JOB_BACKOFF_MS: ${EMAIL_JOB_BACKOFF_MS:-30000}
+      EMAIL_MAX_AGE_HOURS: ${EMAIL_MAX_AGE_HOURS:-24}
     depends_on:
       postgres:
         condition: service_healthy
-    networks: [internal]
+    # `public` gives the worker outbound access, which email (and a hosted AI provider) needs. The
+    # database stays on the internal network.
+    networks: [internal, public]
     develop:
       watch:
         - action: sync

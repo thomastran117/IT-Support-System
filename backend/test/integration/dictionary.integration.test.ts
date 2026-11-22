@@ -36,6 +36,7 @@ describe('documentation is generated from the spec', () => {
       'admin_audit_log',
       'ai_analysis_jobs',
       'notifications',
+      'notification_deliveries',
     ]);
     for (const table of spec.tables) expect(read('erd.md')).toContain(`  ${table.name} {`);
   });
