@@ -85,7 +85,13 @@ describe.skipIf(!testDatabaseUrl)('POST /api/tickets/:id/transitions (integratio
   };
 
   beforeAll(async () => {
-    app = await buildApp({ env, prisma, checkDb: async () => true, logger: false });
+    app = await buildApp({
+      env,
+      prisma,
+      checkDb: async () => true,
+      checkCache: async () => 'disabled' as const,
+      logger: false,
+    });
   });
   beforeEach(async () => {
     await resetDatabase(prisma);

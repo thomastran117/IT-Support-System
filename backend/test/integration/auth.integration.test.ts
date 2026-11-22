@@ -21,6 +21,7 @@ describe.skipIf(!testDatabaseUrl)('auth endpoints (integration)', () => {
       env,
       prisma,
       checkDb: async () => true,
+      checkCache: async () => 'disabled' as const,
       logger: false,
       // Generous by default so ordinary tests never trip the limiter.
       authRateLimit: { login: 1000, refresh: 1000, windowMs: 60_000 },

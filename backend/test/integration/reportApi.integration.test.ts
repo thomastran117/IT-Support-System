@@ -28,7 +28,13 @@ describe.skipIf(!testDatabaseUrl)('admin report summary API (integration)', () =
     get(as, REPORT_WINDOW.start, REPORT_WINDOW.end);
 
   beforeAll(async () => {
-    app = await buildApp({ env, prisma, checkDb: async () => true, logger: false });
+    app = await buildApp({
+      env,
+      prisma,
+      checkDb: async () => true,
+      checkCache: async () => 'disabled' as const,
+      logger: false,
+    });
     await resetDatabase(prisma);
     await seedDatabase(prisma, { profile: 'test', databaseUrl: testDatabaseUrl! });
   });

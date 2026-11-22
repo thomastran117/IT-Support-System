@@ -42,6 +42,7 @@ describe.skipIf(!testDatabaseUrl)('knowledge access and relevance (integration)'
       env,
       prisma,
       checkDb: async () => true,
+      checkCache: async () => 'disabled' as const,
       logger: false,
       authRateLimit: { login: 10_000, refresh: 10_000, windowMs: 60_000 },
     });

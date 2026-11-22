@@ -20,6 +20,8 @@ Browser -> frontend (Next.js) -> backend (Fastify) -> PostgreSQL
   optional AI provider is disabled.
 - **PostgreSQL** is reachable only on Compose's internal network. Only the frontend and backend
   publish host ports.
+- **Redis** is an optional, internal-only cache with no persistence, disabled unless the `cache`
+  (dev) or `ci` profile starts it; PostgreSQL remains the authoritative store regardless.
 
 ## Package boundaries
 
@@ -145,6 +147,7 @@ Compose profiles add one-shot services without affecting the normal stack:
 
 - `ci`: formatting, backend/database/worker verification, and browser-enabled frontend tests.
 - `tools`: generated documentation commands whose output is mounted back into the repository.
+- `cache`: an optional internal Redis instance for local cache development; disabled by default.
 
 GitHub Actions invokes these same services rather than maintaining a separate host npm workflow.
 
