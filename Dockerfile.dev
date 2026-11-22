@@ -8,12 +8,10 @@ WORKDIR /app
 COPY packages/contracts/package.json packages/contracts/package-lock.json packages/contracts/
 COPY packages/db/package.json packages/db/package-lock.json packages/db/
 COPY backend/package.json backend/package-lock.json backend/
-COPY worker/package.json worker/package-lock.json worker/
 COPY frontend/package.json frontend/package-lock.json frontend/
 RUN npm ci --prefix packages/contracts \
   && npm ci --prefix packages/db \
   && npm ci --prefix backend \
-  && npm ci --prefix worker \
   && npm ci --prefix frontend
 
 FROM dependencies AS source

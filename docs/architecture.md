@@ -17,8 +17,7 @@ Browser -> frontend (Next.js) -> backend (Fastify) -> PostgreSQL
   migrations, and seed/documentation commands.
 - **Worker** is the host for asynchronous work: the Compose `worker` service runs the backend's
   `src/worker.ts` entrypoint (see Analysis queue and worker). It remains functional when the
-  optional AI provider is disabled. The `worker/` package is a leftover heartbeat stub that Compose
-  no longer starts.
+  optional AI provider is disabled.
 - **PostgreSQL** is reachable only on Compose's internal network. Only the frontend and backend
   publish host ports.
 
