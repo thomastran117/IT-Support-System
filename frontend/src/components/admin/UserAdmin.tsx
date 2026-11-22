@@ -8,6 +8,7 @@ import type {
   UserWithTemporaryPassword,
 } from '@smartdesk/contracts';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { ConfirmDialog } from '@/components/ui';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { ApiError, NetworkError } from '@/lib/auth/client';
 import { ROLE_LABEL } from '@/lib/auth/roles';
@@ -31,6 +32,8 @@ function describeError(err: unknown): string {
   return 'Something went wrong. Please try again.';
 }
 
+type Pending = { kind: 'deactivate' | 'reset'; user: AdminUser };
+
 interface Secret {
   email: string;
   password: string;
@@ -45,6 +48,7 @@ export function UserAdmin() {
   const [busy, setBusy] = useState(false);
   const [secret, setSecret] = useState<Secret | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [pending, setPending] = useState<Pending | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -86,17 +90,26 @@ export function UserAdmin() {
     });
 
   const toggleActive = (u: AdminUser) => {
-    const verb = u.isActive ? 'deactivate' : 'activate';
-    if (u.isActive && !window.confirm(`Deactivate ${u.email}? They will be signed out everywhere.`))
+    // Deactivating signs the person out everywhere, so it asks first; activating does not.
+    if (u.isActive) {
+      setPending({ kind: 'deactivate', user: u });
       return;
+    }
     return act(async () => {
-      await api.request(`/api/admin/users/${u.id}/${verb}`, { method: 'POST' });
+      await api.request(`/api/admin/users/${u.id}/activate`, { method: 'POST' });
     });
   };
 
+  const deactivate = (u: AdminUser) =>
+    act(async () => {
+      await api.request(`/api/admin/users/${u.id}/deactivate`, { method: 'POST' });
+    });
+
   const resetPassword = (u: AdminUser) => {
-    if (!window.confirm(`Issue a new one-time password for ${u.email}? Their sessions will end.`))
-      return;
+    setPending({ kind: 'reset', user: u });
+  };
+
+  const doResetPassword = (u: AdminUser) => {
     return act(async () => {
       const res = await api.request<UserWithTemporaryPassword>(
         `/api/admin/users/${u.id}/reset-password`,
@@ -306,6 +319,37 @@ export function UserAdmin() {
           </div>
         )}
       </section>
+
+      <ConfirmDialog
+        open={pending?.kind === 'deactivate'}
+        title="Deactivate this account?"
+        confirmLabel="Deactivate"
+        busy={busy}
+        onCancel={() => setPending(null)}
+        onConfirm={() => {
+          const target = pending?.user;
+          setPending(null);
+          if (target) void deactivate(target);
+        }}
+      >
+        <strong>{pending?.user.email}</strong> will be signed out everywhere and will not be able to
+        sign in until an administrator activates the account again.
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={pending?.kind === 'reset'}
+        title="Issue a new one-time password?"
+        confirmLabel="Reset password"
+        busy={busy}
+        onCancel={() => setPending(null)}
+        onConfirm={() => {
+          const target = pending?.user;
+          setPending(null);
+          if (target) void doResetPassword(target);
+        }}
+      >
+        A new one-time password will be created for <strong>{pending?.user.email}</strong>. Their
+        current sessions will end.
+      </ConfirmDialog>
 
       <section aria-labelledby="audit-title" className="app-card p-5 sm:p-6">
         <h2 id="audit-title" className="text-lg font-bold text-slate-950">

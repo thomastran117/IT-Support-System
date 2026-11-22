@@ -14,7 +14,14 @@ import {
   formatDateTime,
   shortId,
 } from '@/lib/tickets/format';
-import { EmptyState, ErrorState, LoadingState, PageHeader, PriorityBadge } from '@/components/ui';
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  PageHeader,
+  Pagination,
+  PriorityBadge,
+} from '@/components/ui';
 import { inputClass, primaryButton, secondaryButton, StatusBadge } from './ui';
 
 const PAGE_SIZE = 10;
@@ -55,8 +62,6 @@ export function TicketList() {
   useEffect(() => void load(), [load]);
 
   const filtered = status !== '' || priority !== '';
-  const first = page && page.items.length > 0 ? page.offset + 1 : 0;
-  const last = page ? page.offset + page.items.length : 0;
   const resetFilters = () => {
     setStatus('');
     setPriority('');
@@ -232,27 +237,15 @@ export function TicketList() {
               </tbody>
             </table>
           </div>
-          <nav aria-label="Pagination" className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className={secondaryButton}
-              disabled={loading || page.offset === 0}
-              onClick={() => setOffset(Math.max(0, page.offset - PAGE_SIZE))}
-            >
-              Previous
-            </button>
-            <button
-              type="button"
-              className={secondaryButton}
-              disabled={loading || page.nextOffset === null}
-              onClick={() => page.nextOffset !== null && setOffset(page.nextOffset)}
-            >
-              Next
-            </button>
-            <p role="status" className="ml-auto text-sm text-slate-500">
-              Showing {first}–{last} of {page.total}
-            </p>
-          </nav>
+          <Pagination
+            offset={page.offset}
+            limit={PAGE_SIZE}
+            count={page.items.length}
+            total={page.total}
+            nextOffset={page.nextOffset}
+            busy={loading}
+            onChange={setOffset}
+          />
         </div>
       )}
     </section>

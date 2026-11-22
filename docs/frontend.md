@@ -41,3 +41,29 @@ sidebar (desktop) and the navigation drawer (mobile).
 
 Pages must not scroll horizontally at 320-375 px. Wide tables use `responsive-table` (card layout below
 768 px) or an explicit `overflow-x-auto` wrapper. Primary actions stay reachable at every width.
+
+## Forms, tables and async states
+
+Build forms from these pieces instead of hand-wiring labels, errors and pending states:
+
+| Need                               | Use                                                                                                                       |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Label, hint, counter, error        | `FormField` (`components/forms`): sets `aria-invalid` and `aria-describedby` for you                                      |
+| Error list after a failed submit   | `ErrorSummary` + `useFocusTarget()`: focus moves to the summary; each item links to its field                             |
+| Submit button with pending state   | `AsyncButton` (disabled and relabelled while running)                                                                     |
+| One submission at a time + failure | `useSubmit()` (`lib/forms`): blocks double submits and keeps the last failure                                             |
+| Failure message and retry          | `SubmitError`: announces the failure; "Try again" only when `failure.retryable`; "Reload latest" for a stale record (409) |
+| Confirm a disruptive action        | `ConfirmDialog` (focus starts on Cancel; Escape cancels). Never `window.confirm`                                          |
+| Paged lists                        | `Pagination` (`offset`, `limit`, `count`, `total`, `nextOffset`)                                                          |
+
+Rules:
+
+- **Keep what the user typed.** State lives in the component, never in the submit hook, so a network
+  failure, timeout, 5xx or 409 leaves the form as it was and a retry resends it.
+- **`toFailure(err)` is the only place error text is chosen** for the shared pieces. It reads the
+  `ApiError.kind` from the API client (see `docs/api.md`), so the same failure reads the same
+  everywhere. Server validation (`fieldErrors`) supplements client checks; it never replaces them.
+- **Errors are text, linked to the field, and announced.** `role="alert"` for failures,
+  `role="status"` for progress.
+- Extract a component only once a second feature needs it, and keep the employee ticket form's
+  behaviour (draft restore, idempotency keys) in its own feature code.
