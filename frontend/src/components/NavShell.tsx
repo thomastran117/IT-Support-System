@@ -9,7 +9,9 @@ import {
   LogOut,
   Menu,
   PlusCircle,
+  Tags,
   TicketCheck,
+  Users,
   UsersRound,
   X,
   type LucideIcon,
@@ -78,7 +80,21 @@ const NAVIGATION: Record<Role, NavItem[]> = {
         path.startsWith('/admin') &&
         !path.startsWith('/admin/knowledge') &&
         !path.startsWith('/admin/reports') &&
+        !path.startsWith('/admin/categories') &&
+        !path.startsWith('/admin/teams') &&
         !path.startsWith('/admin/evaluation'),
+    },
+    {
+      href: '/admin/categories',
+      label: 'Categories',
+      icon: Tags,
+      active: (path) => path.startsWith('/admin/categories'),
+    },
+    {
+      href: '/admin/teams',
+      label: 'Support teams',
+      icon: Users,
+      active: (path) => path.startsWith('/admin/teams'),
     },
     {
       href: '/admin/reports',

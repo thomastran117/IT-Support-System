@@ -88,6 +88,8 @@ export interface AdminAuditEntry {
 
 export const TEAM_NAME_MAX = 100;
 export const TEAM_DESCRIPTION_MAX = 1000;
+export const CATEGORY_NAME_MAX = 100;
+export const CATEGORY_DESCRIPTION_MAX = 1000;
 
 /** What staff assignment forms need: a team's identity and nothing else. */
 export interface TeamRefDto {
@@ -113,6 +115,15 @@ export interface TeamMemberRefDto {
 export interface AdminTeamDto extends TeamRefDto {
   isActive: boolean;
   memberCount: number;
+  /** Tickets (any status) currently assigned to this team; they keep it when it is deactivated. */
+  ticketCount: number;
+}
+
+/** A ticket category as an administrator manages it. */
+export interface AdminCategoryDto extends CategoryRefDto {
+  isActive: boolean;
+  /** Tickets (any status) filed under this category; they keep it when it is deactivated. */
+  ticketCount: number;
 }
 
 /** A team member as an administrator sees them. */
@@ -530,6 +541,20 @@ export const updateTeamSchema = z
   .strictObject({
     name: z.string().trim().min(1).max(TEAM_NAME_MAX).optional(),
     description: z.string().trim().max(TEAM_DESCRIPTION_MAX).nullable().optional(),
+  })
+  .refine((v) => v.name !== undefined || v.description !== undefined, {
+    message: 'Provide a name or a description',
+  });
+
+export const createCategorySchema = z.strictObject({
+  name: z.string().trim().min(1).max(CATEGORY_NAME_MAX),
+  description: z.string().trim().max(CATEGORY_DESCRIPTION_MAX).nullish(),
+});
+
+export const updateCategorySchema = z
+  .strictObject({
+    name: z.string().trim().min(1).max(CATEGORY_NAME_MAX).optional(),
+    description: z.string().trim().max(CATEGORY_DESCRIPTION_MAX).nullable().optional(),
   })
   .refine((v) => v.name !== undefined || v.description !== undefined, {
     message: 'Provide a name or a description',

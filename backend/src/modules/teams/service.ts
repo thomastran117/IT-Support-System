@@ -39,7 +39,17 @@ export function createTeamService(prisma: PrismaClient) {
   const toAdminTeam = (
     t: { id: string; name: string; description: string | null; isActive: boolean },
     memberCount: number,
-  ): AdminTeamDto => ({ ...toRef(t), isActive: t.isActive, memberCount });
+    ticketCount: number,
+  ): AdminTeamDto => ({ ...toRef(t), isActive: t.isActive, memberCount, ticketCount });
+
+  const ticketCounts = async (): Promise<Map<string | null, number>> => {
+    const rows = await prisma.ticket.groupBy({
+      by: ['assignedTeamId'],
+      where: { assignedTeamId: { not: null } },
+      _count: { _all: true },
+    });
+    return new Map(rows.map((r) => [r.assignedTeamId, r._count._all]));
+  };
 
   return {
     // --- Read-only reference data for staff assignment forms ---------------------------------
@@ -80,7 +90,8 @@ export function createTeamService(prisma: PrismaClient) {
         orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
         include: { _count: { select: { members: true } } },
       });
-      return teams.map((t) => toAdminTeam(t, t._count.members));
+      const counts = await ticketCounts();
+      return teams.map((t) => toAdminTeam(t, t._count.members, counts.get(t.id) ?? 0));
     },
 
     async getTeam(id: string): Promise<AdminTeamDto> {
@@ -89,7 +100,8 @@ export function createTeamService(prisma: PrismaClient) {
         include: { _count: { select: { members: true } } },
       });
       if (!team) throw notFoundError('Team');
-      return toAdminTeam(team, team._count.members);
+      const tickets = await prisma.ticket.count({ where: { assignedTeamId: id } });
+      return toAdminTeam(team, team._count.members, tickets);
     },
 
     async createTeam(input: { name: string; description?: string | null }): Promise<AdminTeamDto> {
@@ -101,7 +113,7 @@ export function createTeamService(prisma: PrismaClient) {
           data: { name: input.name, description: input.description || null },
         });
       });
-      return toAdminTeam(team, 0);
+      return toAdminTeam(team, 0, 0);
     },
 
     async updateTeam(

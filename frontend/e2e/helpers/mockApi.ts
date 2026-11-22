@@ -209,7 +209,8 @@ export interface MockApi {
       | 'analysis'
       | 'notifications'
       | 'report'
-      | 'evaluation',
+      | 'evaluation'
+      | 'catalog',
     status: number | 'network',
   ): void;
   /** Number of POST /api/tickets requests that reached the server (including idempotent replays). */
@@ -220,6 +221,8 @@ export interface MockApi {
   adminUsers(): readonly AdminUserRow[];
   /** Every label save that reached the server, in order. */
   labelSaves(): readonly { ticketId: string; categoryId: string }[];
+  /** Every team membership add/remove that reached the server, in order. */
+  memberActions(): readonly { teamId: string; userId: string; action: 'add' | 'remove' }[];
   /** The `start`/`end` query of every report request that reached the server, in order. */
   reportRequests(): readonly { start: string; end: string }[];
   /** Simulates the server disabling the account / expiring the refresh cookie. */
@@ -521,6 +524,133 @@ export async function installMockApi(page: Page): Promise<MockApi> {
     const url = new URL(req.url());
     const path = url.pathname.replace('/api/admin', '');
 
+    // --- Categories, teams and memberships (SD-048) -----------------------------------------
+    const catalogBody = () => req.postDataJSON() as { name?: string; description?: string | null };
+    const clean = (v: string | null | undefined) => (v ?? '').trim();
+    const kinds = {
+      categories: { list: CATEGORIES, noun: 'category' },
+      teams: { list: TEAMS, noun: 'team' },
+    } as const;
+    const catalogMatch =
+      /^\/(categories|teams)(?:\/([^/]+))?(?:\/(activate|deactivate|members))?(?:\/([^/]+))?$/.exec(
+        path,
+      );
+    if (catalogMatch) {
+      const kind = kinds[catalogMatch[1] as keyof typeof kinds];
+      const id = catalogMatch[2];
+      const action = catalogMatch[3];
+      const memberId = catalogMatch[4];
+      const list = kind.list as { id: string; name: string; description: string | null }[];
+      const dto = (item: { id: string; name: string; description: string | null }) => ({
+        ...item,
+        isActive: !inactive.has(item.id),
+        ticketCount: tickets.filter((t) => t.category?.id === item.id || t.team?.id === item.id)
+          .length,
+        ...(kind.noun === 'team' ? { memberCount: (MEMBERS[item.id] ?? []).length } : {}),
+      });
+      const duplicate = (name: string, exceptId?: string) =>
+        list.some((i) => i.name.toLowerCase() === name.toLowerCase() && i.id !== exceptId);
+
+      if (!id && req.method() === 'GET') {
+        const failure = failures.get('catalog');
+        if (failure !== undefined) {
+          failures.delete('catalog');
+          return failure === 'network'
+            ? route.abort('failed')
+            : reply(route, failure, null, 'Server error');
+        }
+        const rows = list
+          .map(dto)
+          .sort((a, b) => Number(b.isActive) - Number(a.isActive) || a.name.localeCompare(b.name));
+        return reply(route, 200, rows);
+      }
+      if (!id && req.method() === 'POST') {
+        const b = catalogBody();
+        const name = clean(b.name);
+        if (!name) return reply(route, 400, null, 'Validation failed');
+        if (duplicate(name)) {
+          return reply(route, 409, null, `A ${kind.noun} with this name already exists`);
+        }
+        const created = {
+          id: `${kind.noun === 'team' ? 't' : 'c'}-new-${list.length + 1}`,
+          name,
+          description: clean(b.description) || null,
+        };
+        list.push(created);
+        if (kind.noun === 'team') MEMBERS[created.id] = [];
+        return reply(route, 201, dto(created), 'Created');
+      }
+      const item = list.find((i) => i.id === id);
+      if (id && !item) return reply(route, 404, null, `${kind.noun} not found`);
+      if (item && !action && req.method() === 'PATCH') {
+        const b = catalogBody();
+        const name = b.name === undefined ? item.name : clean(b.name);
+        if (!name) return reply(route, 400, null, 'Validation failed');
+        if (duplicate(name, item.id)) {
+          return reply(route, 409, null, `A ${kind.noun} with this name already exists`);
+        }
+        item.name = name;
+        if (b.description !== undefined) item.description = clean(b.description) || null;
+        return reply(route, 200, dto(item), 'Updated');
+      }
+      if (item && (action === 'activate' || action === 'deactivate') && req.method() === 'POST') {
+        if (action === 'deactivate') inactive.add(item.id);
+        else inactive.delete(item.id);
+        return reply(route, 200, dto(item), 'Updated');
+      }
+      if (item && kind.noun === 'team' && action === 'members') {
+        const roster = MEMBERS[item.id] ?? (MEMBERS[item.id] = []);
+        const assigned = (userId: string) => (item.id === 't-hw' && userId === 'u-tom' ? 2 : 0);
+        const memberDto = (m: { id: string; displayName: string }) => ({
+          id: m.id,
+          displayName: m.displayName,
+          email: `${m.displayName.split(' ')[0]!.toLowerCase()}@smartdesk.test`,
+          isActive: true,
+          joinedAt: '2026-02-01T08:00:00.000Z',
+          assignedTicketCount: assigned(m.id),
+        });
+        if (req.method() === 'GET' && !memberId) return reply(route, 200, roster.map(memberDto));
+        if (req.method() === 'POST' && !memberId) {
+          const { userId } = req.postDataJSON() as { userId: string };
+          const tech = TECHNICIANS.find((t) => t.id === userId);
+          if (!tech) return reply(route, 409, null, 'Only technicians can be team members');
+          if (inactive.has(item.id)) {
+            return reply(route, 409, null, 'Members cannot be added to an inactive team');
+          }
+          if (roster.some((m) => m.id === userId)) {
+            return reply(route, 409, null, 'This technician is already a member of the team');
+          }
+          roster.push({ id: tech.id, displayName: tech.displayName });
+          memberActions.push({ teamId: item.id, userId, action: 'add' });
+          return reply(route, 201, memberDto(tech), 'Member added');
+        }
+        if (req.method() === 'DELETE' && memberId) {
+          if (!roster.some((m) => m.id === memberId)) {
+            return reply(route, 404, null, 'Membership not found');
+          }
+          if (assigned(memberId) > 0) {
+            return reply(
+              route,
+              409,
+              null,
+              'This member still has tickets assigned within the team. Reassign them first.',
+            );
+          }
+          MEMBERS[item.id] = roster.filter((m) => m.id !== memberId);
+          memberActions.push({ teamId: item.id, userId: memberId, action: 'remove' });
+          return reply(route, 200, null, 'Member removed');
+        }
+      }
+      return reply(route, 404, null, 'Not found');
+    }
+    if (
+      req.method() === 'GET' &&
+      path === '/users' &&
+      url.searchParams.get('role') === 'TECHNICIAN'
+    ) {
+      return reply(route, 200, { items: TECHNICIANS, total: TECHNICIANS.length });
+    }
+
     if (req.method() === 'GET' && path === '/users') {
       return reply(route, 200, { items: users, total: users.length });
     }
@@ -775,6 +905,23 @@ export async function installMockApi(page: Page): Promise<MockApi> {
     { id: 'c0000000-0000-4000-8000-000000000002', name: 'Software', description: null },
     { id: 'c0000000-0000-4000-8000-000000000003', name: 'Network/VPN', description: null },
   ];
+  /** Active technician accounts an administrator can add to a team. */
+  const TECHNICIANS = [
+    {
+      id: 'u-tara',
+      displayName: 'Tara Technician',
+      email: 'tara@smartdesk.test',
+      role: 'TECHNICIAN',
+    },
+    { id: 'u-tom', displayName: 'Tom Technician', email: 'tom@smartdesk.test', role: 'TECHNICIAN' },
+    {
+      id: 'u-hana',
+      displayName: 'Hana Technician',
+      email: 'hana@smartdesk.test',
+      role: 'TECHNICIAN',
+    },
+  ];
+  const memberActions: { teamId: string; userId: string; action: 'add' | 'remove' }[] = [];
   const MEMBERS: Record<string, { id: string; displayName: string }[]> = {
     't-net': [
       { id: 'u-tara', displayName: 'Tara Technician' },
@@ -818,10 +965,17 @@ export async function installMockApi(page: Page): Promise<MockApi> {
     const path = url.pathname.replace('/api/', '');
     const q = url.searchParams;
 
-    if (path === 'categories') return reply(route, 200, CATEGORIES);
+    if (path === 'categories') {
+      return reply(
+        route,
+        200,
+        CATEGORIES.filter((c) => !inactive.has(c.id)),
+      );
+    }
     if (path === 'teams') {
       const mine = q.get('mine') === 'true' && session.role === 'TECHNICIAN';
-      return reply(route, 200, mine ? TEAMS.filter((t) => TARA_TEAMS.includes(t.id)) : TEAMS);
+      const active = TEAMS.filter((t) => !inactive.has(t.id));
+      return reply(route, 200, mine ? active.filter((t) => TARA_TEAMS.includes(t.id)) : active);
     }
     const members = /^teams\/([^/]+)\/members$/.exec(path);
     if (members) {
@@ -1655,6 +1809,7 @@ export async function installMockApi(page: Page): Promise<MockApi> {
     createKeys: () => createKeys,
     adminUsers: () => users,
     reportRequests: () => reportLog,
+    memberActions: () => memberActions,
     labelSaves: () => labelSaves,
     revokeSession: () => {
       session = null;
