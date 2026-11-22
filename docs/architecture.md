@@ -48,6 +48,25 @@ The frontend holds the access token in memory. Its API client performs at most o
 and one retry after a 401. Route guards improve navigation, but the backend independently authorizes
 every request.
 
+## Caching
+
+`backend/src/cache/cacheAside.ts` implements a generic cache-aside accessor over the shared Redis
+client (`backend/src/cache/client.ts`). Each accessor is bound to one namespace (e.g. `ref:teams`)
+and TTL; keys embed the namespace's current generation number (`smartdesk:<namespace>:v<n>:<key>`).
+Invalidating a namespace bumps that generation rather than deleting keys, so a slow write that is
+still in flight when a newer write invalidates the namespace writes into the now-orphaned old
+generation instead of clobbering the live one -- no distributed lock is needed for this guarantee.
+
+Any Redis failure -- resolving the generation, reading, or writing -- falls straight through to the
+caller's `fetch`, so PostgreSQL remains authoritative and Redis is never load-bearing for
+correctness; this also holds when Redis is disabled entirely (the no-op client makes every read a
+miss). Call `invalidate()` only after the write that changed the underlying data has committed,
+never from inside the transaction and never on a rollback.
+
+Ticket detail, tokens, and permission decisions are never cached by default -- only non-sensitive,
+low-churn reference data is a candidate, and a private/role-scoped read is cached only when scoped
+by authorization or not cached at all.
+
 ## Technician screens
 
 `/technician` is the triage dashboard: tabs for the unassigned backlog, a team queue and tickets
