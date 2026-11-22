@@ -1,8 +1,10 @@
 'use client';
 
 import { useState, type FormEvent, type ReactNode } from 'react';
+import { AsyncButton } from '@/components/forms/AsyncButton';
+import { FormField } from '@/components/forms/FormField';
 import { cx } from '@/components/ui';
-import { inputClass, primaryButton, secondaryButton } from '../tickets/ui';
+import { inputClass, secondaryButton } from '../tickets/ui';
 
 export const smallButton = 'app-button-secondary min-h-9 px-2.5 py-1.5';
 
@@ -54,45 +56,34 @@ export function NameForm({
   return (
     <form onSubmit={submit} className="flex flex-wrap items-start gap-3" noValidate>
       <div className="min-w-48 flex-1">
-        <label
-          htmlFor={`${idPrefix}-name`}
-          className="mb-1 block text-sm font-medium text-slate-700"
-        >
-          Name
-        </label>
-        <input
-          id={`${idPrefix}-name`}
-          className={inputClass}
-          value={name}
-          maxLength={120}
-          onChange={(e) => setName(e.target.value)}
-          aria-invalid={touched && problem ? true : undefined}
-          aria-describedby={touched && problem ? `${idPrefix}-name-problem` : undefined}
-        />
-        {touched && problem && (
-          <p id={`${idPrefix}-name-problem`} className="mt-1 text-sm text-rose-700">
-            {problem}
-          </p>
-        )}
+        <FormField id={`${idPrefix}-name`} label="Name" error={touched ? problem : null}>
+          {(control) => (
+            <input
+              {...control}
+              className={inputClass}
+              value={name}
+              maxLength={120}
+              onChange={(e) => setName(e.target.value)}
+            />
+          )}
+        </FormField>
       </div>
       <div className="min-w-64 flex-[2]">
-        <label
-          htmlFor={`${idPrefix}-description`}
-          className="mb-1 block text-sm font-medium text-slate-700"
-        >
-          Description (optional)
-        </label>
-        <input
-          id={`${idPrefix}-description`}
-          className={inputClass}
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-        />
+        <FormField id={`${idPrefix}-description`} label="Description (optional)">
+          {(control) => (
+            <input
+              {...control}
+              className={inputClass}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          )}
+        </FormField>
       </div>
       <div className="flex items-end gap-2 self-end">
-        <button type="submit" className={primaryButton} disabled={busy}>
+        <AsyncButton pending={busy} pendingLabel={submitLabel}>
           {submitLabel}
-        </button>
+        </AsyncButton>
         {onCancel && (
           <button type="button" className={secondaryButton} onClick={onCancel}>
             Cancel

@@ -6,6 +6,8 @@ import { cx } from './cx';
 export { cx };
 export * from './badges';
 export * from './Button';
+export * from './ConfirmDialog';
+export * from './Pagination';
 export * from './Dialog';
 export * from './Toast';
 

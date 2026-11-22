@@ -5,7 +5,7 @@ import { Layers3, SlidersHorizontal } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/lib/auth/AuthProvider';
-import { EmptyState, PageHeader, PriorityBadge } from '@/components/ui';
+import { EmptyState, PageHeader, Pagination, PriorityBadge } from '@/components/ui';
 import { ApiError } from '@/lib/auth/client';
 import { PRIORITY_LABEL } from '@/lib/tickets/format';
 import { technicianApi } from '@/lib/technician/api';
@@ -109,8 +109,6 @@ export function TechnicianDashboard() {
   }, [load]);
 
   const filtered = priority !== '' || categoryId !== '';
-  const first = page && page.items.length > 0 ? page.offset + 1 : 0;
-  const last = page ? page.offset + page.items.length : 0;
   const active = TABS.find((t) => t.id === tab)!;
   const noTeams = teams !== null && teams.length === 0 && needsTeam;
 
@@ -325,27 +323,17 @@ export function TechnicianDashboard() {
               </table>
             </div>
 
-            <nav aria-label="Pagination" className="mt-4 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                className={secondaryButton}
-                disabled={loading || page.offset === 0}
-                onClick={() => setOffset(Math.max(0, page.offset - PAGE_SIZE))}
-              >
-                Previous
-              </button>
-              <button
-                type="button"
-                className={secondaryButton}
-                disabled={loading || page.nextOffset === null}
-                onClick={() => page.nextOffset !== null && setOffset(page.nextOffset)}
-              >
-                Next
-              </button>
-              <p role="status" className="ml-auto text-sm text-slate-500">
-                Showing {first}–{last} of {page.total}
-              </p>
-            </nav>
+            <div className="mt-4">
+              <Pagination
+                offset={page.offset}
+                limit={PAGE_SIZE}
+                count={page.items.length}
+                total={page.total}
+                nextOffset={page.nextOffset}
+                busy={loading}
+                onChange={setOffset}
+              />
+            </div>
           </div>
         )}
       </div>

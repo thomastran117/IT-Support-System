@@ -10,9 +10,14 @@ import {
 import { ArrowLeft, Eye, EyeOff, Save } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { AsyncButton } from '@/components/forms/AsyncButton';
+import { FormField } from '@/components/forms/FormField';
+import { SubmitError } from '@/components/forms/SubmitError';
 import { ErrorState, LoadingState, Notice, PageHeader } from '@/components/ui';
-import { ApiError, NetworkError } from '@/lib/auth/client';
+import { ApiError } from '@/lib/auth/client';
+import { useFocusTarget } from '@/lib/forms/useFocusTarget';
+import { useSubmit } from '@/lib/forms/useSubmit';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { knowledgeApi } from '@/lib/knowledge/api';
 import { formatDateTime } from '@/lib/tickets/format';
@@ -28,21 +33,6 @@ import { ArticleBody } from './ArticleBody';
 
 type Confirm = 'publish' | 'unpublish' | null;
 
-function describeSaveError(err: unknown): string {
-  if (err instanceof NetworkError) {
-    return 'Unable to reach the server. Your changes are still here; try again.';
-  }
-  if (err instanceof ApiError) {
-    if (err.status === 403) return 'Only administrators can change articles.';
-    if (err.status === 404) return 'This article no longer exists.';
-    if (err.status === 409) return err.message || 'The article could not be changed right now.';
-    if (err.status === 400 || err.status === 422) {
-      return err.message || 'The server did not accept these changes.';
-    }
-  }
-  return 'Something went wrong on our side. Your changes are still here; please try again.';
-}
-
 /**
  * Create or edit one article (administrators only; the API enforces that, this page merely hides
  * what would be refused). Publishing and withdrawing change what every reader sees, so each asks
@@ -55,7 +45,8 @@ export function ArticleEditor() {
   const kb = useMemo(() => knowledgeApi(api), [api]);
   const router = useRouter();
   const justCreated = useSearchParams().get('created') === '1';
-  const summaryRef = useRef<HTMLDivElement>(null);
+  const { ref: summaryRef, focus: focusSummary } = useFocusTarget<HTMLDivElement>();
+  const { pending: busy, failure, run, retry, clear } = useSubmit();
 
   const [loaded, setLoaded] = useState<AdminKnowledgeArticleDto | null>(null);
   const [categories, setCategories] = useState<CategoryRefDto[]>([]);
@@ -66,13 +57,10 @@ export function ArticleEditor() {
   const [body, setBody] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [errors, setErrors] = useState<SummaryItem[]>([]);
-  const [focusSummary, setFocusSummary] = useState(0);
-  const [serverError, setServerError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(
     justCreated ? 'Draft saved. Publish it when it is ready.' : null,
   );
   const [confirm, setConfirm] = useState<Confirm>(null);
-  const [busy, setBusy] = useState(false);
   const [attempt, setAttempt] = useState(0);
 
   const adopt = (article: AdminKnowledgeArticleDto) => {
@@ -113,10 +101,6 @@ export function ArticleEditor() {
     };
   }, [kb, id, isNew, attempt]);
 
-  useEffect(() => {
-    if (focusSummary > 0) summaryRef.current?.focus();
-  }, [focusSummary]);
-
   const dirty =
     loaded === null
       ? title !== '' || body !== '' || categoryId !== ''
@@ -128,7 +112,7 @@ export function ArticleEditor() {
     event.preventDefault();
     if (busy) return;
     setMessage(null);
-    setServerError(null);
+    clear();
     setConfirm(null);
     const draft = { title, body, categoryId: categoryId || null };
     const parsed = createArticleSchema.safeParse(draft);
@@ -150,45 +134,44 @@ export function ArticleEditor() {
         });
       }
       setErrors(items);
-      setFocusSummary((n) => n + 1);
+      focusSummary();
       return;
     }
     setErrors([]);
-    setBusy(true);
-    try {
+    await save(draft);
+  }
+
+  /** Sends the draft; the form keeps its values on failure so "Try again" resends them. */
+  async function save(draft: { title: string; body: string; categoryId: string | null }) {
+    const result = await run(async () => {
       if (isNew) {
         const created = await kb.create(draft);
         router.replace(`/admin/knowledge/${created.id}?created=1`);
-        return;
+        return null;
       }
-      const saved = await kb.update(id, draft);
-      adopt(saved);
+      return kb.update(id, draft);
+    }, 'The article could not be saved.');
+    if (result?.ok && result.value) {
+      adopt(result.value);
       setMessage('Changes saved.');
-    } catch (err) {
-      setServerError(describeSaveError(err));
-    } finally {
-      setBusy(false);
     }
   }
 
   async function change(action: 'publish' | 'unpublish') {
     if (busy || isNew) return;
-    setBusy(true);
-    setServerError(null);
     setMessage(null);
-    try {
-      const next = await (action === 'publish' ? kb.publish(id) : kb.unpublish(id));
-      adopt(next);
+    const result = await run(
+      () => (action === 'publish' ? kb.publish(id) : kb.unpublish(id)),
+      'The visibility could not be changed.',
+    );
+    if (result?.ok) {
+      adopt(result.value);
       setConfirm(null);
       setMessage(
         action === 'publish'
           ? 'Article published. Readers can now find it.'
           : 'Article withdrawn. Readers can no longer open it.',
       );
-    } catch (err) {
-      setServerError(describeSaveError(err));
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -271,29 +254,32 @@ export function ArticleEditor() {
           </Notice>
         </div>
       )}
-      {serverError && (
-        <Notice tone="danger" role="alert">
-          {serverError}
-        </Notice>
-      )}
+      <SubmitError
+        failure={failure}
+        retrying={busy}
+        onRetry={() => void retry()}
+        onReload={() => setAttempt((n) => n + 1)}
+      />
       <ErrorSummary ref={summaryRef} items={errors} />
 
       <form onSubmit={onSave} noValidate className="grid gap-6 xl:grid-cols-2">
         <div className="app-card space-y-5 p-5 sm:p-6">
-          <div>
-            <label htmlFor="title" className="mb-1.5 block text-sm font-semibold text-slate-800">
-              Title
-            </label>
-            <input
-              id="title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              aria-describedby="title-count"
-              aria-invalid={errors.some((e) => e.field === 'title') || undefined}
-              className={inputClass}
-            />
-            <Counter id="title-count" length={title.length} max={ARTICLE_TITLE_MAX} />
-          </div>
+          <FormField
+            id="title"
+            label="Title"
+            error={errors.find((e) => e.field === 'title')?.message}
+            footerId="title-count"
+            footer={<Counter id="title-count" length={title.length} max={ARTICLE_TITLE_MAX} />}
+          >
+            {(control) => (
+              <input
+                {...control}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className={inputClass}
+              />
+            )}
+          </FormField>
 
           <div>
             <label
@@ -317,31 +303,30 @@ export function ArticleEditor() {
             </select>
           </div>
 
-          <div>
-            <label htmlFor="body" className="mb-1.5 block text-sm font-semibold text-slate-800">
-              Article text
-            </label>
-            <textarea
-              id="body"
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              rows={14}
-              aria-describedby="body-help body-count"
-              aria-invalid={errors.some((e) => e.field === 'body') || undefined}
-              className={`${inputClass} font-mono text-sm`}
-            />
-            <p id="body-help" className="mt-1.5 text-sm text-slate-500">
-              Plain text. You can use # headings, - bullets, 1. numbered steps, **bold** and `code`.
-              HTML is shown as text, never run.
-            </p>
-            <Counter id="body-count" length={body.length} max={ARTICLE_BODY_MAX} />
-          </div>
+          <FormField
+            id="body"
+            label="Article text"
+            hint="Plain text. You can use # headings, - bullets, 1. numbered steps, **bold** and `code`. HTML is shown as text, never run."
+            error={errors.find((e) => e.field === 'body')?.message}
+            footerId="body-count"
+            footer={<Counter id="body-count" length={body.length} max={ARTICLE_BODY_MAX} />}
+          >
+            {(control) => (
+              <textarea
+                {...control}
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                rows={14}
+                className={`${inputClass} font-mono text-sm`}
+              />
+            )}
+          </FormField>
 
           <div className="flex flex-wrap items-center gap-3">
-            <button type="submit" disabled={busy} className={primaryButton}>
+            <AsyncButton pending={busy} pendingLabel="Saving…">
               <Save aria-hidden="true" size={16} />
-              {busy ? 'Saving…' : isNew ? 'Save draft' : 'Save changes'}
-            </button>
+              {isNew ? 'Save draft' : 'Save changes'}
+            </AsyncButton>
             {!isNew && dirty && (
               <span className="text-sm text-amber-800">You have unsaved changes.</span>
             )}

@@ -67,12 +67,17 @@ test('deactivating and reactivating a user, with a confirmation and an audit ent
   await installMockApi(page);
   await signInAsAdmin(page);
 
-  page.once('dialog', (d) => void d.dismiss());
-  await page.getByRole('button', { name: 'Deactivate erin@smartdesk.test' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Deactivate this account?' });
+  const opener = page.getByRole('button', { name: 'Deactivate erin@smartdesk.test' });
+  await opener.click();
+  await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(opener).toBeFocused(); // focus returns to what opened it
   await expect(row(page, 'erin@smartdesk.test')).toContainText('Active'); // cancelled: unchanged
 
-  page.once('dialog', (d) => void d.accept());
-  await page.getByRole('button', { name: 'Deactivate erin@smartdesk.test' }).click();
+  await opener.click();
+  await dialog.getByRole('button', { name: 'Deactivate' }).click();
   await expect(row(page, 'erin@smartdesk.test')).toContainText('Inactive');
   await expect(page.getByText(/deactivated erin@smartdesk\.test/)).toBeVisible();
 
@@ -94,8 +99,11 @@ test('changing a role updates the list and the audit trail', async ({ page }) =>
 test('resetting a password shows a fresh one-time password', async ({ page }) => {
   await installMockApi(page);
   await signInAsAdmin(page);
-  page.once('dialog', (d) => void d.accept());
   await page.getByRole('button', { name: 'Reset password for tara@smartdesk.test' }).click();
+  await page
+    .getByRole('dialog', { name: 'Issue a new one-time password?' })
+    .getByRole('button', { name: 'Reset password' })
+    .click();
   await expect(
     page.getByRole('heading', { name: 'One-time password for tara@smartdesk.test' }),
   ).toBeVisible();
