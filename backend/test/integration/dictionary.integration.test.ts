@@ -35,6 +35,7 @@ describe('documentation is generated from the spec', () => {
       // Runtime extension to the original ticketing schema.
       'admin_audit_log',
       'ai_analysis_jobs',
+      'notifications',
     ]);
     for (const table of spec.tables) expect(read('erd.md')).toContain(`  ${table.name} {`);
   });

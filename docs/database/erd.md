@@ -128,6 +128,15 @@ erDiagram
     timestamptz updated_at
     timestamptz completed_at
   }
+  notifications {
+    uuid notification_id PK
+    uuid recipient_id FK
+    uuid ticket_id FK
+    uuid event_id FK
+    varchar type
+    timestamptz read_at
+    timestamptz created_at
+  }
   support_teams ||--o{ team_members : "team_id"
   users ||--o{ team_members : "user_id"
   team_members |o--o{ tickets : "assigned_team_id, assignee_id"
@@ -153,6 +162,9 @@ erDiagram
   users ||--o{ admin_audit_log : "actor_id"
   users ||--o{ admin_audit_log : "target_user_id"
   tickets ||--o{ ai_analysis_jobs : "ticket_id"
+  ticket_events ||--o{ notifications : "event_id"
+  users ||--o{ notifications : "recipient_id"
+  tickets ||--o{ notifications : "ticket_id"
 ```
 
 ## Relationships
@@ -189,3 +201,6 @@ the assigned team.
 | `admin_audit_log` | `actor_id` | `users` (`user_id`) | 1 : N | required | RESTRICT |
 | `admin_audit_log` | `target_user_id` | `users` (`user_id`) | 1 : N | required | RESTRICT |
 | `ai_analysis_jobs` | `ticket_id` | `tickets` (`ticket_id`) | 1 : N | required | RESTRICT |
+| `notifications` | `event_id` | `ticket_events` (`event_id`) | 1 : N | required | RESTRICT |
+| `notifications` | `recipient_id` | `users` (`user_id`) | 1 : N | required | RESTRICT |
+| `notifications` | `ticket_id` | `tickets` (`ticket_id`) | 1 : N | required | RESTRICT |
