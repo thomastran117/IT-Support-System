@@ -29,3 +29,4 @@ export * from './analysisService.js';
 export { redactText } from './redact.js';
 export { PROMPT_VERSION } from './prompt.js';
 export * from './recommendationService.js';
+export { runEvaluation } from './evaluation/run.js';

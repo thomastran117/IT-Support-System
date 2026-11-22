@@ -21,7 +21,8 @@
     "migrate:status": "prisma migrate status",
     "db:seed": "tsx prisma/seed.ts",
     "docs:db": "tsx scripts/generate-database-docs.ts",
-    "test:db": "tsx scripts/test-db.ts"
+    "test:db": "tsx scripts/test-db.ts",
+    "eval:ai": "tsx scripts/evaluate-ai.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.5",

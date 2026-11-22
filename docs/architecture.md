@@ -133,6 +133,10 @@ Manual work never depends on the AI path. Ticket creation does not call the prov
 - **Manual cue:** `riskCue.ts` flags tickets that read as high risk with plain keyword rules, so a technician is still nudged to prioritise by hand when AI is down. It is not stored, not applied and not presented as AI output.
 - **Logs:** job logs carry ids, attempt, state and reason code only. Provider errors, keys and ticket text are never logged or stored.
 
+### Evaluation (SD-039)
+
+`backend/src/modules/ai/evaluation/` measures category accuracy on a version-controlled synthetic dataset with independent reference labels, using the same definition as SQL report Q07 (first valid prediction, missing or invalid counts as wrong, denominator is all labelled cases). `npm run eval:ai` runs it with a deterministic offline provider in CI, or optionally a real provider in a controlled environment, and writes a Markdown and JSON report with counts, a confusion matrix, failed cases, a 95% interval, and the prompt, model and dataset versions. The prompt text is pinned by hash per version. See [ai-evaluation.md](ai-evaluation.md) for the method, cost and exactly what can and cannot be claimed.
+
 ## Development and validation
 
 `docker compose up --build --watch` synchronizes application source. Shared-package, manifest, and
