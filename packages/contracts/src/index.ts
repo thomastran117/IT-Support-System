@@ -393,6 +393,50 @@ export interface RecommendationDto {
   articles: { id: string; title: string }[];
 }
 
+/** Lifecycle of the newest AI analysis of a ticket. `NONE`: never requested. */
+export type AnalysisState = 'NONE' | 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+
+/**
+ * Non-sensitive reason an analysis attempt failed. Derived from a stored reason code; it never
+ * carries provider text, ticket content or secrets.
+ */
+export type AnalysisFailureReason =
+  | 'provider_unavailable'
+  | 'timed_out'
+  | 'rate_limited'
+  | 'invalid_response'
+  | 'ticket_unavailable'
+  | 'worker_lost'
+  | 'ai_disabled'
+  | 'internal';
+
+/**
+ * Status of the newest AI analysis for a ticket (staff only), returned by
+ * `GET /api/tickets/:id/analysis` and, after a request, by `POST /api/tickets/:id/analysis`.
+ * AI being down, queued or failed never blocks manual triage: the ticket stays OPEN and every
+ * routing and transition endpoint keeps working.
+ */
+export interface AnalysisStatusDto {
+  /** False when no AI provider is configured; no analysis can be requested. */
+  enabled: boolean;
+  state: AnalysisState;
+  requestId: string | null;
+  attempts: number;
+  maxAttempts: number;
+  /** When a failed attempt will be retried automatically (state QUEUED after a failure). */
+  retryAt: string | null;
+  /** Latest failure: the final one when FAILED, the transient one while a retry is pending. */
+  failure: { reason: AnalysisFailureReason; message: string } | null;
+  updatedAt: string | null;
+  /** True when staff may request a fresh analysis now. */
+  canRetry: boolean;
+  /**
+   * A deterministic keyword check of the ticket text, independent of any AI. It is a prompt for
+   * the technician to look at the ticket first, never a recommendation and never applied.
+   */
+  manualCue: { highRisk: boolean; reasons: string[] };
+}
+
 /**
  * Machine-readable reason in `details.code` of a 409 from a ticket mutation:
  * - VERSION_CONFLICT: stale `expectedVersion` (`details.currentVersion` has the current one)

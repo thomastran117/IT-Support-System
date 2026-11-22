@@ -111,6 +111,17 @@ The worker is a second entrypoint of the backend package (`src/worker.ts`, `npm 
 - **Model metadata:** `model_version` is `<provider>:<model>@prompt-<version>` (for example `openai:gpt-4o-mini@prompt-v2`), so a recommendation can be traced to its prompt.
 - **Immutable proposal:** review state starts `PENDING` and the ticket is not changed. The only later update path, `markReviewed`, writes review columns only; accept, override and reject leave every `proposed_*`, `suggestion`, `confidence` and `model_version` value, and the source links, as they were. This is enforced in the service, not by a database trigger.
 
+### Failure handling and manual fallback (SD-037)
+
+Manual work never depends on the AI path. Ticket creation does not call the provider, a failed or missing analysis leaves the ticket `OPEN`, and routing, transitions and review keep working whatever the job state.
+
+- **States:** every failure ends as a reason code on the job (`unavailable`, `timeout`, `rate_limited`, `malformed`, `invalid_reference`, `ticket_missing`, `worker_lost`, `disabled`, `internal`). `GET /api/tickets/:id/analysis` maps these to client-safe reasons with fixed wording. Unknown codes degrade to `internal`, so nothing stored can leak through the mapping.
+- **No infinite loops:** automatic retries are bounded (`AI_JOB_MAX_ATTEMPTS`) with exponential backoff. After that the job is `FAILED` and only an explicit technician request starts a new attempt.
+- **Retry:** `POST /api/tickets/:id/analysis` creates a new job with its own request id; the failed one is left as it was. Concurrent or repeated requests are serialised by a per-ticket advisory lock, so one is accepted and the rest get `409`, and a per-ticket hourly cap returns `429`. When the provider recovers, the next request produces a normal recommendation.
+- **No phantom results:** a failed attempt writes no recommendation and no ticket event.
+- **Manual cue:** `riskCue.ts` flags tickets that read as high risk with plain keyword rules, so a technician is still nudged to prioritise by hand when AI is down. It is not stored, not applied and not presented as AI output.
+- **Logs:** job logs carry ids, attempt, state and reason code only. Provider errors, keys and ticket text are never logged or stored.
+
 ## Development and validation
 
 `docker compose up --build --watch` synchronizes application source. Shared-package, manifest, and

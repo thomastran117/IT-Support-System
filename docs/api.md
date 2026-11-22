@@ -133,6 +133,42 @@ never receive AI output) and anyone who cannot read the ticket gets `404`. Re-an
 entry; earlier entries and their decisions are kept, and approved ticket values only change through a
 review or manual routing.
 
+### AI analysis status and retry
+
+Staff who can edit the ticket (the requester gets `403`, an unreadable ticket `404`; the same rule as
+recommendations) can see and request AI analysis. AI never gates ticket work: a failed, slow or
+disabled analysis leaves the ticket `OPEN` and every routing, transition and review endpoint working.
+
+`GET /api/tickets/:id/analysis` returns an `AnalysisStatusDto` for the newest analysis:
+
+| Field                     | Meaning                                                                                                                       |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `enabled`                 | `false` when no AI provider is configured (`AI_PROVIDER=none`).                                                               |
+| `state`                   | `NONE`, `QUEUED`, `RUNNING`, `COMPLETED` or `FAILED`.                                                                         |
+| `attempts`, `maxAttempts` | Claims so far and the cap before the job fails for good.                                                                      |
+| `retryAt`                 | When a transient failure will be retried automatically (only while `QUEUED`).                                                 |
+| `failure`                 | `{ reason, message }` for the latest failed attempt: the final one when `FAILED`, the transient one while a retry is pending. |
+| `canRetry`                | `true` when a fresh analysis can be requested now.                                                                            |
+| `manualCue`               | `{ highRisk, reasons[] }`: see below.                                                                                         |
+
+`failure.reason` is one of `provider_unavailable`, `timed_out`, `rate_limited`, `invalid_response`,
+`ticket_unavailable`, `worker_lost`, `ai_disabled` or `internal`. The wording is fixed by the server;
+provider messages, ticket text and keys never appear in it, in logs, or in the stored job row.
+
+`POST /api/tickets/:id/analysis` requests a fresh analysis (body optional: `{ "requestId": "<uuid>" }`).
+It always creates a **new** job; earlier jobs, proposals and decisions are never modified. It answers
+`202` with the new status, or `200` if the same `requestId` was already submitted (idempotent).
+
+- `409` with `details.code`: `ANALYSIS_IN_PROGRESS` (one is already queued or running, so repeated or
+  simultaneous clicks enqueue exactly one) or `AI_DISABLED`.
+- `429` with `details.code` `ANALYSIS_RATE_LIMITED` after 5 requests for a ticket within an hour
+  (the automatic first analysis counts).
+
+`manualCue` is a deterministic keyword check of the ticket text (possible security incident, outage
+affecting many users, requester cannot work, marked urgent). It is independent of AI, is computed on
+read, is never stored or applied, and its reasons are fixed labels. It is a prompt for the technician to
+look at the ticket first, not a recommendation, and is returned whether or not AI is enabled.
+
 ### Reviewing an AI recommendation
 
 `POST /api/tickets/:id/recommendations/:recommendationId/review` records a technician's decision on

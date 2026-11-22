@@ -24,6 +24,7 @@ import { TICKET_STATUSES } from '../../domain/ticketStateMachine.js';
 import { HttpError, envelope } from '../../plugins/errors.js';
 import { parse } from '../../plugins/validate.js';
 import { toTicketDto } from './dto.js';
+import { getAnalysisStatus, requestAnalysis } from './analysis.js';
 import { listTicketRecommendations } from './recommendations.js';
 import { getTicketDetail, listTicketComments, listTicketEvents, listTickets } from './queries.js';
 
@@ -168,6 +169,37 @@ export const ticketRoutes =
       });
       reply.header('cache-control', 'no-store');
       return envelope('Routing approved', toTicketDto(ticket));
+    });
+
+    app.get('/:id/analysis', auth, async (req, reply) => {
+      const { id } = req.params as { id: string };
+      // Staff only, like the recommendations themselves (404 unreadable, 403 requester).
+      await authorizeTicket(prisma, req.principal!, id, 'edit');
+      reply.header('cache-control', 'no-store');
+      return envelope(
+        'Analysis status',
+        await getAnalysisStatus(prisma, id, { enabled: !!analysis }),
+      );
+    });
+
+    app.post('/:id/analysis', auth, async (req, reply) => {
+      const params = parse(z.object({ id: z.string() }), req.params);
+      const body = parse(z.strictObject({ requestId: z.uuid().optional() }), req.body ?? {});
+      await authorizeTicket(prisma, req.principal!, params.id, 'edit');
+      reply.header('cache-control', 'no-store');
+      if (!analysis) {
+        // Nothing is queued and nothing fails: manual triage carries on as usual.
+        throw new HttpError(409, 'AI analysis is not enabled', { code: 'AI_DISABLED' });
+      }
+      const { created } = await requestAnalysis(prisma, {
+        ticketId: params.id,
+        ...(body.requestId ? { requestId: body.requestId } : {}),
+        maxAttempts: analysis.maxAttempts,
+      });
+      const status = await getAnalysisStatus(prisma, params.id, { enabled: true });
+      return reply
+        .code(created ? 202 : 200)
+        .send(envelope(created ? 'Analysis requested' : 'Analysis already requested', status));
     });
 
     app.get('/:id/recommendations', auth, async (req, reply) => {
