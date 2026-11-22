@@ -523,6 +523,8 @@ export function addComment(prisma: PrismaClient, input: AddCommentInput) {
 
 export interface ReviewInput {
   recommendationId: string;
+  /** When given, the recommendation must belong to this ticket (404 otherwise). */
+  ticketId?: string;
   reviewerId: string;
   decision: ReviewDecision;
   notes?: string;
@@ -541,7 +543,9 @@ export function reviewRecommendation(prisma: PrismaClient, input: ReviewInput) {
   return mutate(prisma, input.expectedVersion, async (tx) => {
     const actor = await loadActor(tx, input.reviewerId);
     const rec = await findRecommendation(tx, input.recommendationId);
-    if (!rec) throw notFoundError('Recommendation');
+    if (!rec || (input.ticketId !== undefined && rec.ticketId !== input.ticketId)) {
+      throw notFoundError('Recommendation');
+    }
     const ticket = await loadTicket(tx, rec.ticketId, input.expectedVersion);
     if (rec.reviewStatus !== 'PENDING') throw staleWriteError('Recommendation');
     await assertCanWork(tx, actor, ticket);
