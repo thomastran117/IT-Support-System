@@ -1,11 +1,13 @@
 -- Q07: AI category recommendation accuracy.
 -- $1/$2 = ticket creation period, half-open [start, end).
--- Compares the FIRST saved recommendation per independently labelled ticket with its reference
--- category. A missing recommendation or a NULL proposed category counts as incorrect.
+-- Compares the FIRST VALID recommendation per independently labelled ticket (earliest saved one that
+-- proposes a category) with its reference category. A ticket with no valid recommendation stays in
+-- the denominator and counts as incorrect.
 -- accuracy_pct is NULL (not 0) when no labelled ticket falls in the window.
 WITH first_rec AS (
   SELECT DISTINCT ON (ticket_id) ticket_id, proposed_category_id
   FROM ai_recommendations
+  WHERE proposed_category_id IS NOT NULL
   ORDER BY ticket_id, created_at, recommendation_id
 )
 SELECT COUNT(*) AS labelled_tickets,

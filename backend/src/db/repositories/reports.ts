@@ -129,7 +129,7 @@ export interface AccuracyReport {
   accuracyPct: number | null;
 }
 
-/** Q07: AI category accuracy against independent reference labels. */
+/** Q07: AI category accuracy against independent reference labels (first valid recommendation). */
 export async function reportAiAccuracy(
   prisma: PrismaClient,
   actorId: string,
@@ -216,5 +216,85 @@ export async function reportDailyIntake(
   return rows.map((r) => ({
     reportDate: r.report_date.toISOString().slice(0, 10),
     submittedTickets: num(r.submitted_tickets),
+  }));
+}
+
+export interface ModelAccuracy {
+  modelVersion: string;
+  /** Labelled tickets whose first valid recommendation came from this model version. */
+  labelledTickets: number;
+  correct: number;
+  accuracyPct: number | null;
+}
+
+/** Q12: accuracy per model version (tickets without any valid recommendation have no model). */
+export async function reportAiAccuracyByModel(
+  prisma: PrismaClient,
+  actorId: string,
+  window: ReportWindow,
+): Promise<ModelAccuracy[]> {
+  const rows = await run<{
+    model_version: string;
+    labelled_tickets: bigint;
+    correct: bigint;
+    accuracy_pct: unknown;
+  }>(prisma, actorId, 'Q12_ai_accuracy_by_model.sql', window);
+  return rows.map((r) => ({
+    modelVersion: r.model_version,
+    labelledTickets: num(r.labelled_tickets),
+    correct: num(r.correct),
+    accuracyPct: numOrNull(r.accuracy_pct),
+  }));
+}
+
+export interface ModelAcceptance {
+  modelVersion: string;
+  reviewed: number;
+  accepted: number;
+  acceptancePct: number | null;
+}
+
+/** Q13: review acceptance per model version, by review time. */
+export async function reportAiAcceptanceByModel(
+  prisma: PrismaClient,
+  actorId: string,
+  window: ReportWindow,
+): Promise<ModelAcceptance[]> {
+  const rows = await run<{
+    model_version: string;
+    reviewed: bigint;
+    accepted: bigint;
+    acceptance_pct: unknown;
+  }>(prisma, actorId, 'Q13_ai_acceptance_by_model.sql', window);
+  return rows.map((r) => ({
+    modelVersion: r.model_version,
+    reviewed: num(r.reviewed),
+    accepted: num(r.accepted),
+    acceptancePct: numOrNull(r.acceptance_pct),
+  }));
+}
+
+export interface ConfusionCell {
+  referenceCategory: string;
+  /** null when the labelled ticket has no valid recommendation. */
+  predictedCategory: string | null;
+  ticketCount: number;
+}
+
+/** Q14: reference category against the first valid recommended category. */
+export async function reportAiConfusion(
+  prisma: PrismaClient,
+  actorId: string,
+  window: ReportWindow,
+): Promise<ConfusionCell[]> {
+  const rows = await run<{
+    reference_category: string;
+    predicted_category: string | null;
+    ticket_count: bigint;
+  }>(prisma, actorId, 'Q14_ai_confusion.sql', window);
+  return rows.map((r) => ({
+    referenceCategory: r.reference_category,
+    predictedCategory: r.predicted_category,
+    ticketCount: num(r.ticket_count),
   }));
 }

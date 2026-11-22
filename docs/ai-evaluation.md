@@ -14,12 +14,22 @@ the numbers. Code lives in `backend/src/modules/ai/evaluation/`; the command is 
   dataset accepts for the reference category; it is not part of the accuracy figure.
 
 This is the same definition as SQL report **Q07**, which applies it to real labelled tickets in the
-database (first saved recommendation per ticket, missing counts as wrong, denominator is all labelled
+database (first valid recommendation per ticket, missing counts as wrong, denominator is all labelled
 tickets). An integration test runs both on the seeded fixtures and requires identical counts, and a unit
 test checks the hand-calculated `EXPECTED.q07` values (5 labelled, 4 with a recommendation, 2 correct,
 40.00%). The offline harness measures a fixed synthetic dataset; Q07 measures production. They agree in
 method, not in data. Q08 (acceptance rate) is a different thing: it measures how often technicians
 accept suggestions, not whether they are correct.
+
+## Measuring real tickets
+
+Administrators write independent labels through `PUT /api/admin/tickets/:id/classification-label`
+(page: `/admin/evaluation`) and read the report at `GET /api/admin/reports/ai-evaluation`. It gives the
+overall figure, the same figure per model version, acceptance as a separate measure, and a confusion
+summary, each with its denominator. Which model version, how many labelled tickets and how many had no
+valid recommendation are all part of the response, so a number is never read without its evidence. The
+90% target remains unverified until such a run, on a representative labelled set, reaches it; the
+offline dataset below is synthetic and does not substitute for it.
 
 ## Dataset
 

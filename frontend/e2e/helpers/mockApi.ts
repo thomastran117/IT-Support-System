@@ -208,7 +208,8 @@ export interface MockApi {
       | 'recs'
       | 'analysis'
       | 'notifications'
-      | 'report',
+      | 'report'
+      | 'evaluation',
     status: number | 'network',
   ): void;
   /** Number of POST /api/tickets requests that reached the server (including idempotent replays). */
@@ -217,6 +218,8 @@ export interface MockApi {
   createKeys(): readonly (string | undefined)[];
   /** Live view of the mocked accounts (what the admin API would return). */
   adminUsers(): readonly AdminUserRow[];
+  /** Every label save that reached the server, in order. */
+  labelSaves(): readonly { ticketId: string; categoryId: string }[];
   /** The `start`/`end` query of every report request that reached the server, in order. */
   reportRequests(): readonly { start: string; end: string }[];
   /** Simulates the server disabling the account / expiring the refresh cookie. */
@@ -315,6 +318,77 @@ function summarize(start: string, end: string) {
   };
 }
 
+// --- AI evaluation fixtures (SD-046): independent labels versus recorded first valid predictions ---
+export const EVAL_TICKETS = {
+  vpn: '10000000-0000-4000-8000-000000000001',
+  license: '10000000-0000-4000-8000-000000000002',
+  aiDown: '10000000-0000-4000-8000-000000000003',
+  printer: '10000000-0000-4000-8000-000000000004',
+} as const;
+const EVAL_PREDICTIONS: Record<string, { model: string; category: string } | null> = {
+  [EVAL_TICKETS.vpn]: { model: 'model-a', category: 'Network/VPN' },
+  [EVAL_TICKETS.license]: { model: 'model-a', category: 'Hardware' },
+  [EVAL_TICKETS.aiDown]: null, // no valid recommendation
+  [EVAL_TICKETS.printer]: { model: 'model-a', category: 'Software' },
+};
+
+function evaluate(
+  start: string,
+  labels: { ticketId: string; category: string }[],
+): Record<string, unknown> {
+  const window = { start, end: start };
+  if (Date.parse(start) >= Date.parse('2026-05-01T00:00:00Z')) {
+    return {
+      window,
+      overall: {
+        labelledTickets: 0,
+        withRecommendation: 0,
+        withoutRecommendation: 0,
+        correct: 0,
+        accuracyPct: null,
+      },
+      acceptance: { reviewed: 0, accepted: 0, acceptancePct: null },
+      byModel: [],
+      confusion: [],
+    };
+  }
+  const rows = labels.map((l) => ({ ...l, pred: EVAL_PREDICTIONS[l.ticketId] ?? null }));
+  const withRec = rows.filter((r) => r.pred);
+  const correct = withRec.filter((r) => r.pred!.category === r.category).length;
+  const pctOf = (n: number, d: number) => (d ? Math.round((n / d) * 10_000) / 100 : null);
+  const confusion = new Map<string, number>();
+  for (const r of rows) {
+    const key = `${r.category}|${r.pred?.category ?? ''}`;
+    confusion.set(key, (confusion.get(key) ?? 0) + 1);
+  }
+  return {
+    window,
+    overall: {
+      labelledTickets: rows.length,
+      withRecommendation: withRec.length,
+      withoutRecommendation: rows.length - withRec.length,
+      correct,
+      accuracyPct: pctOf(correct, rows.length),
+    },
+    acceptance: { reviewed: 4, accepted: 2, acceptancePct: 50 },
+    byModel: [
+      {
+        modelVersion: 'model-a',
+        labelledTickets: withRec.length,
+        correct,
+        accuracyPct: pctOf(correct, withRec.length),
+        reviewed: 4,
+        accepted: 2,
+        acceptancePct: 50,
+      },
+    ],
+    confusion: [...confusion].map(([key, ticketCount]) => {
+      const [referenceCategory, predictedCategory] = key.split('|');
+      return { referenceCategory, predictedCategory: predictedCategory || null, ticketCount };
+    }),
+  };
+}
+
 export async function installMockApi(page: Page): Promise<MockApi> {
   let session: Account | null = null;
   let offline = false;
@@ -323,6 +397,27 @@ export async function installMockApi(page: Page): Promise<MockApi> {
   let currentToken = '';
   const counts = { login: 0, refresh: 0, logout: 0, me: 0 };
   const reportLog: { start: string; end: string }[] = [];
+  const evalLabels: { ticketId: string; category: string; by: string; at: string }[] = [
+    {
+      ticketId: EVAL_TICKETS.vpn,
+      category: 'Network/VPN',
+      by: 'Alex Admin',
+      at: '2026-03-21T10:00:00.000Z',
+    },
+    {
+      ticketId: EVAL_TICKETS.license,
+      category: 'Software',
+      by: 'Alex Admin',
+      at: '2026-03-21T10:05:00.000Z',
+    },
+    {
+      ticketId: EVAL_TICKETS.aiDown,
+      category: 'Hardware',
+      by: 'Alex Admin',
+      at: '2026-03-21T10:10:00.000Z',
+    },
+  ];
+  const labelSaves: { ticketId: string; categoryId: string }[] = [];
 
   const cors = (route: Route) => {
     const origin = route.request().headers()['origin'] ?? '*';
@@ -430,6 +525,57 @@ export async function installMockApi(page: Page): Promise<MockApi> {
       return reply(route, 200, { items: users, total: users.length });
     }
     if (req.method() === 'GET' && path === '/audit-log') return reply(route, 200, auditLog);
+    if (req.method() === 'GET' && path === '/reports/ai-evaluation') {
+      reportLog.push({
+        start: url.searchParams.get('start') ?? '',
+        end: url.searchParams.get('end') ?? '',
+      });
+      if (failures.get('evaluation')) {
+        const status = failures.get('evaluation')!;
+        failures.delete('evaluation');
+        if (status === 'network') return route.abort('failed');
+        return reply(route, status, null, 'Evaluation failed');
+      }
+      return reply(route, 200, evaluate(url.searchParams.get('start') ?? '', evalLabels));
+    }
+    if (req.method() === 'GET' && path === '/classification-labels') {
+      const items = [...evalLabels].reverse().map((l) => ({
+        ticketId: l.ticketId,
+        referenceCategory: {
+          id: CATEGORIES.find((c) => c.name === l.category)!.id,
+          name: l.category,
+        },
+        labelledBy: { id: ACCOUNTS.admin.id, displayName: l.by },
+        labelledAt: l.at,
+      }));
+      return reply(route, 200, { items, total: items.length });
+    }
+    const labelPath = /^\/tickets\/([^/]+)\/classification-label$/.exec(path);
+    if (req.method() === 'PUT' && labelPath) {
+      const ticketId = labelPath[1]!;
+      const { referenceCategoryId } = req.postDataJSON() as { referenceCategoryId: string };
+      labelSaves.push({ ticketId, categoryId: referenceCategoryId });
+      if (!/^[0-9a-f-]{36}$/.test(ticketId) || !(ticketId in EVAL_PREDICTIONS)) {
+        return reply(route, 404, null, 'Ticket not found');
+      }
+      const category = CATEGORIES.find((c) => c.id === referenceCategoryId);
+      if (!category) return reply(route, 422, null, 'Unknown category');
+      const existing = evalLabels.findIndex((l) => l.ticketId === ticketId);
+      const row = {
+        ticketId,
+        category: category.name,
+        by: ACCOUNTS.admin.displayName,
+        at: new Date().toISOString(),
+      };
+      if (existing >= 0) evalLabels[existing] = row;
+      else evalLabels.push(row);
+      return reply(route, 200, {
+        ticketId,
+        referenceCategory: { id: category.id, name: category.name },
+        labelledBy: { id: ACCOUNTS.admin.id, displayName: row.by },
+        labelledAt: row.at,
+      });
+    }
     if (req.method() === 'GET' && path === '/reports/summary') {
       const start = url.searchParams.get('start') ?? '';
       const end = url.searchParams.get('end') ?? '';
@@ -1509,6 +1655,7 @@ export async function installMockApi(page: Page): Promise<MockApi> {
     createKeys: () => createKeys,
     adminUsers: () => users,
     reportRequests: () => reportLog,
+    labelSaves: () => labelSaves,
     revokeSession: () => {
       session = null;
     },

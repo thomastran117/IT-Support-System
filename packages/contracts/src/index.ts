@@ -688,3 +688,50 @@ export interface ReportSummaryDto {
   dailyIntake: { date: string; submittedTickets: number }[];
   units: { routing: 'minutes'; firstResponse: 'minutes'; resolution: 'hours'; rates: 'percent' };
 }
+
+// --- Independent AI evaluation (SD-046) ---------------------------------------------------------
+
+/** The reference category an evaluator assigns. Who labelled and when come from the session. */
+export const classificationLabelSchema = z.strictObject({ referenceCategoryId: z.uuid() });
+
+export interface ClassificationLabelDto {
+  ticketId: string;
+  referenceCategory: { id: string; name: string };
+  labelledBy: { id: string; displayName: string };
+  labelledAt: string;
+}
+
+export interface ClassificationLabelPage {
+  items: ClassificationLabelDto[];
+  total: number;
+}
+
+/**
+ * AI accuracy and acceptance for one UTC window, with every denominator. Accuracy cohort: tickets
+ * created in the window that carry an independent label. Acceptance cohort: recommendations reviewed
+ * in the window. They are separate measures and are never combined.
+ */
+export interface AiEvaluationReportDto {
+  window: { start: string; end: string };
+  overall: {
+    labelledTickets: number;
+    withRecommendation: number;
+    /** Labelled tickets with no valid recommendation; they count as incorrect. */
+    withoutRecommendation: number;
+    correct: number;
+    accuracyPct: number | null;
+  };
+  acceptance: { reviewed: number; accepted: number; acceptancePct: number | null };
+  byModel: {
+    modelVersion: string;
+    /** Labelled tickets whose first valid recommendation came from this model version. */
+    labelledTickets: number;
+    correct: number;
+    accuracyPct: number | null;
+    reviewed: number;
+    accepted: number;
+    acceptancePct: number | null;
+  }[];
+  /** Reference by first valid predicted category; a null prediction means no valid recommendation. */
+  confusion: { referenceCategory: string; predictedCategory: string | null; ticketCount: number }[];
+}

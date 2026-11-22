@@ -1,62 +1,26 @@
 'use client';
 
 import type { ReportSummaryDto } from '@smartdesk/contracts';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ErrorState, LoadingState, Notice } from '@/components/ui';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { reportsApi } from '@/lib/reports/api';
-import { defaultRange, isDay, rangeProblem, toWindow, type DayRange } from '@/lib/reports/range';
-import { inputClass, primaryButton } from '../tickets/ui';
+import { toWindow } from '@/lib/reports/range';
+import { useReportRange } from '@/lib/reports/useReportRange';
+import { primaryButton } from '../tickets/ui';
 import { BarList, DataTable, Definitions, Kpi, pct } from './parts';
-
-const STORAGE_KEY = 'smartdesk.reports.range';
-
-function remembered(): DayRange | null {
-  try {
-    const parsed = JSON.parse(sessionStorage.getItem(STORAGE_KEY) ?? 'null') as DayRange | null;
-    return parsed && isDay(parsed.from) && isDay(parsed.to) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
+import { RangeForm } from './RangeForm';
 
 /** Administrator report. The applied range lives in the URL and is remembered for the session. */
 export function ReportsDashboard() {
   const { api } = useAuth();
   const reports = useMemo(() => reportsApi(api), [api]);
-  const router = useRouter();
-  const pathname = usePathname();
-  const params = useSearchParams();
+  const { from, to, draft, setDraft, problem, appliedProblem, apply } = useReportRange();
 
-  const urlFrom = params.get('from');
-  const urlTo = params.get('to');
-  const hasUrl = isDay(urlFrom) && isDay(urlTo);
-  // Without a URL range, fall back to the last one used this session, then the default.
-  const [fallback] = useState<DayRange>(() => remembered() ?? defaultRange());
-  const from = hasUrl ? urlFrom : fallback.from;
-  const to = hasUrl ? urlTo : fallback.to;
-
-  const [draft, setDraft] = useState<DayRange>({ from, to });
   const [data, setData] = useState<ReportSummaryDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reloads, setReloads] = useState(0);
   const latest = useRef(0);
-  const problem = rangeProblem(draft);
-  const appliedProblem = rangeProblem({ from, to });
-
-  useEffect(() => {
-    if (!hasUrl) router.replace(`${pathname}?from=${from}&to=${to}`);
-  }, [hasUrl, router, pathname, from, to]);
-
-  useEffect(() => {
-    setDraft({ from, to });
-    try {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ from, to }));
-    } catch {
-      /* remembering the range is a convenience only */
-    }
-  }, [from, to]);
 
   useEffect(() => {
     if (appliedProblem) return;
@@ -74,52 +38,9 @@ export function ReportsDashboard() {
     );
   }, [reports, from, to, appliedProblem, reloads]);
 
-  const apply = (event: FormEvent) => {
-    event.preventDefault();
-    if (problem) return;
-    router.push(`${pathname}?from=${draft.from}&to=${draft.to}`);
-  };
-
   return (
     <div className="mt-6 space-y-6">
-      <form onSubmit={apply} className="app-card flex flex-wrap items-end gap-4 p-4" noValidate>
-        <div>
-          <label htmlFor="report-from" className="mb-1 block text-sm font-medium text-slate-700">
-            From (UTC)
-          </label>
-          <input
-            id="report-from"
-            type="date"
-            className={inputClass}
-            value={draft.from}
-            onChange={(e) => setDraft({ ...draft, from: e.target.value })}
-            aria-invalid={problem ? true : undefined}
-            aria-describedby={problem ? 'range-problem' : undefined}
-          />
-        </div>
-        <div>
-          <label htmlFor="report-to" className="mb-1 block text-sm font-medium text-slate-700">
-            To (UTC, inclusive)
-          </label>
-          <input
-            id="report-to"
-            type="date"
-            className={inputClass}
-            value={draft.to}
-            onChange={(e) => setDraft({ ...draft, to: e.target.value })}
-            aria-invalid={problem ? true : undefined}
-            aria-describedby={problem ? 'range-problem' : undefined}
-          />
-        </div>
-        <button type="submit" className={primaryButton} disabled={Boolean(problem)}>
-          Apply
-        </button>
-        {problem && (
-          <p id="range-problem" role="alert" className="basis-full text-sm text-rose-700">
-            {problem}
-          </p>
-        )}
-      </form>
+      <RangeForm draft={draft} setDraft={setDraft} problem={problem} onSubmit={apply} />
 
       {appliedProblem ? (
         <Notice tone="warning" role="alert">
