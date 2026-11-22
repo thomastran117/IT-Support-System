@@ -75,14 +75,13 @@ checks. `frontend-ci` includes Chromium and runs unit plus desktop/mobile Playwr
 
 ## Repository map
 
-| Path                  | Purpose                                                   |
-| --------------------- | --------------------------------------------------------- |
-| `frontend/`           | Next.js App Router UI                                     |
-| `backend/`            | Fastify API, Prisma schema/migrations, seeds, SQL reports |
-| `worker/`             | Background processing host                                |
-| `packages/contracts/` | Browser-safe API types and validation                     |
-| `packages/db/`        | Generated Prisma client adapter shared by API and worker  |
-| `docs/`               | Durable technical references and generated schema docs    |
+| Path                  | Purpose                                                              |
+| --------------------- | -------------------------------------------------------------------- |
+| `frontend/`           | Next.js App Router UI                                                |
+| `backend/`            | Fastify API, AI worker, Prisma schema/migrations, seeds, SQL reports |
+| `packages/contracts/` | Browser-safe API types and validation                                |
+| `packages/db/`        | Generated Prisma client adapter shared by API and worker             |
+| `docs/`               | Durable technical references and generated schema docs               |
 
 Each Node package owns its own manifest and lockfile. The root deliberately has no `package.json`,
 `package-lock.json`, or npm workspace.

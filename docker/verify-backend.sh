@@ -17,10 +17,5 @@ npm --prefix backend run typecheck
 npm --prefix backend run build
 npm --prefix backend run test:unit
 
-npm --prefix worker run lint
-npm --prefix worker run typecheck
-npm --prefix worker run build
-npm --prefix worker test
-
 npm --prefix backend run migrate
 npm --prefix backend run test:integration
