@@ -14,7 +14,7 @@ import {
   formatDateTime,
   shortId,
 } from '@/lib/tickets/format';
-import { EmptyState, ErrorState, LoadingState, PageHeader } from '@/components/ui';
+import { EmptyState, ErrorState, LoadingState, PageHeader, PriorityBadge } from '@/components/ui';
 import { inputClass, primaryButton, secondaryButton, StatusBadge } from './ui';
 
 const PAGE_SIZE = 10;
@@ -218,8 +218,8 @@ export function TicketList() {
                     <td data-label="Status">
                       <StatusBadge status={ticket.status} />
                     </td>
-                    <td data-label="Priority" className="font-medium">
-                      {PRIORITY_LABEL[ticket.priority]}
+                    <td data-label="Priority">
+                      <PriorityBadge priority={ticket.priority} />
                     </td>
                     <td data-label="Submitted" className="text-slate-600">
                       {formatDateTime(ticket.createdAt)}

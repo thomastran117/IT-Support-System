@@ -324,3 +324,41 @@ select {
     text-transform: uppercase;
   }
 }
+
+.app-dialog {
+  width: min(32rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  margin: auto;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.875rem;
+  background: var(--surface);
+  padding: 0;
+  color: var(--ink);
+  box-shadow: 0 24px 60px rgb(15 23 42 / 0.28);
+}
+
+.app-dialog::backdrop {
+  background: rgb(2 6 23 / 0.5);
+}
+
+/* High-contrast / forced-colors: keep the information that colour normally carries. */
+@media (forced-colors: active) {
+  .app-badge,
+  .app-toast,
+  .app-card,
+  .app-field {
+    border: 1px solid CanvasText;
+  }
+
+  .app-button-primary,
+  .app-button-secondary,
+  .app-button-quiet,
+  .app-button-danger {
+    border: 1px solid ButtonText;
+  }
+
+  :focus-visible {
+    outline: 3px solid Highlight;
+  }
+}

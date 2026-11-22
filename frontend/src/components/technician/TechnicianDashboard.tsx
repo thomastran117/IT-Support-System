@@ -5,13 +5,12 @@ import { Layers3, SlidersHorizontal } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/lib/auth/AuthProvider';
-import { EmptyState, PageHeader } from '@/components/ui';
+import { EmptyState, PageHeader, PriorityBadge } from '@/components/ui';
 import { ApiError } from '@/lib/auth/client';
 import { PRIORITY_LABEL } from '@/lib/tickets/format';
 import { technicianApi } from '@/lib/technician/api';
 import { formatAge, APPROVABLE } from '@/lib/technician/format';
 import { inputClass, secondaryButton, StatusBadge } from '../tickets/ui';
-import { PriorityChip } from './PriorityChip';
 
 type Tab = 'unassigned' | 'team' | 'mine';
 
@@ -302,7 +301,7 @@ export function TechnicianDashboard() {
                   {page.items.map((t) => (
                     <tr key={t.id} className="border-t border-slate-200">
                       <td data-label="Priority" data-secondary="true">
-                        <PriorityChip priority={t.priority} />
+                        <PriorityBadge priority={t.priority} />
                       </td>
                       <th scope="row" data-primary="true" className="font-semibold text-slate-950">
                         <Link

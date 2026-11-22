@@ -5,12 +5,12 @@ import { MessageSquareText, Send } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { PriorityBadge } from '@/components/ui';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { ApiError } from '@/lib/auth/client';
 import { pollIntervalMs } from '@/lib/config';
 import { ticketsApi } from '@/lib/tickets/api';
 import {
-  PRIORITY_LABEL,
   STATUS_HELP,
   STATUS_LABEL,
   STATUS_ORDER,
@@ -238,7 +238,9 @@ export function TicketDetail() {
           </div>
           <div>
             <dt className="font-medium">Priority</dt>
-            <dd>{PRIORITY_LABEL[ticket.priority]}</dd>
+            <dd>
+              <PriorityBadge priority={ticket.priority} />
+            </dd>
           </div>
           <div>
             <dt className="font-medium">Technician</dt>

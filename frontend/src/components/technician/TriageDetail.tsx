@@ -27,8 +27,8 @@ import {
   type StatusAction,
   type TriageError,
 } from '@/lib/technician/format';
+import { PriorityBadge } from '@/components/ui';
 import { Counter, inputClass, primaryButton, secondaryButton, StatusBadge } from '../tickets/ui';
-import { PriorityChip } from './PriorityChip';
 import { RecommendationCard, type ReviewSubmit } from './RecommendationCard';
 
 interface RoutingForm {
@@ -399,7 +399,7 @@ export function TriageDetail() {
         </h1>
         <p className="flex flex-wrap items-center gap-3 text-sm">
           <StatusBadge status={ticket.status} />
-          <PriorityChip priority={ticket.priority} />
+          <PriorityBadge priority={ticket.priority} />
           <span>{STATUS_HELP[ticket.status]}</span>
         </p>
         <p className="text-sm text-slate-600">

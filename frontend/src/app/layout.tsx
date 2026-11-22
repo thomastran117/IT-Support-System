@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { NavShell } from '@/components/NavShell';
+import { ToastProvider } from '@/components/ui';
 import { AuthProvider } from '@/lib/auth/AuthProvider';
 import './globals.css';
 
@@ -14,7 +15,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en">
       <body className="min-h-screen antialiased">
         <AuthProvider>
-          <NavShell>{children}</NavShell>
+          <ToastProvider>
+            <NavShell>{children}</NavShell>
+          </ToastProvider>
         </AuthProvider>
       </body>
     </html>
