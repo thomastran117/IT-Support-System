@@ -3,6 +3,7 @@
 import type { Role } from '@smartdesk/contracts';
 import {
   BookOpen,
+  BarChart3,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -72,7 +73,16 @@ const NAVIGATION: Record<Role, NavItem[]> = {
       href: '/admin',
       label: 'User management',
       icon: UsersRound,
-      active: (path) => path.startsWith('/admin') && !path.startsWith('/admin/knowledge'),
+      active: (path) =>
+        path.startsWith('/admin') &&
+        !path.startsWith('/admin/knowledge') &&
+        !path.startsWith('/admin/reports'),
+    },
+    {
+      href: '/admin/reports',
+      label: 'Reports',
+      icon: BarChart3,
+      active: (path) => path.startsWith('/admin/reports'),
     },
     {
       href: '/admin/knowledge',
