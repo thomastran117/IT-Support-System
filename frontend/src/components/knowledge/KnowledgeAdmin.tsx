@@ -123,7 +123,12 @@ export function KnowledgeAdmin() {
           <p className="text-sm text-slate-600">
             {total} {total === 1 ? 'article' : 'articles'}
           </p>
-          <div className="app-card overflow-x-auto">
+          <div
+            className="app-card overflow-x-auto"
+            role="region"
+            aria-label="Knowledge articles table"
+            tabIndex={0}
+          >
             <table className="w-full min-w-[34rem] text-left text-sm">
               <caption className="sr-only">Knowledge articles</caption>
               <thead className="border-b border-slate-200 text-xs tracking-wide text-slate-500 uppercase">

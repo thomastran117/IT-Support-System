@@ -53,6 +53,8 @@ export function ArticleBody({ text }: { text: string }) {
             return (
               <pre
                 key={i}
+                tabIndex={0}
+                aria-label="Code sample"
                 className="overflow-x-auto rounded-xl bg-slate-900 p-4 font-mono text-sm text-slate-100"
               >
                 {block.text}
