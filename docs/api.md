@@ -118,6 +118,21 @@ optional assignee, in one request:
   succeeds.
 - AI suggestions are never modified by this endpoint, and it works whether or not AI has run.
 
+### Reading AI recommendations
+
+`GET /api/tickets/:id/recommendations` returns the ticket's current and historical AI recommendations,
+newest first (at most 50), as `RecommendationDto[]`: the original proposal (`proposed.category`,
+`proposed.team`, `proposed.priority`), `suggestion`, the model's self-reported `confidence`,
+`modelVersion`, the cited **published** knowledge articles in relevance order, and the review
+(`status` of `PENDING`, `ACCEPTED`, `OVERRIDDEN` or `REJECTED`, reviewer, time and notes).
+`proposed.category.isActive` and `proposed.team.isActive` are false when the proposal points at
+something that has since been deactivated, so a client can steer the technician to override or reject.
+
+Same access as routing approval: staff who can edit the ticket. The requester gets `403` (employees
+never receive AI output) and anyone who cannot read the ticket gets `404`. Re-analysis adds a new
+entry; earlier entries and their decisions are kept, and approved ticket values only change through a
+review or manual routing.
+
 ### Reviewing an AI recommendation
 
 `POST /api/tickets/:id/recommendations/:recommendationId/review` records a technician's decision on

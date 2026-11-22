@@ -273,3 +273,247 @@ test('the technician area is closed to employees', async ({ page }) => {
     0,
   );
 });
+
+// --- AI suggestions (SD-027): review controls, side by side with the approved values ---------
+
+const card = (page: Page) => page.getByRole('region', { name: 'AI suggestions' });
+const suggested = (page: Page, field: string) => page.getByTestId(`suggested-${field}`);
+const approvedCell = (page: Page, field: string) => page.getByTestId(`approved-${field}`);
+
+async function openWithSuggestion(
+  page: Page,
+  proposal: { category?: string; team?: string; priority?: string } = {
+    category: 'Hardware',
+    team: 'Network & Access',
+    priority: 'HIGH',
+  },
+) {
+  const api = await installMockApi(page);
+  const [t] = api.seedTickets(1);
+  api.technician.suggest(t!.id, proposal);
+  await signInAsTechnician(page);
+  await openTicket(page, t!.title);
+  return { api, ticket: t! };
+}
+
+test('a pending suggestion is labelled and shown beside the approved values', async ({ page }) => {
+  await openWithSuggestion(page);
+  await expect(card(page).getByText('AI suggestion — requires review')).toBeVisible();
+  await expect(suggested(page, 'category')).toHaveText('Hardware');
+  await expect(suggested(page, 'priority')).toHaveText('High');
+  await expect(suggested(page, 'team')).toHaveText('Network & Access');
+  // Nothing is approved yet: the suggestion has not changed the ticket.
+  await expect(approvedCell(page, 'category')).toHaveText('Not set');
+  await expect(approvedCell(page, 'priority')).toHaveText('Not set yet');
+  await expect(approvedCell(page, 'team')).toHaveText('Not assigned');
+  await expect(card(page)).toContainText('Model-reported confidence 82% (not a probability)');
+  await expect(statusLine(page)).toHaveText('Open');
+});
+
+test('accepting applies the suggestion and records who decided', async ({ page }) => {
+  const { api, ticket } = await openWithSuggestion(page);
+  await card(page).getByLabel('Review notes (optional)').fill('Matches the symptoms.');
+  await card(page).getByRole('button', { name: 'Accept suggestion' }).click();
+  await expect(notice(page)).toHaveText('AI suggestion accepted.');
+  await expect(statusLine(page)).toHaveText('Triaged');
+  await expect(approvedCell(page, 'category')).toContainText('Hardware');
+  await expect(approvedCell(page, 'priority')).toContainText('High');
+  await expect(approvedCell(page, 'team')).toContainText('Network & Access');
+  await expect(card(page).getByTestId('review-outcome')).toContainText(
+    'Accepted by Tara Technician',
+  );
+  await expect(card(page).getByTestId('review-outcome')).toContainText('Matches the symptoms.');
+  // The decision is final: no second set of buttons, and the routing form followed the server.
+  await expect(card(page).getByRole('button', { name: 'Accept suggestion' })).toHaveCount(0);
+  await expect(page.getByLabel('Team', { exact: true })).toHaveValue('t-net');
+  expect(api.tickets().find((x) => x.id === ticket.id)!.recommendations[0]!.review.status).toBe(
+    'ACCEPTED',
+  );
+});
+
+test('overriding applies the technician values and keeps the original suggestion visible', async ({
+  page,
+}) => {
+  await openWithSuggestion(page);
+  await card(page).getByRole('button', { name: 'Override…' }).click();
+  // The override form starts from the suggestion.
+  await expect(page.getByLabel('Override priority')).toHaveValue('HIGH');
+  await page.getByLabel('Override priority').selectOption({ label: 'Critical' });
+  await page.getByLabel('Override category').selectOption({ label: 'Software' });
+  await card(page).getByRole('button', { name: 'Apply override' }).click();
+  await expect(notice(page)).toHaveText('AI suggestion overridden.');
+  await expect(approvedCell(page, 'priority')).toContainText('Critical');
+  await expect(approvedCell(page, 'category')).toContainText('Software');
+  await expect(approvedCell(page, 'team')).toContainText('Network & Access');
+  // What the AI originally said is still shown, unchanged.
+  await expect(suggested(page, 'priority')).toHaveText('High');
+  await expect(suggested(page, 'category')).toHaveText('Hardware');
+  await expect(card(page).getByTestId('review-outcome')).toContainText(
+    'Overridden by Tara Technician',
+  );
+});
+
+test('rejecting leaves the approved values alone and manual triage stays available', async ({
+  page,
+}) => {
+  await openWithSuggestion(page);
+  await card(page).getByRole('button', { name: 'Reject suggestion' }).click();
+  await expect(notice(page)).toHaveText('AI suggestion rejected.');
+  await expect(statusLine(page)).toHaveText('Open');
+  await expect(approvedCell(page, 'category')).toHaveText('Not set');
+  await expect(card(page).getByTestId('review-outcome')).toContainText(
+    'Rejected by Tara Technician',
+  );
+  // The technician carries on by hand.
+  await approve(page);
+  await page.getByRole('button', { name: 'Approve routing' }).click();
+  await expect(notice(page)).toHaveText('Routing approved.');
+  await expect(statusLine(page)).toHaveText('Triaged');
+});
+
+test('a double click reviews once', async ({ page }) => {
+  await openWithSuggestion(page);
+  const reviews: string[] = [];
+  page.on('request', (r) => {
+    if (r.method() === 'POST' && r.url().includes('/review')) reviews.push(r.url());
+  });
+  await card(page).getByRole('button', { name: 'Accept suggestion' }).dblclick();
+  await expect(notice(page)).toHaveText('AI suggestion accepted.');
+  expect(reviews).toHaveLength(1);
+});
+
+test('a suggestion pointing at an inactive team cannot be accepted, only overridden or rejected', async ({
+  page,
+}) => {
+  const api = await installMockApi(page);
+  const [t] = api.seedTickets(1);
+  api.technician.suggest(t!.id, {
+    category: 'Hardware',
+    team: 'Network & Access',
+    priority: 'LOW',
+  });
+  api.technician.deactivate('team', 'Network & Access');
+  await signInAsTechnician(page);
+  await openTicket(page, t!.title);
+  await expect(card(page)).toContainText('The suggested team is no longer active.');
+  await expect(card(page).getByRole('button', { name: 'Accept suggestion' })).toBeDisabled();
+  await expect(card(page).getByRole('button', { name: 'Reject suggestion' })).toBeEnabled();
+  await card(page).getByRole('button', { name: 'Override…' }).click();
+  await page.getByLabel('Override team').selectOption({ label: 'Hardware & Devices' });
+  await card(page).getByRole('button', { name: 'Apply override' }).click();
+  // The override was saved. Hardware is not one of Tara's teams, so the ticket is handed over.
+  await expect(page.getByRole('heading', { level: 1, name: 'Ticket handed over' })).toBeVisible();
+  await expect(page.getByText('AI suggestion overridden.')).toBeVisible();
+  expect(api.tickets()[0]!.team?.id).toBe('t-hw');
+});
+
+test('a ticket changed elsewhere gives a conflict, then the review succeeds on the fresh version', async ({
+  page,
+}) => {
+  const { api, ticket } = await openWithSuggestion(page);
+  api.technician.reply(ticket.id, 'Someone else added a note.', true);
+  await card(page).getByRole('button', { name: 'Accept suggestion' }).click();
+  await expect(notice(page)).toContainText('Someone else changed this ticket');
+  await expect(card(page).getByText('AI suggestion — requires review')).toBeVisible();
+  await card(page).getByRole('button', { name: 'Accept suggestion' }).click();
+  await expect(notice(page)).toHaveText('AI suggestion accepted.');
+});
+
+test('a suggestion someone else already reviewed is shown as decided', async ({ page }) => {
+  const { api, ticket } = await openWithSuggestion(page);
+  const rec = api.tickets().find((x) => x.id === ticket.id)!.recommendations[0]!;
+  rec.review = {
+    status: 'REJECTED',
+    reviewer: { id: 'u-tom', name: 'Tom Technician' },
+    reviewedAt: new Date().toISOString(),
+    notes: null,
+  };
+  await card(page).getByRole('button', { name: 'Reject suggestion' }).click();
+  await expect(notice(page)).toContainText('changed by someone else');
+  await expect(card(page).getByTestId('review-outcome')).toContainText(
+    'Rejected by Tom Technician',
+  );
+  await expect(card(page).getByRole('button', { name: 'Reject suggestion' })).toHaveCount(0);
+});
+
+test('a load failure never blocks manual triage and can be retried', async ({ page }) => {
+  const api = await installMockApi(page);
+  const [t] = api.seedTickets(1);
+  api.technician.suggest(t!.id, {
+    category: 'Hardware',
+    team: 'Network & Access',
+    priority: 'HIGH',
+  });
+  api.failNext('recs', 500);
+  await signInAsTechnician(page);
+  await openTicket(page, t!.title);
+  await expect(card(page).getByRole('alert')).toContainText('AI suggestions could not be loaded');
+  // The rest of the page is fully usable while suggestions are unavailable.
+  await expect(page.getByLabel('Category')).toBeEnabled();
+  await card(page).getByRole('button', { name: 'Try again' }).click();
+  await expect(card(page).getByText('AI suggestion — requires review')).toBeVisible();
+});
+
+test('manual routing works while suggestions are unavailable', async ({ page }) => {
+  const api = await installMockApi(page);
+  const [t] = api.seedTickets(1);
+  api.failNext('recs', 500);
+  await signInAsTechnician(page);
+  await openTicket(page, t!.title);
+  await expect(card(page).getByRole('alert')).toBeVisible();
+  await approve(page);
+  await page.getByRole('button', { name: 'Approve routing' }).click();
+  await expect(notice(page)).toHaveText('Routing approved.');
+  await expect(statusLine(page)).toHaveText('Triaged');
+});
+
+test('re-analysis adds a new suggestion without replacing accepted routing; history stays visible', async ({
+  page,
+}) => {
+  const { api, ticket } = await openWithSuggestion(page);
+  await card(page).getByRole('button', { name: 'Accept suggestion' }).click();
+  await expect(notice(page)).toHaveText('AI suggestion accepted.');
+
+  api.technician.suggest(ticket.id, {
+    category: 'Software',
+    team: 'Network & Access',
+    priority: 'LOW',
+  });
+  await page.reload();
+  await expect(page.getByRole('heading', { level: 1, name: ticket.title })).toBeVisible();
+
+  // The approved routing is unchanged; the newer suggestion waits for a decision.
+  await expect(approvedCell(page, 'category')).toContainText('Hardware');
+  await expect(approvedCell(page, 'priority')).toContainText('High');
+  await expect(suggested(page, 'category')).toHaveText('Software');
+  await expect(card(page).getByText('AI suggestion — requires review')).toBeVisible();
+
+  await card(page).getByText('Earlier suggestions (1)').click();
+  const earlier = card(page).getByTestId('earlier-suggestion');
+  await expect(earlier).toHaveCount(1);
+  await expect(earlier).toContainText('Accepted');
+  await expect(earlier).toContainText('Tara Technician');
+});
+
+test('a resolved ticket can still reject a suggestion but not apply it', async ({ page }) => {
+  const api = await installMockApi(page);
+  const [t] = api.seedTickets(1);
+  api.technician.update(t!.id, {
+    category: 'Hardware',
+    priority: 'HIGH',
+    team: 'Network & Access',
+    status: 'RESOLVED',
+  });
+  api.technician.suggest(t!.id, {
+    category: 'Software',
+    team: 'Network & Access',
+    priority: 'LOW',
+  });
+  await signInAsTechnician(page);
+  await page.goto(`/technician/tickets/${t!.id}`);
+  await expect(card(page).getByText('so a suggestion cannot change its routing')).toBeVisible();
+  await expect(card(page).getByRole('button', { name: 'Accept suggestion' })).toBeDisabled();
+  await expect(card(page).getByRole('button', { name: 'Override…' })).toBeDisabled();
+  await card(page).getByRole('button', { name: 'Reject suggestion' }).click();
+  await expect(notice(page)).toHaveText('AI suggestion rejected.');
+});

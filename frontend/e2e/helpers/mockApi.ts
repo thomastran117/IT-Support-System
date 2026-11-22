@@ -86,6 +86,27 @@ export interface MockTicket {
   version: number;
   comments: MockComment[];
   events: MockEvent[];
+  recommendations: MockRecommendation[];
+}
+
+export interface MockRecommendation {
+  id: string;
+  createdAt: string;
+  modelVersion: string;
+  confidence: number | null;
+  suggestion: string | null;
+  proposed: {
+    category: { id: string; name: string; isActive: boolean } | null;
+    team: { id: string; name: string; isActive: boolean } | null;
+    priority: string | null;
+  };
+  review: {
+    status: 'PENDING' | 'ACCEPTED' | 'OVERRIDDEN' | 'REJECTED';
+    reviewer: { id: string; name: string } | null;
+    reviewedAt: string | null;
+    notes: string | null;
+  };
+  articles: { id: string; title: string }[];
 }
 
 export interface MockArticle {
@@ -129,10 +150,17 @@ export interface MockApi {
       },
     ): void;
     reply(id: string, body: string, isInternal?: boolean): void;
+    /** The AI analysis finished: adds a PENDING recommendation (newest first in the API). */
+    suggest(
+      id: string,
+      proposal: { category?: string; team?: string; priority?: string; suggestion?: string },
+    ): MockRecommendation;
+    /** Mark a category or team inactive so proposals that point at it become stale. */
+    deactivate(kind: 'category' | 'team', name: string): void;
   };
   /** The next call to this endpoint fails with the HTTP status, or `'network'` to drop the request. */
   failNext(
-    endpoint: 'create' | 'reply' | 'list' | 'detail' | 'queue',
+    endpoint: 'create' | 'reply' | 'list' | 'detail' | 'queue' | 'recs',
     status: number | 'network',
   ): void;
   /** Number of POST /api/tickets requests that reached the server (including idempotent replays). */
@@ -352,6 +380,7 @@ export async function installMockApi(page: Page): Promise<MockApi> {
       resolutionSummary: null,
       version: 1,
       comments: [],
+      recommendations: [],
       events: [{ id: uuid(6, ++ticketSeq + 1000), type: 'CREATED', occurredAt: at, details: {} }],
     };
     tickets.push(t);
@@ -430,6 +459,9 @@ export async function installMockApi(page: Page): Promise<MockApi> {
       { id: 'u-hana', displayName: 'Hana Technician' },
     ],
   };
+  let recSeq = 0;
+  /** Categories and teams switched off with `technician.deactivate`. */
+  const inactive = new Set<string>();
   /** Tara belongs to Network & Access only. */
   const TARA_TEAMS = ['t-net'];
   const RANK: Record<string, number> = { CRITICAL: 1, HIGH: 2, MEDIUM: 3, LOW: 4, UNSET: 5 };
@@ -598,7 +630,10 @@ export async function installMockApi(page: Page): Promise<MockApi> {
     }
 
     if (session.role === 'TECHNICIAN') {
-      const m = /^\/([^/]+)(?:\/(comments|routing|transitions))?$/.exec(path);
+      const m =
+        /^\/([^/]+)(?:\/(comments|routing|transitions|recommendations(?:\/[^/]+\/review)?))?$/.exec(
+          path,
+        );
       const t = m && tickets.find((x) => x.id === m[1]);
       if (!m || !t || !inScope(t)) return reply(route, 404, null, 'Ticket not found');
       const sub = m[2];
@@ -641,6 +676,90 @@ export async function installMockApi(page: Page): Promise<MockApi> {
         version: t.version,
       });
 
+      if (method === 'GET' && sub === 'recommendations') {
+        const failure = failures.get('recs');
+        if (failure !== undefined) {
+          failures.delete('recs');
+          return failure === 'network'
+            ? route.abort('failed')
+            : reply(route, failure, null, 'Server error');
+        }
+        return reply(route, 200, t.recommendations);
+      }
+
+      if (method === 'POST' && sub?.startsWith('recommendations/')) {
+        const recId = sub.split('/')[1];
+        const rec = t.recommendations.find((r) => r.id === recId);
+        if (!rec) return reply(route, 404, null, 'Recommendation not found');
+        const b = req.postDataJSON() as {
+          decision: 'ACCEPTED' | 'OVERRIDDEN' | 'REJECTED';
+          expectedVersion: number;
+          override?: { categoryId?: string; priority?: string; teamId?: string };
+          notes?: string;
+        };
+        if (b.expectedVersion !== t.version) return conflict();
+        const v0 = t.version;
+        if (rec.review.status !== 'PENDING') {
+          return reply(
+            route,
+            409,
+            null,
+            'Recommendation was changed by someone else. Reload it and try again.',
+            { code: 'STALE_WRITE' },
+          );
+        }
+        let category = rec.proposed.category && { ...rec.proposed.category };
+        let team = rec.proposed.team && { ...rec.proposed.team };
+        let priority = rec.proposed.priority;
+        if (b.decision === 'OVERRIDDEN') {
+          if (b.override?.categoryId) {
+            const c = CATEGORIES.find((x) => x.id === b.override!.categoryId);
+            category = c ? { id: c.id, name: c.name, isActive: !inactive.has(c.id) } : null;
+          }
+          if (b.override?.teamId) {
+            const x = TEAMS.find((y) => y.id === b.override!.teamId);
+            team = x ? { id: x.id, name: x.name, isActive: !inactive.has(x.id) } : null;
+          }
+          if (b.override?.priority) priority = b.override.priority;
+        }
+        if (b.decision !== 'REJECTED') {
+          if (!category?.isActive || !team?.isActive) {
+            return reply(route, 422, null, 'Category or team is unknown or inactive');
+          }
+          if (t.category?.id !== category.id) {
+            addEvent(t, 'CATEGORY_UPDATED', { to: category.id });
+          }
+          if (priority && t.priority !== priority) {
+            addEvent(t, 'PRIORITY_UPDATED', { from: t.priority, to: priority });
+          }
+          if (t.team?.id !== team.id) {
+            addEvent(t, t.team ? 'TEAM_REASSIGNED' : 'TEAM_ASSIGNED', { to: team.id });
+          }
+          t.category = { id: category.id, name: category.name };
+          t.team = { id: team.id, name: team.name };
+          if (priority) t.priority = priority;
+          if (t.status === 'OPEN') {
+            addEvent(t, 'STATUS_CHANGED', { from: 'OPEN', to: 'TRIAGED' });
+            t.status = 'TRIAGED';
+          }
+        }
+        addEvent(t, 'AI_REVIEWED', { recommendationId: rec.id, decision: b.decision });
+        // One bump when the approved values were written; a rejection changes nothing on the ticket.
+        t.version = b.decision === 'REJECTED' ? v0 : v0 + 1;
+        rec.review = {
+          status: b.decision,
+          reviewer: actor,
+          reviewedAt: tick(),
+          notes: b.notes ?? null,
+        };
+        return reply(
+          route,
+          200,
+          { ticket: dto(), recommendationId: rec.id, decision: b.decision },
+          'Recommendation reviewed',
+        );
+      }
+
       if (method === 'GET' && !sub) return reply(route, 200, staffDetail());
 
       if (method === 'POST' && sub === 'comments') {
@@ -670,7 +789,14 @@ export async function installMockApi(page: Page): Promise<MockApi> {
         if (b.expectedVersion !== t.version) return conflict();
         const category = CATEGORIES.find((c) => c.id === b.categoryId);
         const team = TEAMS.find((x) => x.id === b.teamId);
-        if (!category || !team || !(b.priority in RANK) || b.priority === 'UNSET') {
+        if (
+          !category ||
+          !team ||
+          inactive.has(category.id) ||
+          inactive.has(team.id) ||
+          !(b.priority in RANK) ||
+          b.priority === 'UNSET'
+        ) {
           return reply(route, 422, null, 'Category or team is unknown or inactive');
         }
         const assignee = b.assigneeId
@@ -1001,6 +1127,40 @@ export async function installMockApi(page: Page): Promise<MockApi> {
             addEvent(t, 'STATUS_CHANGED', { from, to: change.status });
           }
           t.status = change.status;
+        }
+      },
+      suggest(id, proposal) {
+        const t = tickets.find((x) => x.id === id);
+        if (!t) throw new Error(`no ticket ${id}`);
+        const category = CATEGORIES.find((c) => c.name === proposal.category);
+        const team = TEAMS.find((x) => x.name === proposal.team);
+        const rec: MockRecommendation = {
+          id: uuid(7, ++recSeq),
+          createdAt: tick(),
+          modelVersion: 'fake-model-1',
+          confidence: 0.82,
+          suggestion: proposal.suggestion ?? 'Restart the service and check the logs.',
+          proposed: {
+            category: category ? { id: category.id, name: category.name, isActive: true } : null,
+            team: team ? { id: team.id, name: team.name, isActive: true } : null,
+            priority: proposal.priority ?? null,
+          },
+          review: { status: 'PENDING', reviewer: null, reviewedAt: null, notes: null },
+          articles: [],
+        };
+        t.recommendations.unshift(rec);
+        return rec;
+      },
+      deactivate(kind, name) {
+        const list = kind === 'category' ? CATEGORIES : TEAMS;
+        const item = list.find((x) => x.name === name);
+        if (!item) throw new Error(`no ${kind} ${name}`);
+        inactive.add(item.id);
+        for (const t of tickets) {
+          for (const r of t.recommendations) {
+            const ref = kind === 'category' ? r.proposed.category : r.proposed.team;
+            if (ref?.id === item.id) ref.isActive = false;
+          }
         }
       },
       reply(id, body, isInternal = false) {

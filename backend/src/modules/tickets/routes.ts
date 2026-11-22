@@ -24,6 +24,7 @@ import { TICKET_STATUSES } from '../../domain/ticketStateMachine.js';
 import { HttpError, envelope } from '../../plugins/errors.js';
 import { parse } from '../../plugins/validate.js';
 import { toTicketDto } from './dto.js';
+import { listTicketRecommendations } from './recommendations.js';
 import { getTicketDetail, listTicketComments, listTicketEvents, listTickets } from './queries.js';
 
 const ListQuery = z.strictObject({
@@ -167,6 +168,15 @@ export const ticketRoutes =
       });
       reply.header('cache-control', 'no-store');
       return envelope('Routing approved', toTicketDto(ticket));
+    });
+
+    app.get('/:id/recommendations', auth, async (req, reply) => {
+      const { id } = req.params as { id: string };
+      // AI output is for staff working the ticket: 404 when the ticket is unreadable, 403 for the
+      // requester (who can read the ticket but never sees recommendations).
+      await authorizeTicket(prisma, req.principal!, id, 'edit');
+      reply.header('cache-control', 'no-store');
+      return envelope('Recommendations', await listTicketRecommendations(prisma, id));
     });
 
     app.post('/:id/recommendations/:recommendationId/review', auth, async (req, reply) => {
