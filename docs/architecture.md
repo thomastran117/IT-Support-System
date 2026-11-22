@@ -63,8 +63,19 @@ suggestion — requires review", shows the original proposal beside the currentl
 offers accept, override (with the technician's own values) and reject, each sent against the ticket
 `version` through `POST .../recommendations/:id/review`. Suggestions whose category or team is no
 longer active cannot be accepted, and resolved or closed tickets can only reject. Earlier suggestions
-and their decisions stay visible under "Earlier suggestions". Triggering an analysis from the page
-and showing queued, running or failed job states belong to SD-038.
+and their decisions stay visible under "Earlier suggestions".
+
+The same card drives the analysis job (SD-038) through `GET` and `POST /api/tickets/:id/analysis`. It
+shows queued, running, retrying (with the reason, attempt and retry time), failed (with the fixed
+reason text and number of tries) and "AI analysis is switched off". A "Request analysis" button
+(labelled "Re-analyse" once a suggestion exists, "Try analysis again" after a failure) sends one request
+at a time, with a client-generated request id so a repeated submit is idempotent; the server's 409 (one
+already running), 429 (hourly limit) and AI-disabled answers are explained in place and the status
+refreshes. While a job is queued or running the page checks every 2 seconds and loads the new
+suggestion by itself when it completes. A new analysis only adds a separate suggestion: approved
+routing changes only through a review or the routing form. A deterministic, keyword-based "looks high
+risk" cue is shown whenever it applies and is labelled as not AI. If the status cannot be loaded the
+card says so with a "Check again" button, and the routing form is never disabled by any AI state.
 
 ## AI provider (backend and worker only)
 

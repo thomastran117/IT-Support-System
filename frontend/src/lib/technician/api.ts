@@ -1,4 +1,5 @@
 import type {
+  AnalysisStatusDto,
   ApproveRoutingRequest,
   CategoryRefDto,
   CreateCommentRequest,
@@ -70,6 +71,20 @@ export function technicianApi(api: ApiClient) {
     /** Current and historical AI recommendations, newest first. Staff only. */
     recommendations(id: string) {
       return api.request<RecommendationDto[]>(`/api/tickets/${enc(id)}/recommendations`);
+    },
+    /** Status of the newest AI analysis, with the deterministic manual cue. Staff only. */
+    analysisStatus(id: string) {
+      return api.request<AnalysisStatusDto>(`/api/tickets/${enc(id)}/analysis`);
+    },
+    /**
+     * Ask for a fresh analysis. Always a new job; `requestId` makes a repeated submit idempotent.
+     * 409 `ANALYSIS_IN_PROGRESS` / `AI_DISABLED`, 429 `ANALYSIS_RATE_LIMITED`.
+     */
+    requestAnalysis(id: string, requestId: string) {
+      return api.request<AnalysisStatusDto>(`/api/tickets/${enc(id)}/analysis`, {
+        method: 'POST',
+        body: JSON.stringify({ requestId }),
+      });
     },
     reviewRecommendation(id: string, recommendationId: string, body: ReviewRecommendationRequest) {
       return api.request<ReviewResultDto>(

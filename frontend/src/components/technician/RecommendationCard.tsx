@@ -1,6 +1,8 @@
 'use client';
 
 import type {
+  AnalysisFailureReason,
+  AnalysisStatusDto,
   CategoryRefDto,
   RecommendationDto,
   ReviewDecision,
@@ -37,7 +39,155 @@ interface Props {
   busy: boolean;
   onReview: (rec: RecommendationDto, submit: ReviewSubmit) => void;
   onRetry: () => void;
+  /** null while loading */
+  analysis: AnalysisStatusDto | null;
+  analysisFailed: boolean;
+  analysisNotice: string | null;
+  requesting: boolean;
+  onRequestAnalysis: () => void;
+  onRetryAnalysis: () => void;
 }
+
+const REASON_LABEL: Record<AnalysisFailureReason, string> = {
+  provider_unavailable: 'the AI service was unavailable',
+  timed_out: 'the AI service took too long',
+  rate_limited: 'the AI service was busy',
+  invalid_response: 'the AI service gave an unusable answer',
+  ticket_unavailable: 'the ticket could not be analysed',
+  worker_lost: 'the analysis was interrupted',
+  ai_disabled: 'AI analysis is switched off',
+  internal: 'an unexpected error occurred',
+};
+
+/**
+ * The analysis job: queued, running, failed, or idle, plus the "request analysis" action and the
+ * keyword-based manual cue. Everything here is advisory; it never gates the routing form.
+ */
+function AnalysisPanel({
+  analysis,
+  failed,
+  notice,
+  requesting,
+  busy,
+  hasSuggestion,
+  onRequest,
+  onRetryLoad,
+}: {
+  analysis: AnalysisStatusDto | null;
+  failed: boolean;
+  notice: string | null;
+  requesting: boolean;
+  busy: boolean;
+  hasSuggestion: boolean;
+  onRequest: () => void;
+  onRetryLoad: () => void;
+}) {
+  if (failed && !analysis) {
+    return (
+      <div role="status" className="rounded border border-amber-300 bg-amber-50 p-3 text-sm">
+        <p>The AI analysis status could not be loaded. {MANUAL_NOTE}</p>
+        <button type="button" className={`${secondaryButton} mt-2`} onClick={onRetryLoad}>
+          Check again
+        </button>
+      </div>
+    );
+  }
+  if (!analysis) return null;
+
+  const { state, failure, manualCue } = analysis;
+  const waiting = state === 'QUEUED' || state === 'RUNNING';
+  const disabledByRule = !analysis.canRetry && !waiting && analysis.enabled;
+
+  let status: React.ReactNode = null;
+  if (!analysis.enabled) {
+    status = <p data-testid="analysis-state">AI analysis is switched off. {MANUAL_NOTE}</p>;
+  } else if (state === 'RUNNING') {
+    status = (
+      <p role="status" data-testid="analysis-state">
+        AI analysis is running�
+      </p>
+    );
+  } else if (state === 'QUEUED' && failure) {
+    status = (
+      <p role="status" data-testid="analysis-state">
+        The last attempt failed because {REASON_LABEL[failure.reason]}. It will retry
+        {analysis.retryAt ? ` after ${formatDateTime(analysis.retryAt)}` : ' shortly'} (attempt{' '}
+        {analysis.attempts} of {analysis.maxAttempts}). {MANUAL_NOTE}
+      </p>
+    );
+  } else if (state === 'QUEUED') {
+    status = (
+      <p role="status" data-testid="analysis-state">
+        AI analysis is queued� {MANUAL_NOTE}
+      </p>
+    );
+  } else if (state === 'FAILED') {
+    status = (
+      <div
+        role="alert"
+        data-testid="analysis-state"
+        className="rounded border border-amber-300 bg-amber-50 p-3"
+      >
+        <p className="font-medium">AI analysis failed</p>
+        <p>
+          {failure?.message ?? 'The analysis failed.'} Tried {analysis.attempts} time
+          {analysis.attempts === 1 ? '' : 's'}. No suggestion was created. {MANUAL_NOTE}
+        </p>
+      </div>
+    );
+  }
+
+  const label =
+    state === 'FAILED' ? 'Try analysis again' : hasSuggestion ? 'Re-analyse' : 'Request analysis';
+
+  return (
+    <div className="space-y-3 text-sm" data-testid="analysis-panel">
+      {manualCue.highRisk && (
+        <div
+          role="note"
+          data-testid="manual-cue"
+          className="rounded border border-red-300 bg-red-50 p-3 text-red-900"
+        >
+          <p className="font-medium">This ticket looks high risk. Consider handling it first.</p>
+          <p>
+            {manualCue.reasons.join('; ')}. This is a simple keyword check, not an AI result, and it
+            changes nothing.
+          </p>
+        </div>
+      )}
+      {status}
+      {analysis.enabled && !waiting && (
+        <div className="space-y-1">
+          <button
+            type="button"
+            disabled={requesting || busy || !analysis.canRetry}
+            className={secondaryButton}
+            onClick={onRequest}
+          >
+            {requesting ? 'Requesting�' : label}
+          </button>
+          {state !== 'FAILED' && hasSuggestion && (
+            <p className="text-slate-600">
+              A new analysis adds a separate suggestion. It never changes the approved routing.
+            </p>
+          )}
+          {disabledByRule && (
+            <p className="text-slate-600" data-testid="analysis-limit">
+              This ticket has reached the hourly analysis limit. Try again later.
+            </p>
+          )}
+        </div>
+      )}
+      {notice && (
+        <p role="alert" className="font-medium text-amber-900" data-testid="analysis-notice">
+          {notice}
+        </p>
+      )}
+    </div>
+  );
+}
+
+const MANUAL_NOTE = 'Manual routing is not affected.';
 
 const staleReason = (rec: RecommendationDto): string | null => {
   const parts: string[] = [];
@@ -154,6 +304,12 @@ export function RecommendationCard({
   busy,
   onReview,
   onRetry,
+  analysis,
+  analysisFailed,
+  analysisNotice,
+  requesting,
+  onRequestAnalysis,
+  onRetryAnalysis,
 }: Props) {
   const [notes, setNotes] = useState('');
   const [overriding, setOverriding] = useState(false);
@@ -420,6 +576,16 @@ export function RecommendationCard({
       <h3 id="ai-title" className="text-lg font-semibold">
         AI suggestions
       </h3>
+      <AnalysisPanel
+        analysis={analysis}
+        failed={analysisFailed}
+        notice={analysisNotice}
+        requesting={requesting}
+        busy={busy}
+        hasSuggestion={(recommendations?.length ?? 0) > 0}
+        onRequest={onRequestAnalysis}
+        onRetryLoad={onRetryAnalysis}
+      />
       {body}
     </section>
   );

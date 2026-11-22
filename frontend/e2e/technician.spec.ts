@@ -517,3 +517,181 @@ test('a resolved ticket can still reject a suggestion but not apply it', async (
   await card(page).getByRole('button', { name: 'Reject suggestion' }).click();
   await expect(notice(page)).toHaveText('AI suggestion rejected.');
 });
+
+// --- AI analysis job (SD-038): request, queued/running/failed states and the manual fallback -----
+
+const panel = (page: Page) => card(page).getByTestId('analysis-panel');
+
+async function openPlain(page: Page) {
+  const api = await installMockApi(page);
+  const [t] = api.seedTickets(1);
+  await signInAsTechnician(page);
+  await openTicket(page, t!.title);
+  return { api, ticket: t! };
+}
+
+test('request an analysis, watch it run, and review the suggestion it produces', async ({
+  page,
+}) => {
+  const { api, ticket } = await openPlain(page);
+  await expect(panel(page).getByRole('button', { name: 'Request analysis' })).toBeVisible();
+
+  await panel(page).getByRole('button', { name: 'Request analysis' }).click();
+  await expect(panel(page).getByTestId('analysis-state')).toContainText('AI analysis is queued');
+  await expect(panel(page).getByRole('button')).toHaveCount(0);
+  expect(api.analysisRequests()).toHaveLength(1);
+  expect(api.analysisRequests()[0]).toMatch(/^[0-9a-f-]{36}$/);
+
+  api.technician.setAnalysis(ticket.id, { state: 'RUNNING', attempts: 1, maxAttempts: 3 });
+  await expect(panel(page).getByTestId('analysis-state')).toContainText('AI analysis is running');
+
+  api.technician.finishAnalysis(ticket.id, {
+    category: 'Hardware',
+    team: 'Network & Access',
+    priority: 'HIGH',
+  });
+  // The page notices on its own: no reload needed.
+  await expect(card(page).getByText('AI suggestion — requires review')).toBeVisible();
+  await expect(panel(page).getByRole('button', { name: 'Re-analyse' })).toBeVisible();
+  await expect(panel(page)).toContainText('never changes the approved routing');
+
+  await card(page).getByRole('button', { name: 'Accept suggestion' }).click();
+  await expect(notice(page)).toHaveText('AI suggestion accepted.');
+});
+
+test('double clicking "Request analysis" sends one request', async ({ page }) => {
+  const { api } = await openPlain(page);
+  await panel(page).getByRole('button', { name: 'Request analysis' }).dblclick();
+  await expect(panel(page).getByTestId('analysis-state')).toContainText('queued');
+  expect(api.analysisRequests()).toHaveLength(1);
+});
+
+test('a failed analysis is explained, offers a retry and never blocks manual triage', async ({
+  page,
+}) => {
+  const { api, ticket } = await openPlain(page);
+  api.technician.setAnalysis(ticket.id, {
+    state: 'FAILED',
+    requestId: '00000000-0000-4000-8000-000000000001',
+    attempts: 3,
+    maxAttempts: 3,
+    failure: { reason: 'provider_unavailable', message: 'The AI service was unavailable.' },
+  });
+  await page.reload();
+
+  const state = panel(page).getByTestId('analysis-state');
+  await expect(state).toContainText('AI analysis failed');
+  await expect(state).toContainText('The AI service was unavailable.');
+  await expect(state).toContainText('Tried 3 times. No suggestion was created.');
+  await expect(card(page).getByTestId('ai-note')).toContainText('no AI suggestion');
+
+  // Manual routing works while AI is down.
+  await approve(page);
+  await page.getByRole('button', { name: 'Approve routing' }).click();
+  await expect(notice(page)).toHaveText('Routing approved.');
+
+  // A technician retry starts a fresh analysis, which then completes normally.
+  await panel(page).getByRole('button', { name: 'Try analysis again' }).click();
+  await expect(panel(page).getByTestId('analysis-state')).toContainText('queued');
+  expect(api.analysisRequests()).toHaveLength(1);
+  api.technician.finishAnalysis(ticket.id, {
+    category: 'Software',
+    team: 'Network & Access',
+    priority: 'LOW',
+  });
+  await expect(card(page).getByText('AI suggestion — requires review')).toBeVisible();
+  await expect(panel(page).getByTestId('analysis-state')).toHaveCount(0);
+});
+
+test('a transient failure shows the reason, the attempt and when it will retry', async ({
+  page,
+}) => {
+  const { api, ticket } = await openPlain(page);
+  api.technician.setAnalysis(ticket.id, {
+    state: 'QUEUED',
+    requestId: '00000000-0000-4000-8000-000000000002',
+    attempts: 1,
+    maxAttempts: 3,
+    retryAt: '2030-01-01T10:00:00.000Z',
+    failure: { reason: 'rate_limited', message: 'The AI service is busy.' },
+  });
+  await page.reload();
+  const state = panel(page).getByTestId('analysis-state');
+  await expect(state).toContainText('the AI service was busy');
+  await expect(state).toContainText('attempt 1 of 3');
+  await expect(state).toContainText('Manual routing is not affected.');
+});
+
+test('when AI is switched off the card says so and offers no analysis', async ({ page }) => {
+  const api = await installMockApi(page);
+  api.setAiEnabled(false);
+  const [t] = api.seedTickets(1);
+  await signInAsTechnician(page);
+  await openTicket(page, t!.title);
+  await expect(panel(page).getByTestId('analysis-state')).toContainText(
+    'AI analysis is switched off',
+  );
+  await expect(panel(page).getByRole('button')).toHaveCount(0);
+  await approve(page);
+  await page.getByRole('button', { name: 'Approve routing' }).click();
+  await expect(notice(page)).toHaveText('Routing approved.');
+});
+
+test('the hourly limit disables the button and explains why', async ({ page }) => {
+  const api = await installMockApi(page);
+  api.limitAnalysis(true);
+  const [t] = api.seedTickets(1);
+  await signInAsTechnician(page);
+  await openTicket(page, t!.title);
+  await expect(panel(page).getByRole('button', { name: 'Request analysis' })).toBeDisabled();
+  await expect(panel(page).getByTestId('analysis-limit')).toContainText('hourly analysis limit');
+});
+
+test('an analysis someone else already started is reported, and the state catches up', async ({
+  page,
+}) => {
+  const { api, ticket } = await openPlain(page);
+  // Another technician queues one after this page loaded.
+  api.technician.setAnalysis(ticket.id, {
+    state: 'QUEUED',
+    requestId: '00000000-0000-4000-8000-000000000003',
+    attempts: 0,
+    maxAttempts: 3,
+  });
+  await panel(page).getByRole('button', { name: 'Request analysis' }).click();
+  await expect(panel(page).getByTestId('analysis-notice')).toContainText('already running');
+  await expect(panel(page).getByTestId('analysis-state')).toContainText('queued');
+});
+
+test('a status load failure is retryable and does not block triage', async ({ page }) => {
+  const api = await installMockApi(page);
+  const [t] = api.seedTickets(1);
+  api.failNext('analysis', 500);
+  await signInAsTechnician(page);
+  await openTicket(page, t!.title);
+  await expect(card(page).getByRole('status')).toContainText('status could not be loaded');
+  await expect(page.getByLabel('Category')).toBeEnabled();
+  await card(page).getByRole('button', { name: 'Check again' }).click();
+  await expect(panel(page).getByRole('button', { name: 'Request analysis' })).toBeVisible();
+});
+
+test('a request that fails is reported without breaking the page', async ({ page }) => {
+  const { api } = await openPlain(page);
+  api.failNext('analysis', 500);
+  await panel(page).getByRole('button', { name: 'Request analysis' }).click();
+  await expect(panel(page).getByTestId('analysis-notice')).toContainText('could not be requested');
+  await expect(panel(page).getByRole('button', { name: 'Request analysis' })).toBeEnabled();
+});
+
+test('a high-risk ticket gets a manual cue that is clearly not AI', async ({ page }) => {
+  const api = await installMockApi(page);
+  const [t] = api.seedTickets(1);
+  (t as { title: string }).title = 'Ransomware note on the file server';
+  api.setAiEnabled(false);
+  await signInAsTechnician(page);
+  await openTicket(page, t!.title);
+  const cue = panel(page).getByTestId('manual-cue');
+  await expect(cue).toContainText('looks high risk');
+  await expect(cue).toContainText('Possible security incident');
+  await expect(cue).toContainText('not an AI result');
+});
