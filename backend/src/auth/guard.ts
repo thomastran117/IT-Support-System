@@ -55,6 +55,28 @@ export async function loadValidUser(
 
 const UNAUTHENTICATED = () => new HttpError(401, 'Authentication required');
 
+/** Current account and team scope, shared by the request guard and deferred search hydration. */
+export async function loadActivePrincipal(prisma: Pick<PrismaClient, 'user'>, id: string) {
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      email: true,
+      displayName: true,
+      role: true,
+      isActive: true,
+      tokenVersion: true,
+      teamMemberships: { where: { team: { isActive: true } }, select: { teamId: true } },
+    },
+  });
+  if (!user?.isActive) return null;
+  const principal: Principal = {
+    ...toAuthUser(user),
+    teamIds: user.teamMemberships.map((membership) => membership.teamId),
+  };
+  return { principal, tokenVersion: user.tokenVersion };
+}
+
 export function createAuthGuards(prisma: PrismaClient, tokens: TokenService): AuthGuards {
   const requireAuth: preHandlerAsyncHookHandler = async (req) => {
     const header = req.headers.authorization;
@@ -62,17 +84,9 @@ export function createAuthGuards(prisma: PrismaClient, tokens: TokenService): Au
     if (!match) throw UNAUTHENTICATED();
     const claims = await tokens.verify('access', match[1]!);
     if (!claims) throw UNAUTHENTICATED();
-    const user = await prisma.user.findUnique({
-      where: { id: claims.sub },
-      include: {
-        teamMemberships: { where: { team: { isActive: true } }, select: { teamId: true } },
-      },
-    });
-    if (!user || !user.isActive || user.tokenVersion !== claims.tv) throw UNAUTHENTICATED();
-    req.principal = {
-      ...toAuthUser(user),
-      teamIds: user.teamMemberships.map((m) => m.teamId),
-    };
+    const current = await loadActivePrincipal(prisma, claims.sub);
+    if (!current || current.tokenVersion !== claims.tv) throw UNAUTHENTICATED();
+    req.principal = current.principal;
   };
 
   const requireRole = (...roles: Role[]): preHandlerAsyncHookHandler[] => [

@@ -39,7 +39,8 @@ and verification scripts in `docker/`.
 
 ## OpenSearch indexes and aliases
 
-The server-only client queries read aliases and returns candidate IDs and optional sort values.
+The server-only client queries read aliases and returns candidate IDs, with sort values and source
+revisions when requested.
 Callers must reload candidates from PostgreSQL and enforce current access and publication rules
 before returning results. Search requests use a 750 ms timeout per attempt and at most one retry
 for transient failures. The circuit opens for 10 seconds after three consecutive operations fail
@@ -64,6 +65,26 @@ gets index creation and alias inspection. Run `npm run search:init` with provisi
 once per new cluster. It creates each index and its aliases atomically. Check the alias layout
 before resolving an initializer conflict. Use production certificates and service credentials from
 the deployment secret store. OpenSearch connectivity is private to the server side.
+
+### Ticket search authorization
+
+The ticket search service takes an authenticated principal. Its OpenSearch query limits employees
+to their own tickets and technicians to their own tickets, their active teams, and the unrouted
+backlog. Technicians need at least one active team membership for backlog access. Admins can search
+all tickets. Status, priority, category, team, assignee, and creation dates can narrow that scope.
+Creation date ranges include the lower bound and exclude the upper bound.
+
+After OpenSearch returns, one PostgreSQL snapshot rechecks the account and team membership and
+bulk-loads tickets that still satisfy the shared ticket read policy and all structured filters.
+Each candidate's indexed revision must match the ticket's current version. Results contain
+PostgreSQL ticket summaries and an optional server-side cursor. Index documents, highlights,
+hit totals, facets, and suggestions are discarded by the search client.
+
+Candidates are ordered by relevance and then ticket ID. A search reads up to three candidate
+pages of at most 100 hits each. The cursor points to the last returned ticket and is issued only
+when another authorized match was found. Stale or denied candidates can exhaust the scan budget,
+and index refreshes can change ranking between requests. The search client requests only the
+candidate ID, sort values, and indexed revision. [OpenSearch search API](https://docs.opensearch.org/latest/api-reference/search-apis/search/) · [OpenSearch pagination](https://docs.opensearch.org/latest/search-plugins/searching-data/paginate/)
 
 ### Search indexing worker
 
@@ -122,7 +143,7 @@ docker compose -p smartdesk-search-test --profile ci --profile search up --wait 
 docker compose -p smartdesk-search-test --profile ci build backend-ci
 docker compose -p smartdesk-search-test --profile ci --profile search run --rm --no-deps \
   -e TEST_OPENSEARCH_URL=http://opensearch:9200/ -w /app/backend backend-ci \
-  sh -c 'npm run migrate && ./node_modules/.bin/vitest run --no-file-parallelism test/integration/openSearch.integration.test.ts test/integration/searchIndexOpenSearch.integration.test.ts test/integration/searchRebuildOpenSearch.integration.test.ts'
+  sh -c 'npm run migrate && ./node_modules/.bin/vitest run --no-file-parallelism test/integration/openSearch.integration.test.ts test/integration/searchIndexOpenSearch.integration.test.ts test/integration/searchRebuildOpenSearch.integration.test.ts test/integration/ticketSearch.integration.test.ts'
 docker compose -p smartdesk-search-test --profile ci --profile search down -v
 ```
 

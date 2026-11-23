@@ -58,6 +58,44 @@ describe('OpenSearch client', () => {
     expect(send).toHaveBeenCalledTimes(2);
   });
 
+  it('reads the requested revision while dropping source, highlights, facets, suggestions and totals', async () => {
+    const body = {
+      timed_out: false,
+      aggregations: { private: {} },
+      suggest: { private: [] },
+      hits: {
+        total: { value: 20 },
+        hits: [
+          {
+            _id: 'current',
+            fields: { version: [3], body: ['private'] },
+            highlight: { title: ['private'] },
+            _source: { title: 'private' },
+          },
+          { _id: 'invalid', fields: { version: ['3'] } },
+          { _id: 'missing' },
+        ],
+      },
+    };
+    const send = vi.fn<typeof fetch>().mockImplementation(async () => Response.json(body));
+    const client = createSearchClient(config, { fetch: send })!;
+    expect(await client.search('tickets', { ...request, includeRevision: true })).toEqual([
+      { id: 'current', revision: 3 },
+      { id: 'invalid' },
+      { id: 'missing' },
+    ]);
+    expect(JSON.parse(String(send.mock.calls[0]?.[1]?.body))).toMatchObject({
+      docvalue_fields: ['version'],
+      _source: false,
+      track_total_hits: false,
+    });
+    expect(await client.search('tickets', request)).toEqual([
+      { id: 'current' },
+      { id: 'invalid' },
+      { id: 'missing' },
+    ]);
+  });
+
   it('rejects partial results when OpenSearch reports a timeout', async () => {
     const send = vi
       .fn<typeof fetch>()
