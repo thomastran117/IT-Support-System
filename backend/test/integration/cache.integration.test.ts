@@ -1,7 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createCacheAside } from '../../src/cache/cacheAside.js';
-import { createRedisCache, type CacheClient } from '../../src/cache/redisCache.js';
+import {
+  createRedisCache,
+  createRedisConnection,
+  type CacheClient,
+} from '../../src/cache/redisCache.js';
 
 const redisUrl = process.env.REDIS_URL;
 
@@ -67,6 +71,33 @@ describe.skipIf(!redisUrl)('createRedisCache (integration)', () => {
       expect(Date.now() - start).toBeLessThan(2000);
     } finally {
       await unreachable.close();
+    }
+  });
+
+  it('recovers once a dropped connection reconnects (simulated outage/restart)', async () => {
+    // createRedisCache is built directly on this same createRedisConnection, so exercising the
+    // connection here exercises the identical machinery the cache client relies on. A full
+    // container-level restart cannot be driven from this test (no Docker control from inside the
+    // CI container); this is the closest client-observable equivalent -- an abrupt loss of
+    // connection followed by a reconnect, which is what a caller actually experiences either way.
+    const redis = createRedisConnection({
+      url: redisUrl!,
+      connectTimeoutMs: 500,
+      commandTimeoutMs: 500,
+    });
+    const key = `test:restart:${randomUUID()}`;
+    try {
+      await redis.set(key, 'before-the-outage');
+      await expect(redis.get(key)).resolves.toBe('before-the-outage');
+
+      redis.disconnect(); // abrupt loss, as a backend would see mid-restart
+      await expect(redis.get(key)).rejects.toBeDefined();
+
+      await redis.connect(); // ioredis's own retryStrategy would do this automatically in production
+      // The value survived on the server the whole time -- only our client connection dropped.
+      await expect(redis.get(key)).resolves.toBe('before-the-outage');
+    } finally {
+      redis.disconnect();
     }
   });
 

@@ -138,6 +138,11 @@ so an outage degrades to a conservative local bound instead of no limit at all.
 defaults to `false`: a client's `X-Forwarded-For` is never trusted unless this deployment genuinely
 sits behind a known reverse proxy, configured here with that proxy's own IPs/CIDRs.
 
+**Outage, concurrency and performance evaluation (SD-073):** see
+[`docs/redis-evaluation.md`](redis-evaluation.md) for a reproducible benchmark (baseline vs cached
+reads, cross-instance rate-limit sharing, degraded-mode behavior) and the correctness checks that
+ticket/audit data and the degraded rate-limit mode behave as specified while Redis is unreachable.
+
 ## Technician screens
 
 `/technician` is the triage dashboard: tabs for the unassigned backlog, a team queue and tickets
