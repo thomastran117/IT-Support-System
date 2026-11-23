@@ -6,6 +6,8 @@ import {
   type ReportSummaryDto,
 } from '@smartdesk/contracts';
 import { z } from 'zod';
+import { createCacheAside } from '../../cache/cacheAside.js';
+import type { CacheClient } from '../../cache/redisCache.js';
 import {
   reportAiAcceptance,
   reportAiAcceptanceByModel,
@@ -17,9 +19,16 @@ import {
   reportRecurringCategories,
   reportResolutionTime,
   reportRoutingTime,
+  type ReportWindow,
 } from '../../db/repositories/reports.js';
 import { envelope } from '../../plugins/errors.js';
 import { parse } from '../../plugins/validate.js';
+
+/** Short: these are aggregate/analytical reads, where brief staleness is an accepted tradeoff,
+ * and admin dashboards commonly re-request the same recent window within this span. Bounds
+ * cardinality by letting entries for one-off custom windows expire quickly rather than
+ * accumulate; see docs/architecture.md#caching. */
+const REPORT_TTL_SECONDS = 30;
 
 const DAY_MS = 86_400_000;
 
@@ -73,23 +82,37 @@ function dateBuckets(start: Date, end: Date): string[] {
   return out;
 }
 
-/** Administrator-only aggregate reporting. Mounted under /api/admin/reports. */
+/**
+ * Administrator-only aggregate reporting. Mounted under /api/admin/reports.
+ *
+ * `requireRole('ADMIN')` below re-reads the caller from the database and runs on every request,
+ * cache hit or miss, so a cache entry is never itself the authorization boundary -- only the
+ * per-query result underneath it is cached. Each `reportXxx` function also re-authorizes
+ * internally (backend/src/db/repositories/reports.ts), which still fully protects any other
+ * caller of those functions that does not go through this route's guard; a cache hit here simply
+ * means that particular internal check does not re-run for a request this route has already
+ * authorized itself, moments earlier.
+ */
 export const reportRoutes =
-  (prisma: PrismaClient): FastifyPluginAsync =>
+  (prisma: PrismaClient, cache: CacheClient): FastifyPluginAsync =>
   async (app) => {
+    const reportsCache = createCacheAside(cache, 'reports', REPORT_TTL_SECONDS);
+    const cached = <T>(name: string, w: ReportWindow, fetch: () => Promise<T>): Promise<T> =>
+      reportsCache.read(`${name}:${w.start.toISOString()}_${w.end.toISOString()}`, fetch);
+
     app.get('/summary', { preHandler: app.authGuards.requireRole('ADMIN') }, async (req, reply) => {
       const { start, end } = parse(SummaryQuery, req.query);
       const actor = req.principal!.id;
       const w = { start, end };
       const [routing, firstResponse, resolution, accuracy, acceptance, categories, intake] =
         await Promise.all([
-          reportRoutingTime(prisma, actor, w),
-          reportFirstResponse(prisma, actor, w),
-          reportResolutionTime(prisma, actor, w),
-          reportAiAccuracy(prisma, actor, w),
-          reportAiAcceptance(prisma, actor, w),
-          reportRecurringCategories(prisma, actor, w),
-          reportDailyIntake(prisma, actor, w),
+          cached('routingTime', w, () => reportRoutingTime(prisma, actor, w)),
+          cached('firstResponse', w, () => reportFirstResponse(prisma, actor, w)),
+          cached('resolutionTime', w, () => reportResolutionTime(prisma, actor, w)),
+          cached('aiAccuracy', w, () => reportAiAccuracy(prisma, actor, w)),
+          cached('aiAcceptance', w, () => reportAiAcceptance(prisma, actor, w)),
+          cached('recurringCategories', w, () => reportRecurringCategories(prisma, actor, w)),
+          cached('dailyIntake', w, () => reportDailyIntake(prisma, actor, w)),
         ]);
       const byDay = new Map(intake.map((d) => [d.reportDate, d.submittedTickets]));
       const body: ReportSummaryDto = {
@@ -124,11 +147,11 @@ export const reportRoutes =
         const actor = req.principal!.id;
         const w = { start, end };
         const [accuracy, acceptance, accByModel, accepByModel, confusion] = await Promise.all([
-          reportAiAccuracy(prisma, actor, w),
-          reportAiAcceptance(prisma, actor, w),
-          reportAiAccuracyByModel(prisma, actor, w),
-          reportAiAcceptanceByModel(prisma, actor, w),
-          reportAiConfusion(prisma, actor, w),
+          cached('aiAccuracy', w, () => reportAiAccuracy(prisma, actor, w)),
+          cached('aiAcceptance', w, () => reportAiAcceptance(prisma, actor, w)),
+          cached('aiAccuracyByModel', w, () => reportAiAccuracyByModel(prisma, actor, w)),
+          cached('aiAcceptanceByModel', w, () => reportAiAcceptanceByModel(prisma, actor, w)),
+          cached('aiConfusion', w, () => reportAiConfusion(prisma, actor, w)),
         ]);
         // A model appears if it has labelled tickets or reviews in the window.
         const versions = [

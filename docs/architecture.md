@@ -67,6 +67,33 @@ Ticket detail, tokens, and permission decisions are never cached by default -- o
 low-churn reference data is a candidate, and a private/role-scoped read is cached only when scoped
 by authorization or not cached at all.
 
+**What is actually cached today:**
+
+- `backend/src/modules/teams/service.ts`'s `listActiveTeams`, `listActiveCategories`, and
+  `listAssignableMembers` (staff-only reference reads under `/api/teams` and `/api/categories`),
+  60s TTL. Every team/category write (`backend/src/modules/teams/{service,categoryService}.ts`)
+  invalidates the relevant namespace once its transaction has committed. Note that
+  `listActiveCategories` reads the `ref:categories` namespace that `categoryService.ts`'s writes
+  invalidate -- a pre-existing cross-file split in who lists categories versus who administers
+  them, not something this epic introduced.
+- `backend/src/modules/reports/routes.ts`'s admin report aggregates (Q05-Q14), keyed by
+  `<query>:<window start>_<window end>`, 30s TTL, **no active invalidation** -- these are
+  analytical reads where brief staleness is an accepted tradeoff, and wiring invalidation into
+  every ticket/event/recommendation write path across the app would be a large, cross-cutting
+  change for limited benefit versus a short TTL. Cardinality is bounded by that same short TTL
+  plus the existing `REPORT_MAX_WINDOW_DAYS` cap, not by rounding the caller's chosen window --
+  rounding would risk returning a _different_ window's data than the one actually requested.
+  `Cache-Control: no-store` on these responses is unrelated and unchanged: it governs browser/CDN
+  caching of the HTTP response, not this server-side cache of the underlying query.
+
+**Authorization and caching for the reports route specifically:** `requireRole('ADMIN')` is the
+route's `preHandler` and re-reads the caller from the database on _every_ request, cache hit or
+miss, so a cache entry is never itself the authorization boundary -- caching wraps only the
+per-query result underneath an already-authorized request. Each report function
+(`backend/src/db/repositories/reports.ts`) also re-authorizes internally; that check still fully
+protects any other, future caller of those functions that does not go through this route's guard,
+and simply does not re-run on a request this route has already authorized moments earlier.
+
 ## Rate limiting
 
 Login, refresh, and triggering AI analysis (`POST /tickets/:id/analysis`) are rate-limited via

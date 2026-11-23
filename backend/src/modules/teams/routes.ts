@@ -8,6 +8,7 @@ import {
   updateTeamSchema,
 } from '@smartdesk/contracts';
 import { z } from 'zod';
+import type { CacheClient } from '../../cache/redisCache.js';
 import { envelope } from '../../plugins/errors.js';
 import { parse } from '../../plugins/validate.js';
 import { createCategoryService } from './categoryService.js';
@@ -21,9 +22,9 @@ const MemberParams = z.object({ id: z.uuid(), userId: z.uuid() });
  * never choose a team, so they get 403.
  */
 export const teamRoutes =
-  (prisma: PrismaClient): FastifyPluginAsync =>
+  (prisma: PrismaClient, cache: CacheClient): FastifyPluginAsync =>
   async (app) => {
-    const service = createTeamService(prisma);
+    const service = createTeamService(prisma, cache);
     const staff = { preHandler: app.authGuards.requireRole('TECHNICIAN', 'ADMIN') };
 
     // `?mine=true`: only the caller's own active teams (administrators have none, so they get all).
@@ -48,9 +49,9 @@ export const teamRoutes =
 
 /** Mounted under /api/categories. */
 export const categoryRoutes =
-  (prisma: PrismaClient): FastifyPluginAsync =>
+  (prisma: PrismaClient, cache: CacheClient): FastifyPluginAsync =>
   async (app) => {
-    const service = createTeamService(prisma);
+    const service = createTeamService(prisma, cache);
     const staff = { preHandler: app.authGuards.requireRole('TECHNICIAN', 'ADMIN') };
 
     app.get('/', staff, async () => envelope('Categories', await service.listActiveCategories()));
@@ -58,9 +59,9 @@ export const categoryRoutes =
 
 /** Administrator-only team management. Mounted under /api/admin/teams. */
 export const adminTeamRoutes =
-  (prisma: PrismaClient): FastifyPluginAsync =>
+  (prisma: PrismaClient, cache: CacheClient): FastifyPluginAsync =>
   async (app) => {
-    const service = createTeamService(prisma);
+    const service = createTeamService(prisma, cache);
     const opts = { preHandler: app.authGuards.requireRole('ADMIN') };
     const teamId = (params: unknown) => parse(TeamParams, params).id;
 
@@ -108,9 +109,9 @@ export const adminTeamRoutes =
 
 /** Administrator-only category management. Mounted under /api/admin/categories. */
 export const adminCategoryRoutes =
-  (prisma: PrismaClient): FastifyPluginAsync =>
+  (prisma: PrismaClient, cache: CacheClient): FastifyPluginAsync =>
   async (app) => {
-    const service = createCategoryService(prisma);
+    const service = createCategoryService(prisma, cache);
     const opts = { preHandler: app.authGuards.requireRole('ADMIN') };
     const categoryId = (params: unknown) => parse(TeamParams, params).id;
 

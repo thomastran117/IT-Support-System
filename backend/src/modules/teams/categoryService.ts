@@ -1,9 +1,15 @@
 import type { PrismaClient } from '@smartdesk/db';
 import type { AdminCategoryDto } from '@smartdesk/contracts';
+import { createCacheAside } from '../../cache/cacheAside.js';
+import type { CacheClient } from '../../cache/redisCache.js';
 import { DbError, notFoundError } from '../../db/errors.js';
 import { withTransaction } from '../../db/transaction.js';
 
 const conflict = (message: string) => new DbError('CONFLICT', 409, message);
+
+/** Same namespace createTeamService's listActiveCategories reads from: this service does not
+ * cache its own (admin-only) reads, but its writes must invalidate that cached reference list. */
+const REFERENCE_DATA_TTL_SECONDS = 60;
 
 type Row = {
   id: string;
@@ -27,7 +33,9 @@ const toDto = (c: Row, ticketCount: number): AdminCategoryDto => ({
  * triage (the ticket service rejects it) but tickets, knowledge articles, AI recommendations and
  * evaluation labels that reference it keep resolving it.
  */
-export function createCategoryService(prisma: PrismaClient) {
+export function createCategoryService(prisma: PrismaClient, cache: CacheClient) {
+  const categoriesCache = createCacheAside(cache, 'ref:categories', REFERENCE_DATA_TTL_SECONDS);
+
   const load = async (db: Pick<PrismaClient, 'ticketCategory'>, id: string) => {
     const category = await db.ticketCategory.findUnique({ where: { id } });
     if (!category) throw notFoundError('Category');
@@ -64,6 +72,7 @@ export function createCategoryService(prisma: PrismaClient) {
           data: { name: input.name, description: input.description || null },
         });
       });
+      await categoriesCache.invalidate();
       return toDto(created, 0);
     },
 
@@ -85,6 +94,7 @@ export function createCategoryService(prisma: PrismaClient) {
           },
         });
       });
+      await categoriesCache.invalidate();
       return get(id);
     },
 
@@ -94,6 +104,7 @@ export function createCategoryService(prisma: PrismaClient) {
         await load(tx, id);
         await tx.ticketCategory.update({ where: { id }, data: { isActive } });
       });
+      await categoriesCache.invalidate();
       return get(id);
     },
   };
