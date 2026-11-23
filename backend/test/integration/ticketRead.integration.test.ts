@@ -6,6 +6,7 @@ import { TokenService } from '../../src/auth/tokens.js';
 import { loadEnv } from '../../src/config/env.js';
 import { TEAMS, TICKETS, USERS } from '../../src/db/seed/fixtures.js';
 import { seedDatabase } from '../../src/db/seed/run.js';
+import { createSearchClient } from '../../src/modules/search/client.js';
 import { createTestPrisma, resetDatabase, testDatabaseUrl } from './helpers/db.js';
 
 const env = loadEnv({ FRONTEND_ORIGIN: 'http://app.test' });
@@ -64,6 +65,50 @@ describe.skipIf(!testDatabaseUrl)('GET /api/tickets and /api/tickets/:id (integr
   });
 
   describe('visibility', () => {
+    it('continues to serve PostgreSQL ticket reads during an OpenSearch client timeout', async () => {
+      const searchEnv = loadEnv({
+        OPENSEARCH_ENABLED: 'true',
+        OPENSEARCH_URL: 'http://opensearch:9200',
+      });
+      const client = createSearchClient(searchEnv.openSearch, {
+        timeoutMs: 20,
+        fetch: (_url, init) =>
+          new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(new Error('timed out')));
+          }),
+      })!;
+      const appWithSearch = await buildApp({
+        env: searchEnv,
+        prisma,
+        checkDb: async () => true,
+        checkCache: async () => 'disabled',
+        logger: false,
+      });
+      try {
+        const pendingSearch = expect(
+          client.search('tickets', { query: { match_all: {} }, size: 10 }),
+        ).rejects.toMatchObject({ code: 'timeout' });
+        const response = await appWithSearch.inject({
+          method: 'GET',
+          url: '/api/tickets',
+          headers: await bearer(USERS.erin),
+        });
+        await pendingSearch;
+        expect(response.statusCode).toBe(200);
+        const page: TicketPage = response.json().data;
+        const expected = await prisma.ticket.findMany({
+          where: { requesterId: USERS.erin },
+          select: { id: true },
+        });
+        expect(expected.length).toBeGreaterThan(0);
+        expect(page.items.map((item) => item.id).sort()).toEqual(
+          expected.map((item) => item.id).sort(),
+        );
+      } finally {
+        await appWithSearch.close();
+      }
+    });
+
     it('requires authentication', async () => {
       expect((await get(null, '/api/tickets')).statusCode).toBe(401);
       expect((await get(null, `/api/tickets/${TICKETS.printer}`)).statusCode).toBe(401);

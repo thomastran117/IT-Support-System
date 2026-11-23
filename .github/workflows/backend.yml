@@ -51,6 +51,12 @@ jobs:
           fi
           docker compose --profile search up --wait --wait-timeout 180 opensearch
 
+      - name: OpenSearch mapping and alias integration tests
+        run: |
+          docker compose --profile ci --profile search run --rm --no-deps \
+            -e TEST_OPENSEARCH_URL=http://opensearch:9200/ -w /app/backend backend-ci \
+            ./node_modules/.bin/vitest run test/integration/openSearch.integration.test.ts 2>&1 | tee ci-search-tests.log
+
       - name: Collect OpenSearch logs on failure
         if: failure()
         run: docker compose --profile search logs --no-color opensearch > ci-opensearch.log
