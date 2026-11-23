@@ -53,6 +53,14 @@ function toSummary(t: SummaryRow): TicketSummaryDto {
   };
 }
 
+export async function findTicketSummaries(
+  db: Pick<PrismaClient, 'ticket'>,
+  where: Prisma.TicketWhereInput,
+): Promise<TicketSummaryDto[]> {
+  const rows = await db.ticket.findMany({ where, select: summarySelect });
+  return rows.map(toSummary);
+}
+
 const commentSelect = {
   id: true,
   body: true,

@@ -1,9 +1,10 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { loadActivePrincipal } from '../../src/auth/guard.js';
 import {
   claimSearchIndexJobs,
   enqueueSearchIndexJob,
 } from '../../src/db/repositories/searchIndexJobs.js';
-import { ARTICLES, CATEGORIES, TEAMS, USERS } from '../../src/db/seed/fixtures.js';
+import { ARTICLES, CATEGORIES, TEAMS, TICKETS, USERS } from '../../src/db/seed/fixtures.js';
 import { seedDatabase } from '../../src/db/seed/run.js';
 import { approveRouting, submitTicket } from '../../src/db/services/ticketService.js';
 import { createKnowledgeService } from '../../src/modules/knowledge/service.js';
@@ -15,6 +16,7 @@ import {
   createSearchRebuildAdmin,
   type SearchRebuildAdmin,
 } from '../../src/modules/search/rebuildAdmin.js';
+import { createTicketSearchService } from '../../src/modules/search/ticketSearch.js';
 import { SearchError } from '../../src/modules/search/transport.js';
 import { createTestPrisma, resetDatabase, testDatabaseUrl } from './helpers/db.js';
 
@@ -116,6 +118,35 @@ describe.skipIf(!testDatabaseUrl || !testUrl)('resumable search rebuild against 
     ).toBe(404);
     expect(await rebuild(1).run()).toEqual(completed);
     expect(await admin.liveCounts(1)).toEqual({ tickets: plan.tickets, articles: plan.articles });
+
+    const tickets = createTicketSearchService(prisma, search);
+    const { principal } = (await loadActivePrincipal(prisma, USERS.erin))!;
+    const page = await tickets.search(principal, { text: 'Unindexed', limit: 2 });
+    expect(page.items.map(({ id }) => id)).toEqual([seededId(100), seededId(101)]);
+    expect(page.nextCursor).not.toBeNull();
+    const next = await tickets.search(principal, {
+      text: 'Unindexed',
+      limit: 2,
+      after: page.nextCursor!,
+    });
+    expect(next.items.map(({ id }) => id)).toEqual([seededId(102), seededId(103)]);
+
+    const { principal: technician } = (await loadActivePrincipal(prisma, USERS.tara))!;
+    const routed = await tickets.search(technician, {
+      filters: { teamId: TEAMS.network },
+      limit: 10,
+    });
+    expect(new Set(routed.items.map(({ id }) => id))).toEqual(
+      new Set([TICKETS.vpn, TICKETS.license, TICKETS.password, TICKETS.reopened]),
+    );
+    const backlog = await tickets.search(technician, { text: 'Unindexed', limit: 2 });
+    expect(backlog.items.map(({ id }) => id)).toEqual([seededId(100), seededId(101)]);
+    expect(
+      await tickets.search(technician, { filters: { teamId: TEAMS.hardware }, limit: 10 }),
+    ).toEqual({
+      items: [],
+      nextCursor: null,
+    });
   }, 45_000);
 
   it('preserves live aliases on verification failure and replays changes behind the scan cursor', async () => {
