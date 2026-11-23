@@ -7,6 +7,7 @@ import { API_PREFIX } from '@smartdesk/contracts';
 import type { Env } from './config/env.js';
 import type { DbCheck, PrismaClient } from '@smartdesk/db';
 import type { CacheCheck } from './cache/client.js';
+import type { createFallbackRateLimitStore } from './rateLimit/fallbackStore.js';
 import { createAuthGuards } from './auth/guard.js';
 import { TokenService } from './auth/tokens.js';
 import { adminRoutes } from './modules/admin/routes.js';
@@ -35,6 +36,12 @@ export interface AppOptions {
   prisma?: PrismaClient;
   /** Per-IP request budgets for the auth endpoints (tests lower these). */
   authRateLimit?: { login: number; refresh: number; windowMs: number };
+  /** Per-account request budget for triggering AI analysis (tests lower this). */
+  aiAnalysisRateLimit?: { max: number; windowMs: number };
+  /** A @fastify/rate-limit store shared across backend instances (e.g. one backed by Redis).
+   * Omitted entirely -- not just unconfigured -- when Redis is disabled, so the plugin falls
+   * back to its own in-memory default exactly as it did before this option existed. */
+  rateLimitStore?: ReturnType<typeof createFallbackRateLimitStore>;
   /** Pass `false` to silence logs, or a pino options object (tests). */
   logger?: boolean | object;
   /** Extra routes registered under /api (used by tests). */
@@ -60,6 +67,9 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     },
     genReqId: (req) => (req.headers['x-request-id'] as string | undefined) ?? randomUUID(),
     requestIdHeader: 'x-request-id',
+    // false (default) never trusts a forwarded-for header, so request.ip cannot be spoofed by a
+    // client; only set for a deployment that genuinely sits behind a known reverse proxy.
+    trustProxy: opts.env.trustProxy,
   });
 
   await app.register(cors, {
@@ -68,7 +78,13 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'],
   });
   await app.register(cookie);
-  await app.register(rateLimit, { global: false });
+  await app.register(rateLimit, {
+    global: false,
+    // @fastify/rate-limit's own `.d.ts` for a custom store's `child(routeOptions)` omits the
+    // `routeInfo` field its real implementation both passes and requires (see
+    // node_modules/@fastify/rate-limit/index.js's `mergeParams`); this cast bridges that gap.
+    ...(opts.rateLimitStore ? { store: opts.rateLimitStore as unknown as never } : {}),
+  });
   registerErrorHandling(app);
 
   app.addHook('onSend', async (req, reply) => {
@@ -115,6 +131,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
         opts.env.ai.provider === 'none'
           ? undefined
           : { maxAttempts: opts.env.ai.worker.maxAttempts },
+        opts.aiAnalysisRateLimit ?? { max: 10, windowMs: 60_000 },
       ),
       { prefix: `${API_PREFIX}/tickets` },
     );

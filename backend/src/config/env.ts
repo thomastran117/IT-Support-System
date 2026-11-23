@@ -5,6 +5,10 @@ export interface Env {
   databaseUrl: string;
   /** Optional internal cache. Undefined means Redis is disabled; see backend/src/cache/client.ts. */
   redisUrl: string | undefined;
+  /** Fastify's own `trustProxy`. false (default) never trusts a forwarded-for header, so a
+   * client cannot spoof the IP a rate limiter keys on; set it only when a specific, known
+   * reverse proxy sits in front of this deployment. */
+  trustProxy: TrustProxy;
   logLevel: string;
   production: boolean;
   jwtSecret: string;
@@ -19,6 +23,8 @@ export interface Env {
   /** Optional email channel for notifications (SD-043). Off unless EMAIL_TRANSPORT=smtp. */
   email: EmailConfig;
 }
+
+export type TrustProxy = boolean | string[];
 
 export type EmailTransportName = 'none' | 'smtp';
 
@@ -121,6 +127,18 @@ function loadEmailConfig(source: NodeJS.ProcessEnv): EmailConfig {
   };
 }
 
+/** false (never trust a forwarded-for header) unless explicitly opted in: `true` (trust it
+ * unconditionally -- only safe if every request genuinely passes through your own proxy), or a
+ * comma-separated list of trusted proxy IPs/CIDRs. */
+function loadTrustProxy(raw: string | undefined): TrustProxy {
+  if (!raw || raw === 'false') return false;
+  if (raw === 'true') return true;
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 const DEV_JWT_SECRET = 'change-me-dev-only-change-me-dev-only';
 
 function positiveInt(source: NodeJS.ProcessEnv, key: string, fallback: number): number {
@@ -154,6 +172,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     frontendOrigin: source.FRONTEND_ORIGIN ?? 'http://localhost:3000',
     databaseUrl: source.DATABASE_URL ?? 'postgres://smartdesk:smartdesk@localhost:5432/smartdesk',
     redisUrl: source.REDIS_URL || undefined,
+    trustProxy: loadTrustProxy(source.TRUST_PROXY),
     logLevel: source.LOG_LEVEL ?? 'info',
     production,
     jwtSecret,

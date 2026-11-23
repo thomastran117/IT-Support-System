@@ -67,6 +67,25 @@ Ticket detail, tokens, and permission decisions are never cached by default -- o
 low-churn reference data is a candidate, and a private/role-scoped read is cached only when scoped
 by authorization or not cached at all.
 
+## Rate limiting
+
+Login, refresh, and triggering AI analysis (`POST /tickets/:id/analysis`) are rate-limited via
+`@fastify/rate-limit`. When Redis is configured, `backend/src/rateLimit/fallbackStore.ts` backs the
+limiter with a shared counter in Redis, so every backend instance enforces one combined quota
+instead of one quota per process; when it is not, the plugin's own in-memory store is used exactly
+as before this epic. A request is always keyed by the authenticated account id once one exists
+(the AI-trigger route), or by the client IP otherwise (login, refresh) -- never by a raw header a
+client could forge.
+
+On a Redis failure, the limiter does not fail open: it falls back to a bounded per-process counter
+rather than the plugin's own `skipOnError` (which would let every request through unlimited). This
+is a deliberately different failure mode from caching above -- rate limiting is security-sensitive,
+so an outage degrades to a conservative local bound instead of no limit at all.
+
+`request.ip` is only as trustworthy as Fastify's `trustProxy` setting (`TRUST_PROXY`), which
+defaults to `false`: a client's `X-Forwarded-For` is never trusted unless this deployment genuinely
+sits behind a known reverse proxy, configured here with that proxy's own IPs/CIDRs.
+
 ## Technician screens
 
 `/technician` is the triage dashboard: tabs for the unassigned backlog, a team queue and tickets
