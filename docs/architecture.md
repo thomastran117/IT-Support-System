@@ -243,6 +243,8 @@ Compose profiles add one-shot services without affecting the normal stack:
 - `ci`: formatting, backend/database/worker verification, and browser-enabled frontend tests.
 - `tools`: generated documentation commands whose output is mounted back into the repository.
 - `cache`: an optional internal Redis instance for local cache development; disabled by default.
+- `search`: an optional internal OpenSearch node for synthetic data and CI. PostgreSQL remains
+  authoritative. See the [OpenSearch profile instructions](../README.md#optional-opensearch-profile).
 
 GitHub Actions invokes these same services rather than maintaining a separate host npm workflow.
 
