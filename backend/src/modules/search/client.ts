@@ -45,7 +45,11 @@ export function createSearchClient(
         method: 'POST',
         retry: true,
         body: {
-          query,
+          // Live ticket projections have status. A removal keeps only its identity and revision.
+          query:
+            collection === 'tickets'
+              ? { bool: { must: [query], filter: [{ exists: { field: 'status' } }] } }
+              : query,
           size,
           sort,
           search_after: searchAfter,

@@ -40,6 +40,7 @@ describe('OpenSearch client', () => {
     );
     expect(JSON.parse(String(options?.body))).toEqual({
       ...request,
+      query: { bool: { must: [request.query], filter: [{ exists: { field: 'status' } }] } },
       sort: [{ id: 'asc' }],
       search_after: ['older'],
       _source: false,

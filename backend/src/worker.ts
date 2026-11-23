@@ -6,9 +6,11 @@ import { createJobRunner, type JobLogEntry } from './modules/ai/jobRunner.js';
 import { persistDraft } from './modules/ai/recommendationService.js';
 import { createEmailDispatcher } from './modules/notifications/email/dispatcher.js';
 import { createEmailTransport } from './modules/notifications/email/transport.js';
+import { createSearchBulkClient } from './modules/search/bulk.js';
+import { createSearchIndexWorker } from './modules/search/indexWorker.js';
 
 /**
- * Background worker (AI analysis and, when enabled, notification email): a separate process from the HTTP API (`npm run start:worker`).
+ * Background worker for AI, notification email, and search indexing (`npm run start:worker`).
  * It claims jobs from the PostgreSQL queue, so work queued while it was down is picked up on start,
  * and several workers can run side by side. It never imports Fastify.
  */
@@ -56,6 +58,16 @@ const mailer = transport
     })
   : null;
 
+const searchBulk = createSearchBulkClient(env.openSearch);
+const searchWorker =
+  searchBulk &&
+  createSearchIndexWorker({
+    prisma,
+    bulk: searchBulk,
+    pollIntervalMs: ai.worker.pollIntervalMs,
+    log: (entry) => write(entry.errorKind ? 'error' : 'info', entry),
+  });
+
 let closing = false;
 async function shutdown(signal: string): Promise<void> {
   if (closing) return;
@@ -66,7 +78,7 @@ async function shutdown(signal: string): Promise<void> {
   const force = setTimeout(() => process.exit(1), handlerTimeoutMs + 5_000);
   force.unref();
   try {
-    await Promise.all([runner.stop(), mailer?.stop()]);
+    await Promise.all([runner.stop(), mailer?.stop(), searchWorker?.stop()]);
     await prisma.$disconnect();
     process.exit(0);
   } catch {
@@ -81,3 +93,5 @@ runner.start();
 // Only the transport kind is logged. Host, user and password never are.
 write('info', { msg: `email transport: ${email.transport}` });
 mailer?.start();
+write('info', { msg: `search indexing: ${searchWorker ? 'enabled' : 'disabled'}` });
+searchWorker?.start();
