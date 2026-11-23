@@ -46,9 +46,10 @@ other section is a reported measurement, not a gate.
 
 ## Results
 
-Captured 2026-11-23, commit `0c79b08` (the tip of `main` this epic's SD-073 branch built on;
-SD-073's own changes do not alter any of the code paths being measured), against this project's
-`postgres-ci`/`redis-ci` Compose services, 30 requests per case.
+Captured 2026-11-23 from commit `0c79b08` (the tip of `main` this epic's SD-073 branch, `a8fa6c3`,
+built on; SD-073's own changes add tests/docs/the benchmark script itself and do not alter any of
+the application code paths being measured), against this project's `postgres-ci`/`redis-ci`
+Compose services, 30 requests per case.
 
 ### Reference data and report reads: baseline vs. cached
 
