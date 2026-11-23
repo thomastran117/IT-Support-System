@@ -1,8 +1,9 @@
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { enqueueAnalysis } from '../../src/db/repositories/aiAnalysisJobs.js';
 import { enqueueSearchIndexJob } from '../../src/db/repositories/searchIndexJobs.js';
-import { USERS } from '../../src/db/seed/fixtures.js';
+import { ARTICLES, USERS } from '../../src/db/seed/fixtures.js';
 import { seedDatabase } from '../../src/db/seed/run.js';
 import { submitTicket } from '../../src/db/services/ticketService.js';
 import { withTransaction } from '../../src/db/transaction.js';
@@ -12,6 +13,7 @@ import { createSearchClient } from '../../src/modules/search/client.js';
 import { searchIndexes } from '../../src/modules/search/indexes.js';
 import { createSearchIndexWorker } from '../../src/modules/search/indexWorker.js';
 import { initializeSearchIndexes } from '../../src/modules/search/initialize.js';
+import { knowledgeSearchSelect, projectKnowledge } from '../../src/modules/search/projection.js';
 import { createTestPrisma, resetDatabase, testDatabaseUrl } from './helpers/db.js';
 
 const testUrl = process.env.TEST_OPENSEARCH_URL;
@@ -205,12 +207,22 @@ describe.skipIf(!testDatabaseUrl || !testUrl)('search indexing with real OpenSea
     ).toEqual([]);
   }, 20_000);
 
-  it('runs the active worker entrypoint, indexes the allowed ticket fields, and exits on SIGTERM', async () => {
+  it('indexes a ticket, retrieves published knowledge for analysis, and drains on SIGTERM', async () => {
+    const vpn = await prisma.knowledgeArticle.findUniqueOrThrow({
+      where: { id: ARTICLES.vpn },
+      select: knowledgeSearchSelect,
+    });
+    expect(await bulk.write([projectKnowledge(vpn)])).toEqual([{ ok: true }]);
+    expect((await raw(`${searchIndexes.knowledge.name}/_refresh`, 'POST')).ok).toBe(true);
+    expect(
+      await search.search('knowledge', { query: { term: { articleId: ARTICLES.vpn } }, size: 10 }),
+    ).toEqual([{ id: ARTICLES.vpn }]);
     const { ticket } = await submitTicket(prisma, {
       requesterId: USERS.erin,
-      title: 'VPN setup',
-      description: 'VPN unavailable',
+      title: 'VNP disconnects',
+      description: 'VNP profile setup',
     });
+    const job = await enqueueAnalysis(prisma, { ticketId: ticket.id });
     const child = spawn(process.execPath, ['--import', 'tsx', 'src/worker.ts'], {
       env: {
         ...process.env,
@@ -218,9 +230,13 @@ describe.skipIf(!testDatabaseUrl || !testUrl)('search indexing with real OpenSea
         OPENSEARCH_ENABLED: 'true',
         OPENSEARCH_URL: config.url,
         WORKER_POLL_INTERVAL_MS: '100',
-        AI_PROVIDER: 'none',
+        AI_PROVIDER: 'fake',
       },
-      stdio: 'ignore',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    let stdout = '';
+    child.stdout.setEncoding('utf8').on('data', (chunk: string) => {
+      stdout += chunk;
     });
     const exited = once(child, 'exit');
     try {
@@ -236,8 +252,8 @@ describe.skipIf(!testDatabaseUrl || !testUrl)('search indexing with real OpenSea
         id: ticket.id,
         trackingId: ticket.id,
         requesterId: USERS.erin,
-        title: 'VPN setup',
-        description: 'VPN unavailable',
+        title: 'VNP disconnects',
+        description: 'VNP profile setup',
         teamId: null,
         assigneeId: null,
         categoryId: null,
@@ -247,6 +263,29 @@ describe.skipIf(!testDatabaseUrl || !testUrl)('search indexing with real OpenSea
         priority: 'UNSET',
         status: 'OPEN',
       });
+      await expect
+        .poll(
+          () =>
+            stdout
+              .split('\n')
+              .find((line) => line.includes('"msg":"analysis completed"') && line.includes(job.id)),
+          { timeout: 20_000 },
+        )
+        .toBeDefined();
+      const completion = stdout
+        .split('\n')
+        .find((line) => line.includes('"msg":"analysis completed"') && line.includes(job.id))!;
+      expect(JSON.parse(completion)).toMatchObject({
+        retrieval: { engine: 'opensearch', version: 1 },
+      });
+      expect(completion).not.toMatch(/VNP|certificate|profile setup/);
+      const recommendation = await prisma.aiRecommendation.findUniqueOrThrow({
+        where: { jobId: job.id },
+        include: { articles: true },
+      });
+      expect(
+        recommendation.articles.map(({ articleId, relevanceRank }) => [articleId, relevanceRank]),
+      ).toEqual([[ARTICLES.vpn, 1]]);
     } finally {
       child.kill('SIGTERM');
       const [code, signal] = await exited;

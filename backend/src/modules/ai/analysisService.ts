@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@smartdesk/db';
 import { notFoundError } from '../../db/errors.js';
-import { searchPublished } from '../../db/repositories/knowledge.js';
+import { createPublishedKnowledgeSearch, type KnowledgeSearchEngine } from '../knowledge/search.js';
+import type { SearchClient } from '../search/client.js';
 import {
   ProviderError,
   type AIProvider,
@@ -10,6 +11,8 @@ import {
 import { redactText, truncate } from './redact.js';
 
 export const RETRIEVAL_LIMIT = 5;
+const RETRIEVAL_VERSION = 1;
+const OPENSEARCH_RETRIEVAL_MS = 1500;
 const MAX_QUERY_TERMS = 12;
 const MAX_TITLE_CHARS = 150;
 const MAX_DESCRIPTION_CHARS = 4000;
@@ -26,11 +29,10 @@ const STOP_WORDS = new Set(
 );
 
 /**
- * Build a loose full-text query from redacted ticket text: distinctive words joined with `or`, so a
- * long description still matches articles that cover only part of it. `websearch_to_tsquery` treats
- * the whole string as data (see `searchPublished`), so no text here can alter the SQL.
+ * Keep distinctive terms from the redacted ticket so an article can match only part of a long
+ * description. The published search adapter expresses the same loose matching in both engines.
  */
-export function buildRetrievalQuery(title: string, description: string): string {
+export function buildRetrievalTerms(title: string, description: string): string[] {
   const seen = new Set<string>();
   const terms: string[] = [];
   // Title words first: they are the strongest signal and must survive the term cap.
@@ -40,13 +42,19 @@ export function buildRetrievalQuery(title: string, description: string): string 
     terms.push(word);
     if (terms.length >= MAX_QUERY_TERMS) break;
   }
-  return terms.join(' or ');
+  return terms;
+}
+
+export interface AnalysisRetrieval {
+  engine: KnowledgeSearchEngine;
+  version: number;
 }
 
 /** A draft recommendation. It is advisory: nothing here has been written to the database. */
 export interface AnalysisDraft extends ValidatedProposal {
   /** Published articles retrieved for the prompt, best match first. `citedArticleIds` is a subset. */
   retrievedArticleIds: string[];
+  retrieval: AnalysisRetrieval;
 }
 
 /**
@@ -58,8 +66,13 @@ export interface AnalysisDraft extends ValidatedProposal {
  *
  * Only title and description are sent: never requester identity, email, ids or ticket metadata.
  */
-export function createAnalysisService(deps: { prisma: PrismaClient; provider: AIProvider }) {
-  const { prisma, provider } = deps;
+export function createAnalysisService(deps: {
+  prisma: PrismaClient;
+  provider: AIProvider;
+  searchClient?: SearchClient;
+}) {
+  const { prisma, provider, searchClient } = deps;
+  const searchPublished = createPublishedKnowledgeSearch(prisma, searchClient);
 
   return {
     async analyse(ticketId: string): Promise<AnalysisDraft> {
@@ -85,23 +98,24 @@ export function createAnalysisService(deps: { prisma: PrismaClient; provider: AI
         }),
       ]);
 
-      // Search with the redacted text, so nothing sensitive reaches even the database query log.
-      const { hits } = await searchPublished(prisma, {
-        query: buildRetrievalQuery(title, description),
+      // Only terms from the redacted ticket reach the knowledge search adapter.
+      const { hits, revisions, engine } = await searchPublished({
+        query: buildRetrievalTerms(title, description),
         limit: RETRIEVAL_LIMIT,
         offset: 0,
+        signal: AbortSignal.timeout(OPENSEARCH_RETRIEVAL_MS),
       });
       const rows = hits.length
         ? await prisma.knowledgeArticle.findMany({
             where: { id: { in: hits.map((h) => h.id) }, isPublished: true },
-            select: { id: true, title: true, body: true },
+            select: { id: true, title: true, body: true, searchRevision: true },
           })
         : [];
       const byId = new Map(rows.map((r) => [r.id, r]));
-      // Keep search rank order; drop anything unpublished between the two queries.
+      // Keep rank order and drop articles unpublished or edited since the search snapshot.
       const articles = hits.flatMap((h) => {
         const r = byId.get(h.id);
-        return r
+        return r && r.searchRevision === revisions.get(h.id)
           ? [
               {
                 id: r.id,
@@ -140,6 +154,7 @@ export function createAnalysisService(deps: { prisma: PrismaClient; provider: AI
         ...proposal,
         citedArticleIds: retrieved.filter((id) => cited.has(id)),
         retrievedArticleIds: retrieved,
+        retrieval: { engine, version: RETRIEVAL_VERSION },
       };
     },
   };

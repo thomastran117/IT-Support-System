@@ -60,8 +60,9 @@ published articles. Internal comments, audit data, recommendations, model prompt
 are outside both projections.
 
 On a secured deployment, use separate service roles scoped to these projections. The API role
-gets search access, the indexer gets writes through the write aliases, and the provisioning role
-gets index creation and alias inspection. Run `npm run search:init` with provisioning credentials
+gets search access through the read aliases. The worker gets writes through the write aliases
+and needs search access to the knowledge read alias when AI analysis is enabled. The provisioning
+role gets index creation and alias inspection. Run `npm run search:init` with provisioning credentials
 once per new cluster. It creates each index and its aliases atomically. Check the alias layout
 before resolving an initializer conflict. Use production certificates and service credentials from
 the deployment secret store. OpenSearch connectivity is private to the server side.
@@ -312,12 +313,20 @@ card says so with a "Check again" button, and the routing form is never disabled
 
 ### Ticket analysis (SD-034)
 
-`createAnalysisService({prisma, provider}).analyse(ticketId)` in `analysisService.ts` returns an `AnalysisDraft` (a validated proposal plus `retrievedArticleIds`). It only reads: it never updates a ticket, writes a recommendation (that is SD-036) or exposes any tool or API to the model.
+`createAnalysisService({prisma, provider, searchClient}).analyse(ticketId)` in `analysisService.ts`
+returns an `AnalysisDraft` with the validated proposal, ranked retrieved article IDs, and retrieval
+metadata. The job runner persists the recommendation when it completes the job.
 
 1. Loads the ticket title and description and the **active** categories and teams.
-2. Retrieves up to 5 **published** articles through PostgreSQL `searchPublished` using a loose OR query of distinctive words from the redacted ticket text.
-3. Redacts and truncates ticket and article text, and sends only title, description, the allowlists and the articles. The requester's name, email, id and ticket metadata are never sent.
-4. Calls the provider, then re-checks the category, team and cited article IDs against what was actually sent. Cited articles are returned in retrieval order.
+2. Extracts up to 12 distinct terms from the redacted ticket and calls the shared published search
+   adapter for up to five articles. OpenSearch has a total 1.5-second budget across its requests and
+   retries. PostgreSQL FTS matches any of the same terms when OpenSearch is disabled or cannot
+   complete the search within its limits.
+3. Reloads published article bodies from PostgreSQL and keeps candidates at the verified revision.
+   The provider receives the redacted and truncated ticket title and description, the allowlists,
+   and current article text.
+4. Checks the provider's proposed category, team and cited article IDs against what was sent.
+   Cited articles follow retrieval order.
 
 Ticket text and article text are untrusted: the prompt serialises them as one JSON document and tells the model to treat them as data. The real defence is structural, since output that is not a valid, allowlisted proposal is rejected and nothing else is acted on.
 
@@ -335,7 +344,10 @@ The worker is a second entrypoint of the backend package (`src/worker.ts`, `npm 
 - **Crash recovery:** a worker that dies leaves a `RUNNING` row whose lease expires; another worker re-claims it. A job that keeps killing its worker ends as `FAILED(worker_lost)`.
 - **Exactly-once effect:** completing a job, and any write that must happen once (the recommendation, SD-036), run in one transaction guarded by the lease token. A stale worker that finishes late finds its token gone and its result is discarded, so duplicate delivery cannot create a second result.
 - **Shutdown:** on SIGTERM the worker stops claiming and lets in-flight analyses finish (bounded by their timeout); anything unfinished is retried via lease expiry.
-- **Logging:** structured lines with job, ticket and request ids, attempt, state and reason code only.
+- **Logging:** structured lines include job, ticket and request IDs, attempt, state and reason code.
+  The analysis result log includes `retrieval.engine` (`opensearch`, `postgres`, or `none` when
+  there are no search terms) and `retrieval.version` (the retrieval policy version). Search terms,
+  article text and prompts stay out of logs.
 
 ### Recommendation persistence (SD-036)
 
