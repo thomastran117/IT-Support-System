@@ -136,6 +136,18 @@ describe.skipIf(!testDatabaseUrl)('authorization of ticket search candidates', (
     expect(result.items.map(({ id }) => id)).toEqual([TICKETS.printer]);
   });
 
+  it('rejects a team filter when that team becomes inactive during the search', async () => {
+    const user = await principal(USERS.tara);
+    engine.mockImplementationOnce(async () => {
+      await prisma.supportTeam.update({ where: { id: TEAMS.network }, data: { isActive: false } });
+      return [];
+    });
+    await expect(
+      service.search(user, { filters: { teamId: TEAMS.network }, limit: 10 }),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect(engine).toHaveBeenCalledTimes(1);
+  });
+
   it.each(['membership removed', 'team inactive'])(
     'rehydrates ownership and backlog access when %s during the search',
     async (change) => {
@@ -235,7 +247,7 @@ describe.skipIf(!testDatabaseUrl)('authorization of ticket search candidates', (
       forgedHit,
     ]);
 
-    const result = await service.search(await principal(USERS.omar), {
+    const result = await service.search(await principal(USERS.admin), {
       text: '  licence  ',
       filters,
       limit: 10,
@@ -252,9 +264,17 @@ describe.skipIf(!testDatabaseUrl)('authorization of ticket search candidates', (
       expect.objectContaining({
         query: {
           bool: {
-            must: [{ multi_match: { query: 'licence', fields: ['title^2', 'description'] } }],
+            must: [
+              {
+                multi_match: {
+                  query: 'licence',
+                  fields: ['title^3', 'description'],
+                  fuzziness: 'AUTO',
+                  max_expansions: 10,
+                },
+              },
+            ],
             filter: [
-              ownFilter(USERS.omar),
               { term: { status: 'IN_PROGRESS' } },
               { term: { priority: 'MEDIUM' } },
               { term: { categoryId: CATEGORIES.software } },

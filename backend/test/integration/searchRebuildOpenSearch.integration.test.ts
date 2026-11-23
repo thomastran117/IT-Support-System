@@ -141,12 +141,9 @@ describe.skipIf(!testDatabaseUrl || !testUrl)('resumable search rebuild against 
     );
     const backlog = await tickets.search(technician, { text: 'Unindexed', limit: 2 });
     expect(backlog.items.map(({ id }) => id)).toEqual([seededId(100), seededId(101)]);
-    expect(
-      await tickets.search(technician, { filters: { teamId: TEAMS.hardware }, limit: 10 }),
-    ).toEqual({
-      items: [],
-      nextCursor: null,
-    });
+    await expect(
+      tickets.search(technician, { filters: { teamId: TEAMS.hardware }, limit: 10 }),
+    ).rejects.toMatchObject({ statusCode: 403 });
   }, 45_000);
 
   it('preserves live aliases on verification failure and replays changes behind the scan cursor', async () => {

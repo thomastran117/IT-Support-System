@@ -40,6 +40,7 @@ administrators see all tickets. Unknown and unreadable ticket IDs both return 40
 | ------ | ------------------------------ | --------------------------------------------------- |
 | POST   | `/api/tickets`                 | Create a ticket for the signed-in requester         |
 | GET    | `/api/tickets`                 | List visible tickets with filters and offset paging |
+| GET    | `/api/tickets/search`          | Search visible tickets by text or tracking ID       |
 | GET    | `/api/tickets/:id`             | Read detail, visible comments, and timeline         |
 | GET    | `/api/tickets/:id/comments`    | List visible comments                               |
 | POST   | `/api/tickets/:id/comments`    | Append a public comment or authorized internal note |
@@ -58,6 +59,43 @@ key and body for one requester returns the original ticket with status 200 and
 
 `GET /api/tickets` accepts optional `status`, `priority`, `limit` (1-100, default 20), and `offset`
 (default 0). It returns `{items,total,limit,offset,nextOffset}` newest first.
+
+### Ticket search
+
+`GET /api/tickets/search` requires authentication and a `q` of 1-160 characters after trimming,
+including at least one letter or number. The optional query parameters are:
+
+| Parameter                  | Accepted values                                                                              |
+| -------------------------- | -------------------------------------------------------------------------------------------- |
+| `status`, `priority`       | A single ticket status or priority                                                           |
+| `categoryId`               | Category UUID                                                                                |
+| `teamId`                   | Team UUID. Technicians may select one of their active teams. Admins may select any team.     |
+| `assigneeId`               | User UUID. Technicians may select their own account. Admins may select any account.          |
+| `createdFrom`, `createdTo` | ISO 8601 timestamps with offset. The lower bound is inclusive and the upper bound exclusive. |
+| `sort`                     | `relevance` (default), with ticket ID ascending for equal scores                             |
+| `limit`                    | 1–100, default 20                                                                            |
+| `cursor`                   | The previous page's `nextCursor`, with the same text, filters, and limit                     |
+
+Employees can use status, priority, category, and creation date filters on their own tickets.
+Out-of-scope filters return `403`. Unknown or repeated parameters, invalid limits and date ranges,
+and invalid cursors return `400`. The endpoint allows 30 requests per minute per account and returns
+`429` when that budget is exhausted.
+
+Search returns `{ mode, consistency, items, nextCursor }` inside the usual response envelope:
+
+- A full ticket UUID uses `mode: "exact"` and `consistency: "current"`. PostgreSQL returns at most
+  one summary, including when OpenSearch is disabled. Missing, unreadable, and excluded tickets
+  all yield an empty page. The exact lookup always has a null cursor.
+- Other text uses `mode: "text"` and `consistency: "eventual"`. OpenSearch ranks title and description
+  matches with BM25, a title boost, and bounded typo tolerance. PostgreSQL rechecks visibility and
+  filters before returning summaries. A new or changed ticket may take time to appear. The cursor
+  expires after 10 minutes and is bound to the account, role, active teams, and the original query.
+  Index changes can shift results between pages. [OpenSearch multi-match](https://docs.opensearch.org/latest/query-dsl/full-text/multi-match/)
+
+Text search returns `503` with `details.code` set to `TICKET_SEARCH_DISABLED` or
+`TICKET_SEARCH_UNAVAILABLE` when the optional index cannot serve the request.
+`details.fallback` points to `/api/tickets` for the regular newest-first list. The technician queue
+keeps its priority ordering.
 
 ### Comments and events
 
