@@ -25,6 +25,7 @@
     "eval:ai": "tsx scripts/evaluate-ai.ts",
     "baseline:routing": "tsx scripts/routing-baseline.ts",
     "search:init": "tsx scripts/init-search.ts",
+    "search:requeue": "tsx scripts/requeue-search-index-job.ts",
     "bench:cache": "tsx scripts/evaluate-cache.ts"
   },
   "dependencies": {

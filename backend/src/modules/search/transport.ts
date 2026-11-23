@@ -26,7 +26,8 @@ export interface SearchTransportOptions {
 interface Operation<T> {
   path: string;
   method: 'GET' | 'POST' | 'PUT';
-  body?: object;
+  body?: object | string;
+  contentType?: 'application/x-ndjson';
   retry: boolean;
   decode: (body: unknown) => T;
 }
@@ -37,6 +38,7 @@ type Circuit =
   { state: 'closed'; failures: number } | { state: 'open'; retryAt: number } | { state: 'probing' };
 
 const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504]);
+export const isTransientSearchStatus = (status: number) => RETRYABLE_STATUS.has(status);
 const FAILURES_TO_OPEN = 3;
 const COOLDOWN_MS = 10_000;
 
@@ -54,20 +56,28 @@ export function createSearchTransport(
 
   let circuit: Circuit = { state: 'closed', failures: 0 };
 
-  async function attempt<T>({ path, method, body, decode }: Operation<T>): Promise<T> {
+  async function attempt<T>({ path, method, body, contentType, decode }: Operation<T>): Promise<T> {
     const signal = AbortSignal.timeout(timeoutMs);
     const target = new URL(path, endpoint);
-    const payload = body === undefined ? undefined : JSON.stringify(body);
+    const payload = typeof body === 'string' ? body : JSON.stringify(body);
+    const requestHeaders = contentType ? new Headers(headers) : headers;
+    if (contentType) requestHeaders.set('content-type', contentType);
     let response: Response;
     try {
-      response = await send(target, { method, body: payload, headers, signal, redirect: 'manual' });
+      response = await send(target, {
+        method,
+        body: payload,
+        headers: requestHeaders,
+        signal,
+        redirect: 'manual',
+      });
     } catch {
       throw new SearchError(signal.aborted ? 'timeout' : 'unavailable');
     }
     if (!response.ok) {
       void response.body?.cancel().catch(() => {});
       throw new SearchError(
-        RETRYABLE_STATUS.has(response.status) ? 'unavailable' : 'http_error',
+        isTransientSearchStatus(response.status) ? 'unavailable' : 'http_error',
         response.status,
       );
     }

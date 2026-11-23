@@ -43,8 +43,8 @@ The server-only client queries read aliases and returns candidate IDs and option
 Callers must reload candidates from PostgreSQL and enforce current access and publication rules
 before returning results. Search requests use a 750 ms timeout per attempt and at most one retry
 for transient failures. The circuit opens for 10 seconds after three consecutive operations fail
-with transient errors. A single probe then determines whether it can close. The API and worker
-start without connecting to OpenSearch.
+with transient errors. A single probe then determines whether it can close. API startup is independent
+of OpenSearch.
 
 | Projection | Initial index            | Read alias                 | Write alias                 |
 | ---------- | ------------------------ | -------------------------- | --------------------------- |
@@ -65,14 +65,37 @@ once per new cluster. It creates each index and its aliases atomically. Check th
 before resolving an initializer conflict. Use production certificates and service credentials from
 the deployment secret store. OpenSearch connectivity is private to the server side.
 
-Run the mapping tests against a disposable Compose project with empty search indexes:
+### Search indexing worker
+
+With `OPENSEARCH_ENABLED=true`, the backend worker claims up to 25 outbox jobs at a time with
+`FOR UPDATE SKIP LOCKED` and a 30-second lease. It reloads current ticket and article rows in
+PostgreSQL, writes one document per entity in the batch through the write aliases, and settles
+each job with its lease token. API writes and outbox commits run independently of this loop.
+
+An OpenSearch document's external version is twice the PostgreSQL source revision. A removal uses
+the next odd version and replaces the document with a content-free tombstone. The ticket adapter
+requires a status field and the knowledge read alias requires publication, so both search paths
+exclude tombstones. Strict external versioning makes older and duplicate writes harmless even after
+a long delay. Rebuilds must use the same version encoding. Bulk search writes require aliases and
+use a 5-second request timeout. [OpenSearch Bulk API](https://docs.opensearch.org/latest/api-reference/document-apis/bulk/)
+
+Transient failures retry with exponential backoff and jitter. Missing aliases retry within the
+same attempt budget. Permanent rejections and exhausted jobs become `FAILED` with a reason code.
+The worker drains its active batch on SIGTERM. An interrupted batch becomes claimable after its
+lease expires. To retry a failed job after resolving its cause, pass the job ID:
 
 ```bash
-docker compose -p smartdesk-search-test --profile search up --wait opensearch
+docker compose exec worker npm run search:requeue -- <failed-job-id>
+```
+
+Run the mapping and worker tests against a disposable Compose project with empty search indexes:
+
+```bash
+docker compose -p smartdesk-search-test --profile ci --profile search up --wait postgres-ci opensearch
 docker compose -p smartdesk-search-test --profile ci build backend-ci
 docker compose -p smartdesk-search-test --profile ci --profile search run --rm --no-deps \
   -e TEST_OPENSEARCH_URL=http://opensearch:9200/ -w /app/backend backend-ci \
-  ./node_modules/.bin/vitest run test/integration/openSearch.integration.test.ts
+  sh -c 'npm run migrate && ./node_modules/.bin/vitest run --no-file-parallelism test/integration/openSearch.integration.test.ts test/integration/searchIndexOpenSearch.integration.test.ts'
 docker compose -p smartdesk-search-test --profile ci --profile search down -v
 ```
 

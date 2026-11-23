@@ -107,9 +107,10 @@ docker compose --profile search run --rm --build --no-deps -e OPENSEARCH_ENABLED
 ```
 
 The initializer is safe to rerun with the original alias layout. It stops if existing aliases
-conflict. Search defaults to disabled. The ticket and knowledge endpoints currently continue to
-use PostgreSQL. See [OpenSearch indexes and aliases](docs/architecture.md#opensearch-indexes-and-aliases)
-for the mapping and verification commands.
+conflict. To start indexing, set `OPENSEARCH_ENABLED=true` and `OPENSEARCH_URL=http://opensearch:9200/`
+in `.env`, then run `docker compose up -d worker`. The worker consumes the PostgreSQL outbox. The
+ticket and knowledge endpoints currently read from PostgreSQL. See the
+[search worker instructions](docs/architecture.md#search-indexing-worker) for retries and reprocessing.
 
 For production, use a separate secured OpenSearch deployment with verified TLS, private network
 access, and least-privilege service accounts. Inject `OPENSEARCH_USERNAME` and `OPENSEARCH_PASSWORD`

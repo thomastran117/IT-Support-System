@@ -75,7 +75,8 @@ publication requests leave the revision and queue untouched.
 `search_index_jobs` stores entity type, ID, revision, event kind, and queue metadata. The unique
 entity and revision key deduplicates retries. PostgreSQL records intent with search disabled or
 unavailable. Jobs remain queued until an indexer runs. Existing rows and bulk seed fixtures are
-covered by the separate backfill workflow.
+covered by the separate backfill workflow. See [Search indexing worker](architecture.md#search-indexing-worker)
+for job processing and requeueing.
 
 ## Seed and query assets
 
