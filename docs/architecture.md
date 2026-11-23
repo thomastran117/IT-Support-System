@@ -88,14 +88,41 @@ lease expires. To retry a failed job after resolving its cause, pass the job ID:
 docker compose exec worker npm run search:requeue -- <failed-job-id>
 ```
 
-Run the mapping and worker tests against a disposable Compose project with empty search indexes:
+### Search backfill and reindex
+
+Use `npm run search:backfill -- --version 1` for an empty OpenSearch cluster. On an installation
+that already uses v1, use `npm run search:reindex -- --version 2`. Both commands use the same
+rebuild workflow with PostgreSQL migrations applied and the OpenSearch provisioning credentials.
+Supply `--dry-run` to read the active generation, checkpoint phase, and source counts without
+changing PostgreSQL or OpenSearch. Rerun with the same version to resume an interrupted build.
+
+The command creates a replacement ticket and knowledge index with the current mappings and scans
+tickets and published articles in batches of 25 using their IDs as cursors. PostgreSQL stores the
+checkpoint and each replacement index carries its matching build ID. Replaying a batch uses the
+same projections, external versions, and tombstones as the worker.
+
+The replay watermark is the highest outbox sequence visible while holding a PostgreSQL table lock
+that waits for inserts to commit or roll back. The replay includes earlier outbox rows so removals
+survive the rebuild. A large tail is replayed in bounded batches while source writes continue.
+During the final handoff, the command briefly locks source writes, applies the remaining changes,
+refreshes the replacement indexes, and checks live document counts against PostgreSQL. It moves
+all four aliases in a single request and retains the previous generation. [PostgreSQL locks](https://www.postgresql.org/docs/16/sql-lock.html) · [OpenSearch aliases](https://docs.opensearch.org/latest/api-reference/alias/aliases-api/)
+
+If the command exits during `CUTOVER`, rerun the same version before starting a different handoff.
+The worker pauses new claims in that phase, while incoming edits continue to queue in PostgreSQL.
+On resume, the rebuild replays those edits and checks where the aliases point before releasing
+claims. A failed verification before cutover leaves the live aliases and worker active. For a
+rollback, retain the earlier generation and use its mapping for a new verified rebuild so the
+replacement includes current edits.
+
+Run the search integration tests against a disposable Compose project with empty indexes:
 
 ```bash
 docker compose -p smartdesk-search-test --profile ci --profile search up --wait postgres-ci opensearch
 docker compose -p smartdesk-search-test --profile ci build backend-ci
 docker compose -p smartdesk-search-test --profile ci --profile search run --rm --no-deps \
   -e TEST_OPENSEARCH_URL=http://opensearch:9200/ -w /app/backend backend-ci \
-  sh -c 'npm run migrate && ./node_modules/.bin/vitest run --no-file-parallelism test/integration/openSearch.integration.test.ts test/integration/searchIndexOpenSearch.integration.test.ts'
+  sh -c 'npm run migrate && ./node_modules/.bin/vitest run --no-file-parallelism test/integration/openSearch.integration.test.ts test/integration/searchIndexOpenSearch.integration.test.ts test/integration/searchRebuildOpenSearch.integration.test.ts'
 docker compose -p smartdesk-search-test --profile ci --profile search down -v
 ```
 

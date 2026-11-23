@@ -51,12 +51,13 @@ jobs:
           fi
           docker compose --profile search up --wait --wait-timeout 180 opensearch
 
-      - name: OpenSearch mapping, alias, and worker integration tests
+      - name: OpenSearch mapping, worker, and rebuild integration tests
         run: |
           docker compose --profile ci --profile search run --rm --no-deps \
             -e TEST_OPENSEARCH_URL=http://opensearch:9200/ -w /app/backend backend-ci \
             ./node_modules/.bin/vitest run --no-file-parallelism \
             test/integration/openSearch.integration.test.ts test/integration/searchIndexOpenSearch.integration.test.ts \
+            test/integration/searchRebuildOpenSearch.integration.test.ts \
             2>&1 | tee ci-search-tests.log
 
       - name: Collect OpenSearch logs on failure

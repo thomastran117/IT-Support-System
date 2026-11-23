@@ -9,6 +9,7 @@ const EXTENSION_TABLES = [
   'notifications',
   'notification_deliveries',
   'search_index_jobs',
+  'search_rebuilds',
 ];
 
 const CORE_TABLES = [

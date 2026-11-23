@@ -96,21 +96,22 @@ check its logs, available Docker memory and disk, and `vm.max_map_count`. To res
 search volume, remove the search container with `docker compose --profile search rm --stop --force opensearch`.
 List candidate volumes with `docker volume ls --filter label=com.docker.compose.volume=opensearch-data`,
 then use `docker volume rm` with the exact search volume name for this project. PostgreSQL data is
-stored in `pgdata`. OpenSearch holds a derived projection that can be rebuilt from PostgreSQL once
-the backfill tooling is available.
+stored in `pgdata`. OpenSearch holds a derived projection that can be rebuilt from PostgreSQL.
 
-After the node is healthy, initialize the v1 indexes and aliases from the server image:
+After PostgreSQL migrations are applied and OpenSearch is healthy, build the first generation:
 
 ```bash
 docker compose --profile search run --rm --build --no-deps -e OPENSEARCH_ENABLED=true \
-  -e OPENSEARCH_URL=http://opensearch:9200/ backend npm run search:init
+  -e OPENSEARCH_URL=http://opensearch:9200/ backend npm run search:backfill -- --version 1
 ```
 
-The initializer is safe to rerun with the original alias layout. It stops if existing aliases
-conflict. To start indexing, set `OPENSEARCH_ENABLED=true` and `OPENSEARCH_URL=http://opensearch:9200/`
-in `.env`, then run `docker compose up -d worker`. The worker consumes the PostgreSQL outbox. The
-ticket and knowledge endpoints currently read from PostgreSQL. See the
-[search worker instructions](docs/architecture.md#search-indexing-worker) for retries and reprocessing.
+If `search:init` already created v1, backfill into version 2. Use `search:reindex` with a higher
+version for later replacements. Add `--dry-run` after `--version N` to preview. Rerun the same
+version after an interruption to resume. See the [rebuild runbook](docs/architecture.md#search-backfill-and-reindex).
+
+To start indexing, set `OPENSEARCH_ENABLED=true` and `OPENSEARCH_URL=http://opensearch:9200/` in
+`.env`, then run `docker compose up -d worker`. The worker consumes the PostgreSQL outbox. The
+ticket and knowledge endpoints currently read from PostgreSQL.
 
 For production, use a separate secured OpenSearch deployment with verified TLS, private network
 access, and least-privilege service accounts. Inject `OPENSEARCH_USERNAME` and `OPENSEARCH_PASSWORD`

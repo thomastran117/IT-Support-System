@@ -49,7 +49,10 @@ export function bulkFailure(error: unknown): SearchIndexFailure {
 
 export function createSearchBulkClient(
   config: OpenSearchConfig,
-  options?: SearchTransportOptions,
+  {
+    targets,
+    ...options
+  }: SearchTransportOptions & { targets?: Record<SearchCollection, string> } = {},
 ): SearchBulkClient | undefined {
   if (!config.enabled) return undefined;
   const request = createSearchTransport(config, { timeoutMs: 5_000, ...options });
@@ -60,7 +63,7 @@ export function createSearchBulkClient(
       const lines = writes.flatMap(({ collection, id, externalVersion, document }) => [
         JSON.stringify({
           index: {
-            _index: searchIndexes[collection].writeAlias,
+            _index: targets?.[collection] ?? searchIndexes[collection].writeAlias,
             _id: id,
             version: externalVersion,
             version_type: 'external',
@@ -69,7 +72,7 @@ export function createSearchBulkClient(
         JSON.stringify(document),
       ]);
       return request({
-        path: '_bulk?require_alias=true',
+        path: targets ? '_bulk' : '_bulk?require_alias=true',
         method: 'POST',
         body: `${lines.join('\n')}\n`,
         contentType: 'application/x-ndjson',

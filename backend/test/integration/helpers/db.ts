@@ -33,7 +33,7 @@ export function createTestPrisma(): PrismaClient {
 /** Remove all rows. TRUNCATE is not a row operation, so the audit trigger does not block it. */
 export function resetDatabase(prisma: PrismaClient): Promise<number> {
   return prisma.$executeRawUnsafe(
-    `TRUNCATE ${[...CORE_TABLES, 'search_index_jobs'].map((t) => `"${t}"`).join(', ')} RESTART IDENTITY CASCADE`,
+    `TRUNCATE ${[...CORE_TABLES, 'search_index_jobs', 'search_rebuilds'].map((t) => `"${t}"`).join(', ')} RESTART IDENTITY CASCADE`,
   );
 }
 

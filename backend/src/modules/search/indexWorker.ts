@@ -5,7 +5,6 @@ import {
   completeSearchIndexJob,
   failSearchIndexJob,
   type ClaimedSearchIndexJob,
-  type SearchIndexEntityType,
 } from '../../db/repositories/searchIndexJobs.js';
 import {
   bulkFailure,
@@ -13,13 +12,7 @@ import {
   type SearchIndexResult,
   type SearchIndexWrite,
 } from './bulk.js';
-import {
-  knowledgeSearchSelect,
-  projectKnowledge,
-  projectRemoval,
-  projectTicket,
-  ticketSearchSelect,
-} from './projection.js';
+import { loadSearchChanges } from './loadSearchChanges.js';
 import { SearchError } from './transport.js';
 
 const BATCH_SIZE = 25;
@@ -42,25 +35,6 @@ interface SearchWorkerOptions {
   log?: (entry: SearchWorkerLog) => void;
   now?: () => Date;
   random?: () => number;
-}
-
-function entityIds(jobs: ClaimedSearchIndexJob[], type: SearchIndexEntityType): string[] {
-  return [...new Set(jobs.filter((job) => job.entityType === type).map((job) => job.entityId))];
-}
-
-/** Keep removals at least as new as any durable revision, even if the source row is gone. */
-async function missingRevisions(
-  prisma: PrismaClient,
-  entityType: SearchIndexEntityType,
-  ids: string[],
-) {
-  if (ids.length === 0) return new Map<string, number>();
-  const revisions = await prisma.searchIndexJob.groupBy({
-    by: ['entityId'],
-    where: { entityType, entityId: { in: ids } },
-    _max: { revision: true },
-  });
-  return new Map(revisions.map((row) => [row.entityId, row._max.revision ?? 0]));
 }
 
 export function createSearchIndexWorker({
@@ -118,67 +92,7 @@ export function createSearchIndexWorker({
     });
     if (jobs.length === 0) return false;
 
-    const ticketIds = entityIds(jobs, 'TICKET');
-    const articleIds = entityIds(jobs, 'KNOWLEDGE_ARTICLE');
-    const [ticketRows, articleRows] = await Promise.all([
-      ticketIds.length
-        ? prisma.ticket.findMany({ where: { id: { in: ticketIds } }, select: ticketSearchSelect })
-        : [],
-      articleIds.length
-        ? prisma.knowledgeArticle.findMany({
-            where: { id: { in: articleIds } },
-            select: knowledgeSearchSelect,
-          })
-        : [],
-    ]);
-    const tickets = new Map(ticketRows.map((row) => [row.id, row]));
-    const articles = new Map(articleRows.map((row) => [row.id, row]));
-    const [removedTickets, removedArticles] = await Promise.all([
-      missingRevisions(
-        prisma,
-        'TICKET',
-        ticketIds.filter((id) => !tickets.has(id)),
-      ),
-      missingRevisions(
-        prisma,
-        'KNOWLEDGE_ARTICLE',
-        articleIds.filter((id) => !articles.has(id)),
-      ),
-    ]);
-
-    // A batch may contain several jobs for the same entity. Write its current projection once.
-    const pending = new Map<string, { write: SearchIndexWrite; jobs: ClaimedSearchIndexJob[] }>();
-    const mismatches: ClaimedSearchIndexJob[] = [];
-    for (const job of jobs) {
-      const ticket = job.entityType === 'TICKET' ? tickets.get(job.entityId) : undefined;
-      const article =
-        job.entityType === 'KNOWLEDGE_ARTICLE' ? articles.get(job.entityId) : undefined;
-      const revision = ticket?.version ?? article?.searchRevision;
-      if (revision !== undefined && revision < job.revision) {
-        mismatches.push(job);
-        continue;
-      }
-
-      const key = `${job.entityType}:${job.entityId}`;
-      const existing = pending.get(key);
-      if (existing) {
-        existing.jobs.push(job);
-        continue;
-      }
-      const removed = job.entityType === 'TICKET' ? removedTickets : removedArticles;
-      const write = ticket
-        ? projectTicket(ticket)
-        : article
-          ? projectKnowledge(article)
-          : projectRemoval(
-              job.entityType,
-              job.entityId,
-              Math.max(job.revision, removed.get(job.entityId) ?? 0),
-            );
-      pending.set(key, { write, jobs: [job] });
-    }
-
-    const batch = [...pending.values()];
+    const { batch, mismatches } = await loadSearchChanges(prisma, jobs);
     const results = await deliver(batch.map(({ write }) => write));
     const settlements = await Promise.allSettled([
       ...mismatches.map((job) =>

@@ -82,3 +82,18 @@ export const searchIndexes = {
 
 export type SearchCollection = keyof typeof searchIndexes;
 export type SearchIndex = (typeof searchIndexes)[SearchCollection];
+
+export const searchCollections = [
+  'tickets',
+  'knowledge',
+] as const satisfies readonly SearchCollection[];
+
+export const searchGeneration = (version: number) => ({
+  tickets: `smartdesk-tickets-v${version}`,
+  knowledge: `smartdesk-knowledge-v${version}`,
+});
+
+export const liveSearchFilters = {
+  tickets: { exists: { field: 'status' } },
+  knowledge: searchIndexes.knowledge.readFilter,
+} as const;

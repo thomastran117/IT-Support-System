@@ -328,6 +328,7 @@ _Search._ PostgreSQL outbox for ticket and published knowledge search (SD-076). 
 | `created_at` | `timestamp(6) with time zone` | NOT NULL | `CURRENT_TIMESTAMP` |  |  |  | When the source change queued the job. |
 | `updated_at` | `timestamp(6) with time zone` | NOT NULL | `CURRENT_TIMESTAMP` |  |  |  | When the job state last changed. |
 | `completed_at` | `timestamp(6) with time zone` | NULL |  |  |  |  | When the job reached COMPLETED or FAILED. |
+| `sequence` | `bigint` | NOT NULL | `nextval('search_index_jobs_sequence_seq'::regclass)` |  | yes | `uq_search_index_jobs_sequence` | Ordered replay key. A table lock seals a committed prefix for a rebuild. |
 
 **CHECK constraints**
 
@@ -338,3 +339,25 @@ _Search._ PostgreSQL outbox for ticket and published knowledge search (SD-076). 
 - `ck_search_index_jobs_revision`: `(revision > 0)`
 - `ck_search_index_jobs_state`: `((state)::text = ANY ((ARRAY['QUEUED'::character varying, 'RUNNING'::character varying, 'COMPLETED'::character varying, 'FAILED'::character varying])::text[]))`
 - `ck_search_index_jobs_terminal`: `(((state)::text = ANY ((ARRAY['COMPLETED'::character varying, 'FAILED'::character varying])::text[])) = (completed_at IS NOT NULL))`
+
+## `search_rebuilds`
+
+_Search._ Resumable backfill and reindex checkpoints for replacement OpenSearch generations (SD-078).
+
+| Column | Type | Null | Default | Key | Unique | Indexes | Meaning |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `version` | `integer` | NOT NULL |  | PK |  |  | Destination generation and primary key. |
+| `build_id` | `uuid` | NOT NULL | `gen_random_uuid()` |  |  |  | Ownership marker stored on both destination indexes. |
+| `source_version` | `integer` | NULL |  |  |  |  | Previous live generation, if any. |
+| `phase` | `character varying(10)` | NOT NULL | `'PREPARE'::character varying` |  |  |  | Durable progress step. CUTOVER pauses worker claims. |
+| `scan_cursor` | `uuid` | NULL |  |  |  |  | Last source ID in the active keyset scan. |
+| `replayed_through` | `bigint` | NOT NULL | `0` |  |  |  | Highest sealed sequence fully applied to the destination. |
+| `replay_until` | `bigint` | NOT NULL | `0` |  |  |  | Upper sequence of the currently sealed replay window. |
+| `verified_tickets` | `integer` | NULL |  |  |  |  | Live ticket count verified before handoff. |
+| `verified_articles` | `integer` | NULL |  |  |  |  | Published article count verified before handoff. |
+
+**CHECK constraints**
+
+- `ck_search_rebuilds_phase`: `((phase)::text = ANY ((ARRAY['PREPARE'::character varying, 'TICKETS'::character varying, 'KNOWLEDGE'::character varying, 'REPLAY'::character varying, 'CUTOVER'::character varying, 'COMPLETED'::character varying])::text[]))`
+- `ck_search_rebuilds_version`: `((version > 0) AND ((source_version IS NULL) OR ((source_version > 0) AND (source_version < version))))`
+- `ck_search_rebuilds_watermark`: `((replayed_through >= 0) AND (replay_until >= replayed_through))`
