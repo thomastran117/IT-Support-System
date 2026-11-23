@@ -86,6 +86,11 @@ when another authorized match was found. Stale or denied candidates can exhaust 
 and index refreshes can change ranking between requests. The search client requests only the
 candidate ID, sort values, and indexed revision. [OpenSearch search API](https://docs.opensearch.org/latest/api-reference/search-apis/search/) · [OpenSearch pagination](https://docs.opensearch.org/latest/search-plugins/searching-data/paginate/)
 
+The authenticated ticket search route uses a rate limit keyed by account. Its text path encrypts
+the continuation with a key derived from the server secret, the caller's scope, and the normalized
+query. Exact tracking ID lookups go directly to PostgreSQL and apply the same read policy and
+structured filters. See [ticket search API](api.md#ticket-search).
+
 ### Search indexing worker
 
 With `OPENSEARCH_ENABLED=true`, the backend worker claims up to 25 outbox jobs at a time with
@@ -143,7 +148,7 @@ docker compose -p smartdesk-search-test --profile ci --profile search up --wait 
 docker compose -p smartdesk-search-test --profile ci build backend-ci
 docker compose -p smartdesk-search-test --profile ci --profile search run --rm --no-deps \
   -e TEST_OPENSEARCH_URL=http://opensearch:9200/ -w /app/backend backend-ci \
-  sh -c 'npm run migrate && ./node_modules/.bin/vitest run --no-file-parallelism test/integration/openSearch.integration.test.ts test/integration/searchIndexOpenSearch.integration.test.ts test/integration/searchRebuildOpenSearch.integration.test.ts test/integration/ticketSearch.integration.test.ts'
+  sh -c 'npm run migrate && ./node_modules/.bin/vitest run --no-file-parallelism test/integration/openSearch.integration.test.ts test/integration/searchIndexOpenSearch.integration.test.ts test/integration/searchRebuildOpenSearch.integration.test.ts test/integration/ticketSearch.integration.test.ts test/integration/ticketSearchApi.integration.test.ts'
 docker compose -p smartdesk-search-test --profile ci --profile search down -v
 ```
 

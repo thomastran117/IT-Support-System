@@ -214,8 +214,10 @@ export const TICKET_DESCRIPTION_MAX = 5000;
 /** Header a client may send so that a retried submission returns the original ticket. */
 export const IDEMPOTENCY_KEY_HEADER = 'idempotency-key';
 
-export type TicketStatus = 'OPEN' | 'TRIAGED' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
-export type TicketPriority = 'UNSET' | 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+export const TICKET_STATUSES = ['OPEN', 'TRIAGED', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'] as const;
+const TICKET_PRIORITIES = ['UNSET', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as const;
+export type TicketStatus = (typeof TICKET_STATUSES)[number];
+export type TicketPriority = (typeof TICKET_PRIORITIES)[number];
 
 /** Body of POST /api/tickets. Nothing else is accepted; the requester comes from the session. */
 export interface CreateTicketRequest {
@@ -278,6 +280,87 @@ export interface TicketSummaryDto {
 
 /** `GET /api/tickets`. Newest first; `total` counts everything the caller may see with the filters. */
 export type TicketPage = Paginated<TicketSummaryDto>;
+
+export const TICKET_SEARCH_QUERY_MAX = 160;
+const ticketSearchCursor = z
+  .string()
+  .min(1)
+  .max(1024)
+  .regex(/^[A-Za-z0-9_.-]+$/);
+const ticketSearchStatus = z.enum(TICKET_STATUSES);
+const ticketSearchPriority = z.enum(TICKET_PRIORITIES);
+const ticketSearchId = z.uuid().toLowerCase();
+const searchDate = z.iso.datetime({ offset: true }).transform((value) => new Date(value));
+
+/** Strict query string for `GET /api/tickets/search`. Legacy ticket listing has its own paging. */
+export const ticketSearchQuerySchema = z
+  .strictObject({
+    q: z
+      .string()
+      .trim()
+      .min(1)
+      .max(TICKET_SEARCH_QUERY_MAX)
+      .regex(/[\p{L}\p{N}]/u, 'Enter a letter or number'),
+    status: ticketSearchStatus.optional(),
+    priority: ticketSearchPriority.optional(),
+    categoryId: ticketSearchId.optional(),
+    teamId: ticketSearchId.optional(),
+    assigneeId: ticketSearchId.optional(),
+    createdFrom: searchDate.optional(),
+    createdTo: searchDate.optional(),
+    sort: z.literal('relevance').default('relevance'),
+    limit: z
+      .string()
+      .regex(/^\d{1,3}$/)
+      .transform(Number)
+      .pipe(z.int().min(1).max(TICKET_PAGE_SIZE_MAX))
+      .default(TICKET_PAGE_SIZE_DEFAULT),
+    cursor: ticketSearchCursor.optional(),
+  })
+  .refine(({ createdFrom, createdTo }) => !createdFrom || !createdTo || createdFrom < createdTo, {
+    path: ['createdFrom'],
+    message: 'createdFrom must be before createdTo',
+  });
+export type TicketSearchQuery = z.input<typeof ticketSearchQuerySchema>;
+
+const searchRef = z.strictObject({ id: z.guid(), name: z.string() });
+const searchTicketSummary = z.strictObject({
+  id: z.guid(),
+  trackingId: z.guid(),
+  title: z.string(),
+  status: ticketSearchStatus,
+  priority: ticketSearchPriority,
+  category: searchRef.nullable(),
+  team: searchRef.nullable(),
+  assignee: searchRef.nullable(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+  resolvedAt: z.iso.datetime().nullable(),
+  firstResponseAt: z.iso.datetime().nullable(),
+  version: z.int().positive(),
+}) satisfies z.ZodType<TicketSummaryDto>;
+
+export const ticketSearchResponseSchema = z.discriminatedUnion('mode', [
+  z.strictObject({
+    mode: z.literal('text'),
+    consistency: z.literal('eventual'),
+    items: z.array(searchTicketSummary).max(TICKET_PAGE_SIZE_MAX),
+    nextCursor: ticketSearchCursor.nullable(),
+  }),
+  z.strictObject({
+    mode: z.literal('exact'),
+    consistency: z.literal('current'),
+    items: z.array(searchTicketSummary).max(1),
+    nextCursor: z.null(),
+  }),
+]);
+export type TicketSearchResponse = z.infer<typeof ticketSearchResponseSchema>;
+
+export const ticketSearchUnavailableSchema = z.strictObject({
+  code: z.enum(['TICKET_SEARCH_DISABLED', 'TICKET_SEARCH_UNAVAILABLE']),
+  fallback: z.literal('/api/tickets'),
+});
+export type TicketSearchUnavailable = z.infer<typeof ticketSearchUnavailableSchema>;
 
 export interface TicketCommentDto {
   id: string;
@@ -408,8 +491,6 @@ export interface TransitionRequest {
   /** Required for RESOLVED. Optional for CLOSED (the existing summary is kept). */
   resolutionSummary?: string;
 }
-
-export const TICKET_STATUSES = ['OPEN', 'TRIAGED', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'] as const;
 
 /** Strict, and `expectedVersion` is mandatory: a transition is always made against a known view. */
 export const transitionSchema = z.strictObject({

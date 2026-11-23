@@ -26,6 +26,8 @@ import {
 import { notificationRoutes } from './modules/notifications/routes.js';
 import { labelListRoutes, ticketLabelRoutes } from './modules/evaluation/routes.js';
 import { reportRoutes } from './modules/reports/routes.js';
+import { createSearchClient, type SearchClient } from './modules/search/client.js';
+import { ticketSearchRoutes } from './modules/search/ticketSearchRoutes.js';
 import { technicianRoutes } from './modules/technician/routes.js';
 import { ticketRoutes } from './modules/tickets/routes.js';
 
@@ -42,6 +44,9 @@ export interface AppOptions {
   authRateLimit?: { login: number; refresh: number; windowMs: number };
   /** Per-account request budget for triggering AI analysis (tests lower this). */
   aiAnalysisRateLimit?: { max: number; windowMs: number };
+  /** Optional OpenSearch transport and per-account search budget overrides. */
+  searchClient?: SearchClient;
+  ticketSearchRateLimit?: { max: number; windowMs: number };
   /** A @fastify/rate-limit store shared across backend instances (e.g. one backed by Redis).
    * Omitted entirely -- not just unconfigured -- when Redis is disabled, so the plugin falls
    * back to its own in-memory default exactly as it did before this option existed. */
@@ -132,6 +137,15 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
       prefix: `${API_PREFIX}/notifications`,
     });
     await app.register(technicianRoutes(opts.prisma), { prefix: `${API_PREFIX}/technician` });
+    await app.register(
+      ticketSearchRoutes({
+        prisma: opts.prisma,
+        client: opts.searchClient ?? createSearchClient(opts.env.openSearch),
+        jwtSecret: opts.env.jwtSecret,
+        rateLimit: opts.ticketSearchRateLimit ?? { max: 30, windowMs: 60_000 },
+      }),
+      { prefix: `${API_PREFIX}/tickets` },
+    );
     await app.register(
       ticketRoutes(
         opts.prisma,

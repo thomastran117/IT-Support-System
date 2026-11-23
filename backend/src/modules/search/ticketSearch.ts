@@ -3,6 +3,7 @@ import {
   type TicketPriority,
   type TicketStatus,
   type TicketSummaryDto,
+  type TicketSearchUnavailable,
 } from '@smartdesk/contracts';
 import type { Prisma, PrismaClient } from '@smartdesk/db';
 import { loadActivePrincipal, type Principal } from '../../auth/guard.js';
@@ -85,7 +86,49 @@ function ticketSearchFilters(filters: TicketSearchFilters) {
       range: { createdAt: { gte: createdFrom?.toISOString(), lt: createdBefore?.toISOString() } },
     });
   }
-  return { where, index };
+  return { where, index, teamId, assigneeId: terms.assigneeId };
+}
+
+function requireAllowedFilters(
+  principal: Principal,
+  { teamId, assigneeId }: ReturnType<typeof ticketSearchFilters>,
+) {
+  if (principal.role === 'ADMIN') return;
+  const allowed =
+    principal.role === 'TECHNICIAN' &&
+    (!teamId || principal.teamIds.includes(teamId)) &&
+    (!assigneeId || principal.id === assigneeId);
+  if ((teamId || assigneeId) && !allowed)
+    throw new HttpError(403, 'Ticket search filter is outside your scope');
+}
+
+async function hydrateTickets(
+  prisma: PrismaClient,
+  principal: Principal,
+  ids: string[],
+  filters: ReturnType<typeof ticketSearchFilters>,
+  tokenVersion?: number,
+) {
+  // Check account, membership, filters, and tickets in one PostgreSQL snapshot.
+  return prisma.$transaction(
+    async (tx) => {
+      const current = await loadActivePrincipal(tx, principal.id);
+      if (
+        !current ||
+        current.principal.role !== principal.role ||
+        (tokenVersion !== undefined && current.tokenVersion !== tokenVersion)
+      ) {
+        throw new HttpError(401, 'Authentication required');
+      }
+      requireAllowedFilters(current.principal, filters);
+      return ids.length === 0
+        ? []
+        : findTicketSummaries(tx, {
+            AND: [ticketReadFilter(current.principal), { id: { in: ids } }, filters.where],
+          });
+    },
+    { isolationLevel: 'RepeatableRead' },
+  );
 }
 
 function readPosition(sort: readonly unknown[] | undefined): TicketSearchCursor | null {
@@ -154,8 +197,16 @@ function rankSummaries(
 }
 
 /** Read tickets for an authenticated principal. OpenSearch supplies a bounded window of candidates. */
-export function createTicketSearchService(prisma: PrismaClient, client: SearchClient) {
+export function createTicketSearchService(prisma: PrismaClient, client?: SearchClient) {
   return {
+    async lookup(
+      principal: Principal,
+      id: string,
+      filters: TicketSearchFilters,
+    ): Promise<TicketSummaryDto[]> {
+      if (!isTicketId(id)) throw new HttpError(400, 'Invalid ticket tracking ID');
+      return hydrateTickets(prisma, principal, [id.toLowerCase()], ticketSearchFilters(filters));
+    },
     async search(principal: Principal, input: TicketSearchInput): Promise<TicketSearchPage> {
       if (
         !Number.isInteger(input.limit) ||
@@ -170,12 +221,26 @@ export function createTicketSearchService(prisma: PrismaClient, client: SearchCl
         throw new HttpError(401, 'Authentication required');
 
       const filters = ticketSearchFilters(input.filters ?? {});
+      requireAllowedFilters(initial.principal, filters);
+      if (!client) {
+        throw new HttpError(503, 'Ticket text search is disabled', {
+          code: 'TICKET_SEARCH_DISABLED',
+          fallback: '/api/tickets',
+        } satisfies TicketSearchUnavailable);
+      }
       const text = input.text?.trim();
       const query = {
         bool: {
           must: [
             text
-              ? { multi_match: { query: text, fields: ['title^2', 'description'] } }
+              ? {
+                  multi_match: {
+                    query: text,
+                    fields: ['title^3', 'description'],
+                    fuzziness: 'AUTO',
+                    max_expansions: 10,
+                  },
+                }
               : { match_all: {} },
           ],
           filter: [...indexScope(initial.principal), ...filters.index],
@@ -183,24 +248,12 @@ export function createTicketSearchService(prisma: PrismaClient, client: SearchCl
       };
       const candidates = await collectCandidates(client, query, input);
       const ids = [...new Set(candidates.map(({ position }) => position[1].toLowerCase()))];
-      // After all search I/O, check account, membership, and tickets in one PostgreSQL snapshot.
-      const summaries = await prisma.$transaction(
-        async (tx) => {
-          const current = await loadActivePrincipal(tx, principal.id);
-          if (
-            !current ||
-            current.principal.role !== initial.principal.role ||
-            current.tokenVersion !== initial.tokenVersion
-          ) {
-            throw new HttpError(401, 'Authentication required');
-          }
-          return ids.length === 0
-            ? []
-            : findTicketSummaries(tx, {
-                AND: [ticketReadFilter(current.principal), { id: { in: ids } }, filters.where],
-              });
-        },
-        { isolationLevel: 'RepeatableRead' },
+      const summaries = await hydrateTickets(
+        prisma,
+        initial.principal,
+        ids,
+        filters,
+        initial.tokenVersion,
       );
       return rankSummaries(candidates, summaries, input.limit);
     },
