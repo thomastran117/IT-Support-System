@@ -1,20 +1,24 @@
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { ARTICLES, CATEGORIES, TEAMS, TICKETS, USERS } from '../../src/db/seed/fixtures.js';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ARTICLES, CATEGORIES, TEAMS, TICKETS, USERS, uuid } from '../../src/db/seed/fixtures.js';
 import { seedDatabase } from '../../src/db/seed/run.js';
-import { createAnalysisService } from '../../src/modules/ai/analysisService.js';
+import { createAnalysisService, RETRIEVAL_LIMIT } from '../../src/modules/ai/analysisService.js';
 import { ProviderError, type AnalysisRequest } from '../../src/modules/ai/provider.js';
 import { createFakeProvider } from '../../src/modules/ai/providers/fake.js';
+import { createKnowledgeService } from '../../src/modules/knowledge/service.js';
+import { createSearchClient, type SearchClient } from '../../src/modules/search/client.js';
 import { createTestPrisma, resetDatabase, testDatabaseUrl } from './helpers/db.js';
 
 const UNKNOWN = '00000001-0000-4000-8000-0000000000ee';
+const hit = (id: string, score: number) => ({ id, sort: [score, id], revision: 1 });
 
 describe.skipIf(!testDatabaseUrl)('AI analysis orchestration (integration)', () => {
   const prisma = createTestPrisma();
   const sent: AnalysisRequest[] = [];
 
-  const serviceWith = (script?: (r: AnalysisRequest) => unknown) =>
+  const serviceWith = (script?: (r: AnalysisRequest) => unknown, searchClient?: SearchClient) =>
     createAnalysisService({
       prisma,
+      searchClient,
       provider: createFakeProvider((r) => {
         sent.push(r);
         return script ? script(r) : defaultScript(r);
@@ -46,6 +50,7 @@ describe.skipIf(!testDatabaseUrl)('AI analysis orchestration (integration)', () 
     expect(draft.retrievedArticleIds).toContain(ARTICLES.printer);
     expect(draft.retrievedArticleIds).not.toContain(ARTICLES.draft);
     expect(draft.citedArticleIds).toEqual(draft.retrievedArticleIds);
+    expect(draft.retrieval).toEqual({ engine: 'postgres', version: 1 });
     expect(draft.categoryId).toBe(CATEGORIES.hardware);
 
     const req = sent[0]!;
@@ -83,6 +88,140 @@ describe.skipIf(!testDatabaseUrl)('AI analysis orchestration (integration)', () 
     expect(wire).not.toContain('Hunter2Hunter2');
     expect(wire).not.toContain('abcdef1234567890xyz');
     expect(wire).toContain('REDACTED');
+  });
+
+  it('uses ranked published matches and sends a bounded set of redacted PostgreSQL article bodies', async () => {
+    await prisma.ticket.update({
+      where: { id: TICKETS.printer },
+      data: {
+        title: 'Printer VPN jam',
+        description: 'Password: privatesample and email owner@corp.example',
+      },
+    });
+    await prisma.ticket.update({
+      where: { id: TICKETS.license },
+      data: { description: 'Printer jam UNRELATED_PRIVATE_TICKET' },
+    });
+    await prisma.knowledgeArticle.update({
+      where: { id: ARTICLES.printer },
+      data: {
+        body: 'Published instructions. Contact support@corp.example.\n' + 'Step. '.repeat(400),
+      },
+    });
+    const extra = Array.from({ length: 5 }, (_, index) => uuid('article', 70 + index));
+    await prisma.knowledgeArticle.createMany({
+      data: extra.map((id) => ({
+        id,
+        title: 'Printer fixture',
+        body: 'Safe published instructions',
+        isPublished: true,
+      })),
+    });
+    const expected = [ARTICLES.vpn, ARTICLES.printer, ...extra.slice(0, 3)];
+    const forged = {
+      ...hit(ARTICLES.printer, 19),
+      _source: { body: 'PRIVATE_INDEX_BODY' },
+      highlight: ['PRIVATE_INDEX_HIGHLIGHT'],
+    };
+    const engine = vi
+      .fn<SearchClient['search']>()
+      .mockResolvedValue([
+        hit(ARTICLES.draft, 30),
+        hit(TICKETS.license, 29),
+        hit(ARTICLES.vpn, 20),
+        forged,
+        ...extra.map((id, index) => hit(id, 18 - index)),
+      ]);
+    const draft = await serviceWith(
+      (r) => ({
+        ...defaultScript(r),
+        citedArticleIds: r.articles.map(({ id }) => id).reverse(),
+      }),
+      { search: engine },
+    ).analyse(TICKETS.printer);
+    expect(draft).toMatchObject({
+      retrievedArticleIds: expected,
+      citedArticleIds: expected,
+      retrieval: { engine: 'opensearch', version: 1 },
+    });
+    expect(sent[0]?.articles).toHaveLength(RETRIEVAL_LIMIT);
+    expect(sent[0]?.articles.map(({ id }) => id)).toEqual(expected);
+    expect(sent[0]?.articles[1]?.body).toMatch(
+      /^Published instructions\. Contact \[REDACTED_EMAIL\]/,
+    );
+    expect(sent[0]?.articles[1]!.body.length).toBeLessThanOrEqual(1501);
+    expect(engine).toHaveBeenCalledTimes(1);
+    expect(engine).toHaveBeenCalledWith(
+      'knowledge',
+      expect.objectContaining({
+        includeRevision: true,
+        signal: expect.any(AbortSignal),
+        query: expect.objectContaining({
+          bool: expect.objectContaining({
+            must: [
+              expect.objectContaining({
+                multi_match: expect.objectContaining({
+                  query: expect.stringContaining('printer vpn jam'),
+                }),
+              }),
+            ],
+          }),
+        }),
+      }),
+    );
+    const sentText = JSON.stringify([sent[0], engine.mock.calls[0]?.[1].query]);
+    for (const secret of [
+      'privatesample',
+      'owner@corp.example',
+      'support@corp.example',
+      'UNRELATED_PRIVATE_TICKET',
+      'PRIVATE_INDEX_BODY',
+      'PRIVATE_INDEX_HIGHLIGHT',
+      ARTICLES.draft,
+      TICKETS.license,
+    ]) {
+      expect(sentText).not.toContain(secret);
+    }
+  });
+
+  it('drops unpublishes and edits during OpenSearch lookup and rejects a citation to a rejected article', async () => {
+    const knowledge = createKnowledgeService(prisma);
+    const engine = vi.fn<SearchClient['search']>().mockImplementationOnce(async () => {
+      await knowledge.setPublished(ARTICLES.printer, false);
+      await knowledge.update(ARTICLES.software, { body: 'Updated content with a new revision' });
+      return [hit(ARTICLES.printer, 4), hit(ARTICLES.software, 3), hit(ARTICLES.vpn, 2)];
+    });
+    const draft = await serviceWith(undefined, { search: engine }).analyse(TICKETS.printer);
+    expect(draft.retrievedArticleIds).toEqual([ARTICLES.vpn]);
+    expect(sent[0]?.articles.map(({ id }) => id)).toEqual([ARTICLES.vpn]);
+
+    engine.mockResolvedValueOnce([hit(ARTICLES.printer, 3), hit(ARTICLES.vpn, 2)]);
+    await expect(
+      serviceWith((r) => ({ ...defaultScript(r), citedArticleIds: [ARTICLES.printer] }), {
+        search: engine,
+      }).analyse(TICKETS.printer),
+    ).rejects.toMatchObject({ kind: 'invalid_reference' });
+  });
+
+  it('uses PostgreSQL retrieval after an OpenSearch timeout', async () => {
+    const expected = await serviceWith().analyse(TICKETS.printer);
+    const fetch = vi.fn<typeof globalThis.fetch>(
+      (_url, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () =>
+            reject(new Error('search attempt aborted')),
+          );
+        }),
+    );
+    const searchClient = createSearchClient(
+      { enabled: true, url: 'http://search.invalid/' },
+      { fetch, timeoutMs: 15 },
+    );
+    expect(await serviceWith(undefined, searchClient).analyse(TICKETS.printer)).toEqual(expected);
+    expect(expected.retrievedArticleIds).toContain(ARTICLES.printer);
+    expect(expected.retrieval).toEqual({ engine: 'postgres', version: 1 });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(sent[1]?.articles).toEqual(sent[0]?.articles);
   });
 
   it('still analyses with an empty retrieval and cites nothing', async () => {

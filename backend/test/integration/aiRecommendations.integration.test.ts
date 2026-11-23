@@ -21,6 +21,7 @@ const draftOf = (over: Partial<AnalysisDraft> = {}): AnalysisDraft => ({
   citedArticleIds: [ARTICLES.printer, ARTICLES.software, ARTICLES.vpn],
   modelVersion: 'fake:test',
   retrievedArticleIds: [ARTICLES.printer, ARTICLES.software, ARTICLES.vpn],
+  retrieval: { engine: 'postgres', version: 1 },
   ...over,
 });
 

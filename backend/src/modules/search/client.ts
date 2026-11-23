@@ -24,6 +24,7 @@ export interface SearchRequest {
   sort?: readonly Record<string, 'asc' | 'desc'>[];
   searchAfter?: readonly z.infer<typeof sortValue>[];
   includeRevision?: boolean;
+  signal?: AbortSignal;
 }
 
 export interface SearchCandidate {
@@ -45,7 +46,7 @@ export function createSearchClient(
   const request = createSearchTransport(config, options);
 
   return {
-    async search(collection, { query, size, sort, searchAfter, includeRevision }) {
+    async search(collection, { query, size, sort, searchAfter, includeRevision, signal }) {
       if (!Number.isInteger(size) || size < 1 || size > 100) {
         throw new RangeError('OpenSearch candidate page size must be between 1 and 100');
       }
@@ -53,6 +54,7 @@ export function createSearchClient(
         path: `${searchIndexes[collection].readAlias}/_search?allow_partial_search_results=false`,
         method: 'POST',
         retry: true,
+        signal,
         body: {
           // Live ticket projections have status. A removal keeps only its identity and revision.
           query:

@@ -29,6 +29,7 @@ interface Operation<T> {
   body?: object | string;
   contentType?: 'application/x-ndjson';
   retry: boolean;
+  signal?: AbortSignal;
   decode: (body: unknown) => T;
 }
 
@@ -56,8 +57,17 @@ export function createSearchTransport(
 
   let circuit: Circuit = { state: 'closed', failures: 0 };
 
-  async function attempt<T>({ path, method, body, contentType, decode }: Operation<T>): Promise<T> {
-    const signal = AbortSignal.timeout(timeoutMs);
+  async function attempt<T>({
+    path,
+    method,
+    body,
+    contentType,
+    decode,
+    signal: deadline,
+  }: Operation<T>): Promise<T> {
+    const timeout = AbortSignal.timeout(timeoutMs);
+    const signal = deadline ? AbortSignal.any([deadline, timeout]) : timeout;
+    if (signal.aborted) throw new SearchError('timeout');
     const target = new URL(path, endpoint);
     const payload = typeof body === 'string' ? body : JSON.stringify(body);
     const requestHeaders = contentType ? new Headers(headers) : headers;
@@ -88,6 +98,7 @@ export function createSearchTransport(
     } catch {
       throw new SearchError(signal.aborted ? 'timeout' : 'invalid_response');
     }
+    if (signal.aborted) throw new SearchError('timeout');
     return decode(result);
   }
 
@@ -111,6 +122,7 @@ export function createSearchTransport(
           circuit === started &&
           started.state === 'closed' &&
           operation.retry &&
+          !operation.signal?.aborted &&
           error instanceof SearchError &&
           error.retryable
         ) {

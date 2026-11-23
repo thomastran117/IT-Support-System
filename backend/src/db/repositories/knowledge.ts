@@ -57,6 +57,7 @@ interface SearchArticle {
 }
 
 interface SearchRow extends SearchArticle {
+  revision: number;
   rank: number;
   total: bigint;
 }
@@ -71,6 +72,7 @@ export interface PublishedSearchOptions {
 export interface PublishedSearchResult {
   hits: SearchHit[];
   total: number;
+  revisions: ReadonlyMap<string, number>;
 }
 
 function toSearchArticle(row: SearchArticle): Omit<SearchHit, 'rank'> {
@@ -115,7 +117,7 @@ export async function searchPublished(
   opts: PublishedSearchOptions,
 ): Promise<PublishedSearchResult> {
   const q = normalizeKnowledgeQuery(opts.query);
-  if (!q) return { hits: [], total: 0 };
+  if (!q) return { hits: [], total: 0, revisions: new Map() };
   const category = opts.categoryId ?? null;
 
   const rows = await db.$queryRaw<SearchRow[]>`
@@ -124,6 +126,7 @@ export async function searchPublished(
            a.title,
            a.category_id,
            c.name AS category_name,
+           a.search_revision AS revision,
            ${searchPreview} AS preview,
            ts_rank_cd(
              setweight(to_tsvector('english'::regconfig, a.title), 'A') ||
@@ -155,5 +158,6 @@ export async function searchPublished(
   return {
     total,
     hits: rows.map((row) => ({ ...toSearchArticle(row), rank: row.rank })),
+    revisions: new Map(rows.map((row) => [row.id, row.revision])),
   };
 }

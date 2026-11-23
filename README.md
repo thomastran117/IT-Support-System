@@ -110,8 +110,9 @@ version for later replacements. Add `--dry-run` after `--version N` to preview. 
 version after an interruption to resume. See the [rebuild runbook](docs/architecture.md#search-backfill-and-reindex).
 
 To start indexing, set `OPENSEARCH_ENABLED=true` and `OPENSEARCH_URL=http://opensearch:9200/` in
-`.env`, then run `docker compose up -d worker`. The worker consumes the PostgreSQL outbox. The
-ticket and knowledge endpoints currently read from PostgreSQL.
+`.env`, then run `docker compose up -d worker`. The worker consumes the PostgreSQL outbox and uses
+the knowledge read alias when AI analysis is enabled. The API uses OpenSearch for ticket and
+knowledge text search with PostgreSQL verification.
 
 For production, use a separate secured OpenSearch deployment with verified TLS, private network
 access, and least-privilege service accounts. Inject `OPENSEARCH_USERNAME` and `OPENSEARCH_PASSWORD`

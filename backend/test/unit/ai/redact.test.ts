@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildRetrievalQuery } from '../../../src/modules/ai/analysisService.js';
+import { buildRetrievalTerms } from '../../../src/modules/ai/analysisService.js';
 import { buildUserMessage } from '../../../src/modules/ai/prompt.js';
 import { redactText } from '../../../src/modules/ai/redact.js';
 
@@ -36,22 +36,21 @@ describe('redactText', () => {
   });
 });
 
-describe('buildRetrievalQuery', () => {
+describe('buildRetrievalTerms', () => {
   it('uses distinctive words, drops stop words and redaction markers, and caps terms', () => {
-    const q = buildRetrievalQuery(
+    const terms = buildRetrievalTerms(
       'VPN keeps disconnecting',
       'please help the vpn drops [REDACTED_EMAIL] every hour with certificate errors again again',
     );
-    expect(q.split(' or ')[0]).toBe('vpn');
-    expect(q).toContain('vpn');
-    expect(q).not.toContain('please');
-    expect(q).not.toMatch(/redacted/);
-    expect(q.split(' or ').length).toBeLessThanOrEqual(12);
-    expect(new Set(q.split(' or ')).size).toBe(q.split(' or ').length);
+    expect(terms[0]).toBe('vpn');
+    expect(terms).not.toContain('please');
+    expect(terms.join(' ')).not.toMatch(/redacted/);
+    expect(terms.length).toBeLessThanOrEqual(12);
+    expect(new Set(terms).size).toBe(terms.length);
   });
 
   it('is empty when there is nothing searchable', () => {
-    expect(buildRetrievalQuery('??', '!!')).toBe('');
+    expect(buildRetrievalTerms('??', '!!')).toEqual([]);
   });
 });
 

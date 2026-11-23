@@ -30,6 +30,7 @@ const draft: AnalysisDraft = {
   citedArticleIds: [],
   modelVersion: 'fake:test',
   retrievedArticleIds: [],
+  retrieval: { engine: 'none', version: 1 },
 };
 
 const config: JobRunnerConfig = {

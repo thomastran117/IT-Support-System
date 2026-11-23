@@ -123,6 +123,20 @@ describe('OpenSearch client', () => {
     expect(send.mock.calls.every(([, init]) => init?.signal?.aborted)).toBe(true);
   });
 
+  it('honors a caller deadline without retrying or starting a later request', async () => {
+    const deadline = new AbortController();
+    const send = vi.fn<typeof fetch>().mockImplementation(async (_url, init) => {
+      deadline.abort();
+      expect(init?.signal?.aborted).toBe(true);
+      throw new Error('fetch aborted');
+    });
+    const client = createSearchClient(config, { fetch: send })!;
+    const search = () => client.search('knowledge', { ...request, signal: deadline.signal });
+    await expect(search()).rejects.toMatchObject({ code: 'timeout' });
+    await expect(search()).rejects.toMatchObject({ code: 'timeout' });
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
   it.each([301, 400, 401, 403, 404])('fails closed on HTTP %s without retrying', async (status) => {
     const send = vi
       .fn<typeof fetch>()

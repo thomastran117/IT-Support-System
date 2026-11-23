@@ -7,6 +7,7 @@ import { persistDraft } from './modules/ai/recommendationService.js';
 import { createEmailDispatcher } from './modules/notifications/email/dispatcher.js';
 import { createEmailTransport } from './modules/notifications/email/transport.js';
 import { createSearchBulkClient } from './modules/search/bulk.js';
+import { createSearchClient } from './modules/search/client.js';
 import { createSearchIndexWorker } from './modules/search/indexWorker.js';
 
 /**
@@ -24,7 +25,11 @@ const write = (level: 'info' | 'error', entry: JobLogEntry) =>
 const handlerTimeoutMs = ai.timeoutMs + 10_000;
 const runner = createJobRunner({
   prisma,
-  analysis: createAnalysisService({ prisma, provider: createProvider(env) }),
+  analysis: createAnalysisService({
+    prisma,
+    provider: createProvider(env),
+    searchClient: ai.provider === 'none' ? undefined : createSearchClient(env.openSearch),
+  }),
   persist: persistDraft,
   config: {
     concurrency: ai.worker.concurrency,

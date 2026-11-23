@@ -7,7 +7,7 @@ import {
   type AnalysisJob,
 } from '../../db/repositories/aiAnalysisJobs.js';
 import { withTransaction } from '../../db/transaction.js';
-import type { AnalysisDraft } from './analysisService.js';
+import type { AnalysisDraft, AnalysisRetrieval } from './analysisService.js';
 import { ProviderError } from './provider.js';
 
 export interface JobRunnerConfig {
@@ -31,6 +31,7 @@ export interface JobLogEntry {
   attempt?: number;
   state?: string;
   errorKind?: string;
+  retrieval?: AnalysisRetrieval;
 }
 
 /**
@@ -48,7 +49,7 @@ export interface JobRunnerDeps {
   analysis: { analyse(ticketId: string): Promise<AnalysisDraft> };
   config: JobRunnerConfig;
   persist?: PersistDraft;
-  /** Structured log sink. Entries carry ids and reason codes only: never ticket text, keys or messages. */
+  /** Structured log sink for IDs, state, and processing metadata. Prompt content stays out of logs. */
   log?: (entry: JobLogEntry) => void;
   /** Test hook: pin the clock used for leases and backoff. */
   now?: () => Date;
@@ -119,6 +120,7 @@ export function createJobRunner(deps: JobRunnerDeps) {
         msg: done ? 'analysis completed' : 'analysis result discarded (lease lost)',
         ...ids(job),
         state: done ? 'COMPLETED' : 'LOST',
+        retrieval: draft.retrieval,
       });
     } catch (err) {
       // Persisting failed: nothing was committed, so this is an ordinary failed attempt.
