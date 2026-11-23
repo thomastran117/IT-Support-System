@@ -103,4 +103,44 @@ describe.skipIf(!redisUrl)('createCacheAside (integration, real Redis)', () => {
     await expect(aside.read('active', fetch)).resolves.toEqual({ teams: 2 }); // re-fetched
     expect(calls).toBe(2);
   });
+
+  it('protects against a stampede across two separate processes sharing one Redis', async () => {
+    // Two independent connections, as if two backend instances raced on the same cold key.
+    const cacheA = createRedisCache({ url: redisUrl! });
+    const cacheB = createRedisCache({ url: redisUrl! });
+    cache = cacheA; // afterEach closes this one; cacheB is closed explicitly below
+    try {
+      const namespace = `test:ref:${randomUUID()}`;
+      const instanceA = createCacheAside(cacheA, namespace, 60);
+      const instanceB = createCacheAside(cacheB, namespace, 60, { maxWaitMs: 2000 });
+
+      let release: () => void = () => {};
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let callsA = 0;
+      const slowFetch = async () => {
+        callsA++;
+        await gate;
+        return 'from-a';
+      };
+      let callsB = 0;
+      const fetchB = async () => {
+        callsB++;
+        return 'from-b';
+      };
+
+      const readA = instanceA.read('active', slowFetch);
+      await new Promise((resolve) => setTimeout(resolve, 200)); // A's lock acquisition lands first
+      const readB = instanceB.read('active', fetchB);
+      release();
+
+      await expect(readA).resolves.toBe('from-a');
+      await expect(readB).resolves.toBe('from-a'); // B waited for A's fill instead of its own
+      expect(callsA).toBe(1);
+      expect(callsB).toBe(0);
+    } finally {
+      await cacheB.close();
+    }
+  });
 });
