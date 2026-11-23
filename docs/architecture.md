@@ -94,6 +94,31 @@ per-query result underneath an already-authorized request. Each report function
 protects any other, future caller of those functions that does not go through this route's guard,
 and simply does not re-run on a request this route has already authorized moments earlier.
 
+**Single-flight fills and stampede protection (SD-072):** `createCacheAside`'s `read()` dedupes
+concurrent misses for the same `(namespace, keySuffix)` at two levels so a cold or just-invalidated
+key never turns into N parallel PostgreSQL queries:
+
+- **Per-process:** a `Map<string, Promise>` inside the accessor's closure. Every concurrent caller
+  in this process for the same key awaits the one in-flight `fetch`, rather than each starting its
+  own.
+- **Cross-process:** before calling `fetch`, the first instance to arrive acquires a short lease
+  (`setIfAbsent`, default 5s TTL) keyed on `smartdesk:lock:<namespace>:<keySuffix>`. Any other
+  instance that loses the race polls `get(key)` with the same jittered backoff used for Redis
+  reconnects (`jitteredBackoff`, see `redisCache.ts`), bounded by a default 2s wait, and serves the
+  lock holder's result as soon as it lands. The lease is released (CAS, via `releaseIfOwner`) once
+  the holder's `fetch` settles, and a holder that crashes mid-fill self-heals purely through the
+  lease's own TTL expiry -- no explicit crash detection is needed.
+- **Bounded waiting, always:** a waiter that outlasts the 2s bound falls through to its own direct,
+  uncached `fetch` rather than blocking any longer. This is deliberate: a manual ticket action must
+  never be stuck behind another request's cache fill, even during contention. Both bounds
+  (`lockTtlMs`, `maxWaitMs`) are constructor options for tests; every production call site uses the
+  defaults.
+
+This only bounds request _fan-out_ against PostgreSQL for the same key; it changes nothing about
+what gets cached, for how long, or when it is invalidated, and Redis remains non-load-bearing for
+correctness exactly as described above -- a lock acquisition failure (Redis down) is treated the
+same as contention and falls through to a direct fetch.
+
 ## Rate limiting
 
 Login, refresh, and triggering AI analysis (`POST /tickets/:id/analysis`) are rate-limited via
