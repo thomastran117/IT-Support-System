@@ -413,17 +413,17 @@ item is `{ id, title, category, preview, rank }` with a plain-text preview (whit
 
 - `q` is at most 200 characters (longer is `400`). Blank, punctuation-only and no-match queries
   return an empty page, never an error. `limit` is 1-20 (default 10), `offset` 0-1000.
-- Uses PostgreSQL full-text search with the `english` configuration (stemming, stop words, case
-  and punctuation folded) over title and body, via a partial GIN index on published rows
-  (`idx_knowledge_articles_fts`, migration `0007`). The query is `websearch_to_tsquery`: quoted
-  phrases, `or` and `-term` work, and anything else is treated as plain text. It is always a bound
-  parameter, so injection-like input is just data.
-- Order: weighted relevance (a title match outranks a body-only match), then most recently
-  updated, then id, so the order is total and stable across pages.
-- Drafts and unpublished articles are never candidates. The endpoint and future AI retrieval share
-  one repository function (`searchPublished`), so there is no second search path.
-- An unknown `categoryId` yields an empty page. Changing the language means rebuilding the index
-  and the matching expression in `backend/src/db/repositories/knowledge.ts`.
+- With OpenSearch enabled, plain text uses BM25 over title and body with a title boost, bounded
+  typo tolerance, and article ID as the tie-breaker. PostgreSQL verifies publication, category,
+  and revision before the API counts or returns a match. Recently changed articles can take
+  time to appear. The API builds previews from PostgreSQL and derives `rank` from verified order.
+- PostgreSQL full-text search handles quoted phrases, `or`, and `-term`. It also serves requests
+  when OpenSearch is disabled, unavailable, or has more than 300 candidates. It uses the English
+  `websearch_to_tsquery` function with a bound parameter and the partial GIN index on published
+  rows (`idx_knowledge_articles_fts`, migration `0007`). Its order is weighted relevance, most
+  recently updated, then article ID.
+- An unknown `categoryId` yields an empty page. A page past the end still includes the full
+  verified total.
 
 **Authoring**, `/api/admin/knowledge`: `ADMIN` only (`403` otherwise).
 

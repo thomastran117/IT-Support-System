@@ -105,6 +105,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await app.register(pingRoutes, { prefix: API_PREFIX });
   if (opts.prisma) {
     const tokens = new TokenService(opts.env);
+    const searchClient = opts.searchClient ?? createSearchClient(opts.env.openSearch);
     app.decorate('authGuards', createAuthGuards(opts.prisma, tokens));
     await app.register(
       authRoutes({
@@ -124,7 +125,9 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     await app.register(adminKnowledgeRoutes(opts.prisma), {
       prefix: `${API_PREFIX}/admin/knowledge`,
     });
-    await app.register(knowledgeRoutes(opts.prisma), { prefix: `${API_PREFIX}/knowledge` });
+    await app.register(knowledgeRoutes(opts.prisma, searchClient), {
+      prefix: `${API_PREFIX}/knowledge`,
+    });
     await app.register(adminTeamRoutes(opts.prisma, cache), {
       prefix: `${API_PREFIX}/admin/teams`,
     });
@@ -140,7 +143,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     await app.register(
       ticketSearchRoutes({
         prisma: opts.prisma,
-        client: opts.searchClient ?? createSearchClient(opts.env.openSearch),
+        client: searchClient,
         jwtSecret: opts.env.jwtSecret,
         rateLimit: opts.ticketSearchRateLimit ?? { max: 30, windowMs: 60_000 },
       }),

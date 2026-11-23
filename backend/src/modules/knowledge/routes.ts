@@ -12,6 +12,7 @@ import {
 import { z } from 'zod';
 import { envelope } from '../../plugins/errors.js';
 import { parse } from '../../plugins/validate.js';
+import type { SearchClient } from '../search/client.js';
 import { createKnowledgeService } from './service.js';
 
 const IdParams = z.object({ id: z.uuid() });
@@ -43,9 +44,9 @@ const AdminQuery = z.object({
  * is a 404 here for every role (administrators use /api/admin/knowledge to see drafts).
  */
 export const knowledgeRoutes =
-  (prisma: PrismaClient): FastifyPluginAsync =>
+  (prisma: PrismaClient, searchClient?: SearchClient): FastifyPluginAsync =>
   async (app) => {
-    const service = createKnowledgeService(prisma);
+    const service = createKnowledgeService(prisma, searchClient);
     const signedIn = { preHandler: app.authGuards.requireRole('EMPLOYEE', 'TECHNICIAN', 'ADMIN') };
 
     app.get('/', signedIn, async (req) => {
