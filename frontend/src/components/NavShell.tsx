@@ -82,7 +82,14 @@ const NAVIGATION: Record<Role, NavItem[]> = {
         !path.startsWith('/admin/reports') &&
         !path.startsWith('/admin/categories') &&
         !path.startsWith('/admin/teams') &&
+        !path.startsWith('/admin/tickets') &&
         !path.startsWith('/admin/evaluation'),
+    },
+    {
+      href: '/admin/tickets',
+      label: 'Tickets',
+      icon: TicketCheck,
+      active: (path) => path.startsWith('/admin/tickets'),
     },
     {
       href: '/admin/categories',

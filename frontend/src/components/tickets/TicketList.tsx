@@ -23,11 +23,42 @@ import {
   PriorityBadge,
 } from '@/components/ui';
 import { inputClass, primaryButton, secondaryButton, StatusBadge } from './ui';
+import { TicketSearch } from './TicketSearch';
 
 const PAGE_SIZE = 10;
 const PRIORITIES = Object.keys(PRIORITY_LABEL) as TicketPriority[];
 
-export function TicketList() {
+export function TicketList({ admin = false }: { admin?: boolean }) {
+  const detailPath = admin ? '/admin/tickets' : '/employee/tickets';
+  return (
+    <section aria-labelledby="page-title" className="space-y-6">
+      <PageHeader
+        eyebrow={admin ? 'Administration' : 'Employee workspace'}
+        title={admin ? 'Tickets' : 'My tickets'}
+        description={
+          admin
+            ? 'Find and review support tickets across teams.'
+            : 'Track every request, response, and resolution in one place.'
+        }
+        actions={
+          admin ? undefined : (
+            <Link href="/employee/tickets/new" className={primaryButton}>
+              <Plus aria-hidden="true" size={17} /> New ticket
+            </Link>
+          )
+        }
+      />
+      <TicketSearch
+        detailPath={detailPath}
+        browseLabel={admin ? 'Browse tickets' : 'Browse my tickets'}
+      >
+        <TicketBrowseList admin={admin} detailPath={detailPath} />
+      </TicketSearch>
+    </section>
+  );
+}
+
+function TicketBrowseList({ admin, detailPath }: { admin: boolean; detailPath: string }) {
   const { api } = useAuth();
   const tickets = useMemo(() => ticketsApi(api), [api]);
   const [status, setStatus] = useState<TicketStatus | ''>('');
@@ -69,19 +100,7 @@ export function TicketList() {
   };
 
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
-      <PageHeader
-        eyebrow="Employee workspace"
-        title="My tickets"
-        description="Track every request, response, and resolution in one place."
-        actions={
-          <Link href="/employee/tickets/new" className={primaryButton}>
-            <Plus aria-hidden="true" size={17} />
-            New ticket
-          </Link>
-        }
-      />
-
+    <>
       <form
         aria-label="Filter tickets"
         className="app-card p-4 sm:p-5"
@@ -164,19 +183,25 @@ export function TicketList() {
       {page && page.items.length === 0 && !error && (
         <EmptyState
           title={
-            filtered ? 'No tickets match these filters.' : 'You have not submitted any tickets yet.'
+            filtered
+              ? 'No tickets match these filters.'
+              : admin
+                ? 'No tickets yet.'
+                : 'You have not submitted any tickets yet.'
           }
           description={
             filtered
               ? 'Try clearing a filter to see more results.'
-              : 'When equipment, software, or access gets in your way, create a support request here.'
+              : admin
+                ? undefined
+                : 'When equipment, software, or access gets in your way, create a support request here.'
           }
           action={
             filtered ? (
               <button type="button" onClick={resetFilters} className={secondaryButton}>
                 Clear filters
               </button>
-            ) : (
+            ) : admin ? undefined : (
               <Link href="/employee/tickets/new" className={primaryButton}>
                 <Plus aria-hidden="true" size={17} />
                 New ticket
@@ -190,7 +215,9 @@ export function TicketList() {
         <div aria-busy={loading} className="space-y-4">
           <div className="app-card overflow-hidden">
             <table className="app-table responsive-table">
-              <caption className="sr-only">Your tickets, newest first</caption>
+              <caption className="sr-only">
+                {admin ? 'Tickets, newest first' : 'Your tickets, newest first'}
+              </caption>
               <thead>
                 <tr>
                   <th scope="col">Ticket</th>
@@ -214,7 +241,7 @@ export function TicketList() {
                     </td>
                     <th scope="row" data-primary="true" className="font-semibold text-slate-950">
                       <Link
-                        href={`/employee/tickets/${ticket.id}`}
+                        href={`${detailPath}/${ticket.id}`}
                         className="hover:text-blue-700 hover:underline"
                       >
                         {ticket.title}
@@ -248,6 +275,6 @@ export function TicketList() {
           />
         </div>
       )}
-    </section>
+    </>
   );
 }

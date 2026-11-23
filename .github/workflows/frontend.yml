@@ -32,6 +32,14 @@ jobs:
       - name: Frontend checks and browser tests
         run: set -o pipefail; docker compose --profile ci run --rm frontend-ci 2>&1 | tee ci-frontend.log
 
+      - name: Ticket search with PostgreSQL and OpenSearch
+        run: |
+          if [ "$(sysctl -n vm.max_map_count)" -lt 262144 ]; then
+            sudo sysctl -w vm.max_map_count=262144
+          fi
+          project=$(docker compose --profile ci config --format json | jq -r .name)
+          sh docker/verify-ticket-search-browser.sh "$project-frontend-ci" 2>&1 | tee ci-ticket-search.log
+
       - name: Upload Playwright report and logs
         if: failure()
         uses: actions/upload-artifact@v4

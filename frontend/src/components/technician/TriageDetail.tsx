@@ -10,11 +10,12 @@ import type {
   TicketDetailDto,
 } from '@smartdesk/contracts';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useAuth } from '@/lib/auth/AuthProvider';
 import { ApiError } from '@/lib/auth/client';
 import { PRIORITY_LABEL, STATUS_HELP, formatDateTime } from '@/lib/tickets/format';
+import { ticketSearchHref } from '@/lib/tickets/search';
 import { LIMITS, validateReply } from '@/lib/tickets/validation';
 import { technicianApi } from '@/lib/technician/api';
 import {
@@ -48,8 +49,11 @@ const formFrom = (t: TicketDetailDto): RoutingForm => ({
 /** How often to check on a queued or running analysis. */
 const ANALYSIS_POLL_MS = 2000;
 
-export function TriageDetail() {
+export function TriageDetail({ admin = false }: { admin?: boolean }) {
   const { id } = useParams<{ id: string }>();
+  const path = admin ? '/admin/tickets' : '/technician';
+  const backHref = ticketSearchHref(path, useSearchParams());
+  const backLabel = backHref !== path ? 'Back to search results' : admin ? 'Tickets' : 'Dashboard';
   const { api, user } = useAuth();
   const tech = useMemo(() => technicianApi(api), [api]);
 
@@ -322,8 +326,8 @@ export function TriageDetail() {
         <p role="status" className="rounded border border-emerald-400 bg-emerald-50 p-4">
           {moved}
         </p>
-        <Link href="/technician" className={secondaryButton}>
-          Back to the dashboard
+        <Link href={backHref} className={secondaryButton}>
+          {backHref !== path || admin ? backLabel : 'Back to the dashboard'}
         </Link>
       </section>
     );
@@ -344,8 +348,8 @@ export function TriageDetail() {
               Try again
             </button>
           )}
-          <Link href="/technician" className={secondaryButton}>
-            Back to the dashboard
+          <Link href={backHref} className={secondaryButton}>
+            {backHref !== path || admin ? backLabel : 'Back to the dashboard'}
           </Link>
         </div>
       </section>
@@ -369,8 +373,8 @@ export function TriageDetail() {
   return (
     <article aria-labelledby="page-title" className="space-y-6">
       <p className="text-sm">
-        <Link href="/technician" className="app-button-quiet min-h-9 px-2 py-1.5">
-          Dashboard
+        <Link href={backHref} className="app-button-quiet min-h-9 px-2 py-1.5">
+          {backLabel}
         </Link>
       </p>
 
