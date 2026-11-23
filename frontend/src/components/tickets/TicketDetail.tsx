@@ -10,6 +10,7 @@ import { useAuth } from '@/lib/auth/AuthProvider';
 import { ApiError } from '@/lib/auth/client';
 import { pollIntervalMs } from '@/lib/config';
 import { ticketsApi } from '@/lib/tickets/api';
+import { ticketSearchHref } from '@/lib/tickets/search';
 import {
   STATUS_HELP,
   STATUS_LABEL,
@@ -53,7 +54,10 @@ function Stepper({ status }: { status: TicketStatus }) {
 
 export function TicketDetail() {
   const { id } = useParams<{ id: string }>();
-  const created = useSearchParams().get('created') === '1';
+  const params = useSearchParams();
+  const created = params.get('created') === '1';
+  const backHref = ticketSearchHref('/employee', params);
+  const fromSearch = backHref !== '/employee';
   const { api, user } = useAuth();
   const tickets = useMemo(() => ticketsApi(api), [api]);
 
@@ -146,8 +150,8 @@ export function TicketDetail() {
               Try again
             </button>
           )}
-          <Link href="/employee" className={secondaryButton}>
-            Back to my tickets
+          <Link href={backHref} className={secondaryButton}>
+            {fromSearch ? 'Back to search results' : 'Back to my tickets'}
           </Link>
         </div>
       </section>
@@ -167,8 +171,8 @@ export function TicketDetail() {
   return (
     <article aria-labelledby="page-title" className="space-y-6">
       <p className="text-sm">
-        <Link href="/employee" className="app-button-quiet min-h-9 px-2 py-1.5">
-          My tickets
+        <Link href={backHref} className="app-button-quiet min-h-9 px-2 py-1.5">
+          {fromSearch ? 'Back to search results' : 'My tickets'}
         </Link>
       </p>
 

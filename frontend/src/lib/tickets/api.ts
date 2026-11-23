@@ -6,9 +6,10 @@ import type {
   TicketDto,
   TicketPage,
   TicketPriority,
+  TicketSearchQuery,
   TicketStatus,
 } from '@smartdesk/contracts';
-import { IDEMPOTENCY_KEY_HEADER } from '@smartdesk/contracts';
+import { IDEMPOTENCY_KEY_HEADER, ticketSearchResponseSchema } from '@smartdesk/contracts';
 import type { ApiClient } from '../auth/client';
 
 export interface ListQuery {
@@ -38,6 +39,16 @@ export function ticketsApi(api: ApiClient) {
       if (query.offset) params.set('offset', String(query.offset));
       const qs = params.toString();
       return api.request<TicketPage>(`/api/tickets${qs ? `?${qs}` : ''}`);
+    },
+
+    async search(query: TicketSearchQuery, signal: AbortSignal) {
+      const params = new URLSearchParams();
+      for (const [key, value] of Object.entries(query)) {
+        if (value !== undefined) params.set(key, value);
+      }
+      return ticketSearchResponseSchema.parse(
+        await api.request<unknown>(`/api/tickets/search?${params}`, { signal }),
+      );
     },
 
     get(id: string) {

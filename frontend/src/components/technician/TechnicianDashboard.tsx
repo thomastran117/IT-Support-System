@@ -11,6 +11,7 @@ import { PRIORITY_LABEL } from '@/lib/tickets/format';
 import { technicianApi } from '@/lib/technician/api';
 import { formatAge, APPROVABLE } from '@/lib/technician/format';
 import { inputClass, secondaryButton, StatusBadge } from '../tickets/ui';
+import { TicketSearch } from '../tickets/TicketSearch';
 
 type Tab = 'unassigned' | 'team' | 'mine';
 
@@ -33,6 +34,21 @@ function describeQueueError(err: unknown): string {
 }
 
 export function TechnicianDashboard() {
+  return (
+    <section aria-labelledby="page-title" className="space-y-6">
+      <PageHeader
+        eyebrow="Technician workspace"
+        title="Technician dashboard"
+        description="Triage incoming requests, manage team workload, and keep service moving."
+      />
+      <TicketSearch detailPath="/technician/tickets" browseLabel="Back to the support queue">
+        <TechnicianQueues />
+      </TicketSearch>
+    </section>
+  );
+}
+
+function TechnicianQueues() {
   const { api } = useAuth();
   const tech = useMemo(() => technicianApi(api), [api]);
 
@@ -113,13 +129,7 @@ export function TechnicianDashboard() {
   const noTeams = teams !== null && teams.length === 0 && needsTeam;
 
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
-      <PageHeader
-        eyebrow="Technician workspace"
-        title="Technician dashboard"
-        description="Triage incoming requests, manage team workload, and keep service moving."
-      />
-
+    <>
       <div
         role="tablist"
         aria-label="Queues"
@@ -337,6 +347,6 @@ export function TechnicianDashboard() {
           </div>
         )}
       </div>
-    </section>
+    </>
   );
 }

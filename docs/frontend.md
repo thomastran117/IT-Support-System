@@ -67,3 +67,23 @@ Rules:
   `role="status"` for progress.
 - Extract a component only once a second feature needs it, and keep the employee ticket form's
   behaviour (draft restore, idempotency keys) in its own feature code.
+
+## Ticket search
+
+My tickets, the technician dashboard, and the admin Tickets page share one search panel. Type a
+title, description, or tracking ID. Search starts after a short pause, and Enter submits immediately.
+The panel cancels superseded requests and keeps the search text, filters, and page in the URL.
+Result links carry that state into ticket details so users can return to the same search.
+
+Status, priority, category, and UTC creation dates are available to all roles. Technicians can
+filter by their active teams or their own assignment, and admins can select teams and assignees.
+Both dates in the form are inclusive. Clear search returns to the ordinary ticket list or support
+queue. Reset filters keeps the search text and returns to the first page.
+
+Text search shows when the index may be behind and offers access to the ordinary views when
+OpenSearch is disabled or unavailable. Full tracking IDs use PostgreSQL. The list sorts newest
+first, and the team and assigned queues sort by priority.
+
+The frontend GitHub workflow exercises search using a disposable PostgreSQL and OpenSearch stack,
+then stops OpenSearch to exercise the outage flow. On Linux, run the same Playwright scenarios
+through the CI image with `sh docker/verify-ticket-search-browser.sh <frontend-ci-image>`.
