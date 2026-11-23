@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@smartdesk/db';
+import type { Prisma, PrismaClient, TransactionClient } from '@smartdesk/db';
 import type {
   AdminKnowledgeArticleDto,
   AdminKnowledgeArticleSummaryDto,
@@ -11,6 +11,11 @@ import type {
 import { DbError, notFoundError, validationError } from '../../db/errors.js';
 import * as articles from '../../db/repositories/knowledge.js';
 import type { ArticleRow } from '../../db/repositories/knowledge.js';
+import {
+  enqueueSearchIndexJob,
+  type SearchIndexEventKind,
+} from '../../db/repositories/searchIndexJobs.js';
+import { withTransaction, type Db } from '../../db/transaction.js';
 
 // Everything except tab, LF and CR: NUL and other control characters have no place in an article.
 // eslint-disable-next-line no-control-regex
@@ -63,25 +68,60 @@ export interface ListFilter {
  * simply hides them from readers while the historical link stays intact.
  */
 export function createKnowledgeService(prisma: PrismaClient) {
-  const isCategoryActive = async (id: string) => {
-    const c = await prisma.ticketCategory.findUnique({ where: { id }, select: { isActive: true } });
+  const isCategoryActive = async (id: string, db: Db = prisma) => {
+    const c = await db.ticketCategory.findUnique({ where: { id }, select: { isActive: true } });
     return c?.isActive === true;
   };
 
   /** A category an article may be filed under: it must exist and be active. */
-  const assertActiveCategory = async (categoryId: string | null | undefined) => {
+  const assertActiveCategory = async (categoryId: string | null | undefined, db: Db = prisma) => {
     if (!categoryId) return;
-    if (!(await isCategoryActive(categoryId))) {
+    if (!(await isCategoryActive(categoryId, db))) {
       throw validationError('Category is unknown or inactive', {
         categoryId: ['Choose an active category'],
       });
     }
   };
 
-  const loadForAdmin = async (id: string) => {
-    const row = await articles.findArticle(prisma, id);
+  const loadForAdmin = async (id: string, db: Db = prisma) => {
+    const row = await articles.findArticle(db, id);
     if (!row) throw notFoundError('Article');
     return row;
+  };
+
+  const loadForWrite = async (tx: TransactionClient, id: string) => {
+    // Serialize the visibility/content comparison with concurrent writes to this article.
+    await tx.$queryRaw`SELECT 1 FROM knowledge_articles WHERE article_id = ${id}::uuid FOR NO KEY UPDATE`;
+    return loadForAdmin(id, tx);
+  };
+
+  const save = async (
+    tx: TransactionClient,
+    id: string,
+    data: Pick<
+      Prisma.KnowledgeArticleUncheckedUpdateInput,
+      'title' | 'body' | 'categoryId' | 'isPublished'
+    >,
+    eventKind?: SearchIndexEventKind,
+  ) => {
+    const updated = await tx.knowledgeArticle.update({
+      where: { id },
+      data: {
+        ...data,
+        updatedAt: new Date(),
+        ...(eventKind && { searchRevision: { increment: 1 } }),
+      },
+      include: articles.articleInclude,
+    });
+    if (eventKind) {
+      await enqueueSearchIndexJob(tx, {
+        entityType: 'KNOWLEDGE_ARTICLE',
+        entityId: id,
+        revision: updated.searchRevision,
+        eventKind,
+      });
+    }
+    return toAdminDto(updated);
   };
 
   return {
@@ -191,38 +231,44 @@ export function createKnowledgeService(prisma: PrismaClient) {
         categoryId?: string | null | undefined;
       },
     ): Promise<AdminKnowledgeArticleDto> {
-      await loadForAdmin(id);
-      const title = input.title === undefined ? undefined : clean(input.title);
-      const body = input.body === undefined ? undefined : clean(input.body);
-      if (title === '' || body === '') throw validationError('Title and body must not be blank');
-      if (input.categoryId !== undefined) await assertActiveCategory(input.categoryId);
-      // One UPDATE statement: either every field changes or none does.
-      const updated = await prisma.knowledgeArticle.update({
-        where: { id },
-        data: {
-          ...(title === undefined ? {} : { title }),
-          ...(body === undefined ? {} : { body }),
-          ...(input.categoryId === undefined ? {} : { categoryId: input.categoryId }),
-          updatedAt: new Date(),
-        },
-        include: articles.articleInclude,
+      return withTransaction(prisma, async (tx) => {
+        const current = await loadForWrite(tx, id);
+        const title = input.title === undefined ? undefined : clean(input.title);
+        const body = input.body === undefined ? undefined : clean(input.body);
+        const categoryId = input.categoryId;
+        if (title === '' || body === '') throw validationError('Title and body must not be blank');
+        if (categoryId !== undefined) await assertActiveCategory(categoryId, tx);
+        const changed =
+          (title !== undefined && title !== current.title) ||
+          (body !== undefined && body !== current.body) ||
+          (categoryId !== undefined && categoryId !== current.categoryId);
+        return save(
+          tx,
+          id,
+          {
+            ...(title === undefined ? {} : { title }),
+            ...(body === undefined ? {} : { body }),
+            ...(categoryId === undefined ? {} : { categoryId }),
+          },
+          current.isPublished && changed ? 'UPSERT' : undefined,
+        );
       });
-      return toAdminDto(updated);
     },
 
     /** Idempotent: publishing a published article (or unpublishing a draft) is a no-op. */
     async setPublished(id: string, isPublished: boolean): Promise<AdminKnowledgeArticleDto> {
-      const current = await loadForAdmin(id);
-      if (current.isPublished === isPublished) return toAdminDto(current);
-      if (isPublished && current.category && !(await isCategoryActive(current.category.id))) {
-        throw new DbError('CONFLICT', 409, 'Assign an active category before publishing');
-      }
-      const updated = await prisma.knowledgeArticle.update({
-        where: { id },
-        data: { isPublished, updatedAt: new Date() },
-        include: articles.articleInclude,
+      return withTransaction(prisma, async (tx) => {
+        const current = await loadForWrite(tx, id);
+        if (current.isPublished === isPublished) return toAdminDto(current);
+        if (
+          isPublished &&
+          current.categoryId &&
+          !(await isCategoryActive(current.categoryId, tx))
+        ) {
+          throw new DbError('CONFLICT', 409, 'Assign an active category before publishing');
+        }
+        return save(tx, id, { isPublished }, isPublished ? 'UPSERT' : 'DELETE');
       });
-      return toAdminDto(updated);
     },
   };
 }

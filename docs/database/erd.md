@@ -93,6 +93,7 @@ erDiagram
     bool is_published
     timestamptz created_at
     timestamptz updated_at
+    int search_revision
   }
   recommendation_articles {
     uuid recommendation_id PK,FK
@@ -144,6 +145,23 @@ erDiagram
     int attempts
     int max_attempts
     timestamptz run_after
+    uuid lease_token
+    timestamptz locked_until
+    varchar error_kind
+    timestamptz created_at
+    timestamptz updated_at
+    timestamptz completed_at
+  }
+  search_index_jobs {
+    uuid job_id PK
+    varchar entity_type
+    uuid entity_id
+    int revision
+    varchar event_kind
+    varchar state
+    int attempts
+    int max_attempts
+    timestamptz available_at
     uuid lease_token
     timestamptz locked_until
     varchar error_kind

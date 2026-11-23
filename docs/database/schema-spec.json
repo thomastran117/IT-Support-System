@@ -952,6 +952,13 @@
           "nullable": false,
           "default": "CURRENT_TIMESTAMP",
           "meaning": "Last edit time, set by the service."
+        },
+        {
+          "name": "search_revision",
+          "type": "integer",
+          "nullable": false,
+          "default": "1",
+          "meaning": "Increments for changes to the published search projection, including unpublication."
         }
       ],
       "primaryKey": ["article_id"],
@@ -970,6 +977,10 @@
         {
           "name": "ck_knowledge_articles_body_nonblank",
           "rule": "(btrim(body) <> ''::text)"
+        },
+        {
+          "name": "ck_knowledge_articles_search_revision",
+          "rule": "(search_revision > 0)"
         },
         {
           "name": "ck_knowledge_articles_title_nonblank",
@@ -1634,6 +1645,172 @@
         {
           "name": "uq_notification_deliveries_notification",
           "columns": ["notification_id"],
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "search_index_jobs",
+      "area": "Search",
+      "description": "PostgreSQL outbox for ticket and published knowledge search (SD-076). Source changes and jobs commit together. Each entity revision has at most one job. The queue stores IDs and indexing intent, without document content.",
+      "columns": [
+        {
+          "name": "job_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "meaning": "Primary key."
+        },
+        {
+          "name": "entity_type",
+          "type": "character varying(20)",
+          "nullable": false,
+          "default": null,
+          "meaning": "TICKET or KNOWLEDGE_ARTICLE."
+        },
+        {
+          "name": "entity_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "meaning": "Source entity UUID. Jobs can outlive a source row."
+        },
+        {
+          "name": "revision",
+          "type": "integer",
+          "nullable": false,
+          "default": null,
+          "meaning": "Monotonic ticket version or knowledge search revision."
+        },
+        {
+          "name": "event_kind",
+          "type": "character varying(6)",
+          "nullable": false,
+          "default": null,
+          "meaning": "UPSERT reconciles a searchable source. DELETE removes a document."
+        },
+        {
+          "name": "state",
+          "type": "character varying(10)",
+          "nullable": false,
+          "default": "'QUEUED'::character varying",
+          "meaning": "QUEUED, RUNNING, COMPLETED or FAILED."
+        },
+        {
+          "name": "attempts",
+          "type": "integer",
+          "nullable": false,
+          "default": "0",
+          "meaning": "Number of times the job has been claimed."
+        },
+        {
+          "name": "max_attempts",
+          "type": "integer",
+          "nullable": false,
+          "default": "5",
+          "meaning": "Maximum claims before terminal failure."
+        },
+        {
+          "name": "available_at",
+          "type": "timestamp(6) with time zone",
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP",
+          "meaning": "Earliest time a queued job can be claimed."
+        },
+        {
+          "name": "lease_token",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "meaning": "Claim token. Only present while RUNNING."
+        },
+        {
+          "name": "locked_until",
+          "type": "timestamp(6) with time zone",
+          "nullable": true,
+          "default": null,
+          "meaning": "Lease expiry for a RUNNING job."
+        },
+        {
+          "name": "error_kind",
+          "type": "character varying(24)",
+          "nullable": true,
+          "default": null,
+          "meaning": "Bounded failure reason code."
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp(6) with time zone",
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP",
+          "meaning": "When the source change queued the job."
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp(6) with time zone",
+          "nullable": false,
+          "default": "CURRENT_TIMESTAMP",
+          "meaning": "When the job state last changed."
+        },
+        {
+          "name": "completed_at",
+          "type": "timestamp(6) with time zone",
+          "nullable": true,
+          "default": null,
+          "meaning": "When the job reached COMPLETED or FAILED."
+        }
+      ],
+      "primaryKey": ["job_id"],
+      "foreignKeys": [],
+      "checks": [
+        {
+          "name": "ck_search_index_jobs_attempts",
+          "rule": "((attempts >= 0) AND (attempts <= max_attempts) AND (max_attempts > 0))"
+        },
+        {
+          "name": "ck_search_index_jobs_entity_type",
+          "rule": "((entity_type)::text = ANY ((ARRAY['TICKET'::character varying, 'KNOWLEDGE_ARTICLE'::character varying])::text[]))"
+        },
+        {
+          "name": "ck_search_index_jobs_event_kind",
+          "rule": "((event_kind)::text = ANY ((ARRAY['UPSERT'::character varying, 'DELETE'::character varying])::text[]))"
+        },
+        {
+          "name": "ck_search_index_jobs_lease",
+          "rule": "((((state)::text = 'RUNNING'::text) = (lease_token IS NOT NULL)) AND (((state)::text = 'RUNNING'::text) = (locked_until IS NOT NULL)))"
+        },
+        {
+          "name": "ck_search_index_jobs_revision",
+          "rule": "(revision > 0)"
+        },
+        {
+          "name": "ck_search_index_jobs_state",
+          "rule": "((state)::text = ANY ((ARRAY['QUEUED'::character varying, 'RUNNING'::character varying, 'COMPLETED'::character varying, 'FAILED'::character varying])::text[]))"
+        },
+        {
+          "name": "ck_search_index_jobs_terminal",
+          "rule": "(((state)::text = ANY ((ARRAY['COMPLETED'::character varying, 'FAILED'::character varying])::text[])) = (completed_at IS NOT NULL))"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_search_index_jobs_claim",
+          "columns": ["state", "available_at", "job_id"],
+          "unique": false
+        },
+        {
+          "name": "idx_search_index_jobs_lease",
+          "columns": ["state", "locked_until"],
+          "unique": false
+        },
+        {
+          "name": "search_index_jobs_pkey",
+          "columns": ["job_id"],
+          "unique": true
+        },
+        {
+          "name": "uq_search_index_jobs_entity_revision",
+          "columns": ["entity_type", "entity_id", "revision"],
           "unique": true
         }
       ]

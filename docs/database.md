@@ -61,6 +61,22 @@ then update state and append events within one transaction.
 Comments, ticket events, and administrator audit records are append-only. Database triggers reject
 updates and deletes even if application code attempts them.
 
+### Search outbox
+
+Ticket submission, approved routing changes, and status transitions enqueue an `UPSERT` in the
+same transaction as the source write. The job uses the committed ticket `version`. Replayed
+submissions, unchanged routing, and comments leave the queue untouched.
+
+Each article starts at `search_revision = 1`. Publication and edits to published titles, bodies,
+or categories enqueue an `UPSERT`. Unpublication enqueues a `DELETE` for the search document. An
+article row lock serializes these changes and their revision increments. Draft edits and repeated
+publication requests leave the revision and queue untouched.
+
+`search_index_jobs` stores entity type, ID, revision, event kind, and queue metadata. The unique
+entity and revision key deduplicates retries. PostgreSQL records intent with search disabled or
+unavailable. Jobs remain queued until an indexer runs. Existing rows and bulk seed fixtures are
+covered by the separate backfill workflow.
+
 ## Seed and query assets
 
 The default seed is deterministic and safe to rerun. It supplies demo identities, teams, tickets,

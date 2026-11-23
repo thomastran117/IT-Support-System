@@ -8,6 +8,7 @@ const EXTENSION_TABLES = [
   'ai_analysis_jobs',
   'notifications',
   'notification_deliveries',
+  'search_index_jobs',
 ];
 
 const CORE_TABLES = [

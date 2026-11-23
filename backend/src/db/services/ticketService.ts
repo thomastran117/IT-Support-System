@@ -25,6 +25,7 @@ import {
   type ReviewDecision,
 } from '../repositories/aiRecommendations.js';
 import { enqueueAnalysis } from '../repositories/aiAnalysisJobs.js';
+import { enqueueSearchIndexJob } from '../repositories/searchIndexJobs.js';
 import { insertComment, recordFirstResponse } from '../repositories/ticketComments.js';
 import { appendEvent } from '../repositories/ticketEvents.js';
 import {
@@ -50,6 +51,14 @@ interface Actor {
   role: Role;
 }
 type TicketRow = NonNullable<Awaited<ReturnType<typeof findTicket>>>;
+
+const enqueueTicketSearch = (tx: TransactionClient, id: string, version: number) =>
+  enqueueSearchIndexJob(tx, {
+    entityType: 'TICKET',
+    entityId: id,
+    revision: version,
+    eventKind: 'UPSERT',
+  });
 
 const SETTABLE_PRIORITIES: readonly TicketPriority[] = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
 
@@ -223,6 +232,7 @@ async function applyRouting(
       status: nextStatus,
     }),
   );
+  await enqueueTicketSearch(tx, ticket.id, ticket.version + 1);
 
   const event = (
     type: Parameters<typeof appendEvent>[1]['type'],
@@ -317,6 +327,7 @@ export function submitTicket(
           description,
           idempotencyKey: key ?? null,
         });
+        await enqueueTicketSearch(tx, ticket.id, ticket.version);
         await appendEvent(tx, { ticketId: ticket.id, actorId: actor.id, type: 'CREATED' });
         if (input.enqueueAnalysis) {
           await enqueueAnalysis(tx, {
@@ -464,6 +475,7 @@ export function transitionTicket(prisma: PrismaClient, input: TransitionInput) {
         );
         await log('STATUS_CHANGED', { from, to: input.to });
     }
+    await enqueueTicketSearch(tx, ticket.id, ticket.version + 1);
     return (await findTicket(tx, ticket.id))!;
   });
 }
