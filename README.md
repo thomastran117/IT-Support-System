@@ -70,6 +70,44 @@ docker compose up --build --watch
 docker compose exec backend npm run db:seed
 ```
 
+## Optional OpenSearch profile
+
+Use the `search` profile with synthetic data for local development and CI. The single OpenSearch
+node runs on an internal Compose network shared with the API and worker. The frontend stays on
+the public network. The search node publishes no host ports and the application starts with search
+disabled.
+
+Allow 1.5 GiB of additional Docker memory, including a 512 MiB JVM heap. The `opensearch-data`
+volume uses Docker disk space as indexes grow. On Linux, verify the host's `vm.max_map_count` is at
+least `262144`. With Docker Desktop on Windows using WSL, check the Docker Desktop WSL distribution.
+See the [OpenSearch Docker setup guide](https://docs.opensearch.org/latest/install-and-configure/install-opensearch/docker/)
+for the platform-specific commands.
+
+```bash
+docker compose --profile search up --wait --wait-timeout 180 opensearch
+docker compose --profile search ps opensearch
+docker compose --profile search logs opensearch
+docker compose --profile search stop opensearch
+```
+
+Run the first command again to restart and reuse the volume. To tear down the full stack while
+preserving both volumes, run `docker compose --profile search down`. If the node fails to start,
+check its logs, available Docker memory and disk, and `vm.max_map_count`. To reset a disposable
+search volume, remove the search container with `docker compose --profile search rm --stop --force opensearch`.
+List candidate volumes with `docker volume ls --filter label=com.docker.compose.volume=opensearch-data`,
+then use `docker volume rm` with the exact search volume name for this project. PostgreSQL data is
+stored in `pgdata`. OpenSearch holds a derived projection that can be rebuilt from PostgreSQL once
+the backfill tooling is available.
+
+The Compose profile provisions the node. To opt into application search once it is available, set
+`OPENSEARCH_ENABLED=true` and `OPENSEARCH_URL=http://opensearch:9200` in `.env` and leave the
+credentials empty. `OPENSEARCH_ENABLED` defaults to `false`.
+
+For production, use a separate secured OpenSearch deployment with verified TLS, private network
+access, and least-privilege service accounts. Inject `OPENSEARCH_USERNAME` and `OPENSEARCH_PASSWORD`
+into the backend and worker through deployment secrets when enabling search there. Keep those
+values out of source control and browser configuration. See the [OpenSearch security guide](https://docs.opensearch.org/latest/security/configuration/best-practices/).
+
 ## Validation
 
 The same container targets run locally and in GitHub Actions:

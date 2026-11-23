@@ -62,6 +62,38 @@ services:
       retries: 10
     networks: [internal]
 
+  opensearch:
+    profiles: [search]
+    image: opensearchproject/opensearch:3.10.0
+    environment:
+      discovery.type: single-node
+      bootstrap.memory_lock: 'true'
+      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+      # Local synthetic data and CI only. Production uses a separate secured endpoint.
+      DISABLE_INSTALL_DEMO_CONFIG: 'true'
+      DISABLE_SECURITY_PLUGIN: 'true'
+    mem_limit: 1536m
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          curl -fsS --max-time 4 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=3s'
+          | grep -Eq '"status"[[:space:]]*:[[:space:]]*"(yellow|green)"'
+      start_period: 30s
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [search]
+
   backend:
     build:
       context: .
@@ -73,6 +105,10 @@ services:
       PORT: 4000
       DATABASE_URL: postgres://${POSTGRES_USER:-smartdesk}:${POSTGRES_PASSWORD:-smartdesk}@postgres:5432/${POSTGRES_DB:-smartdesk}
       REDIS_URL: ${REDIS_URL:-}
+      OPENSEARCH_ENABLED: ${OPENSEARCH_ENABLED:-false}
+      OPENSEARCH_URL: ${OPENSEARCH_URL:-}
+      OPENSEARCH_USERNAME: ${OPENSEARCH_USERNAME:-}
+      OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD:-}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       TRUST_PROXY: ${TRUST_PROXY:-false}
@@ -94,7 +130,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    networks: [internal, public]
+    networks: [internal, public, search]
     develop:
       watch:
         - action: sync
@@ -118,6 +154,10 @@ services:
       target: worker
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-smartdesk}:${POSTGRES_PASSWORD:-smartdesk}@postgres:5432/${POSTGRES_DB:-smartdesk}
+      OPENSEARCH_ENABLED: ${OPENSEARCH_ENABLED:-false}
+      OPENSEARCH_URL: ${OPENSEARCH_URL:-}
+      OPENSEARCH_USERNAME: ${OPENSEARCH_USERNAME:-}
+      OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD:-}
       WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-5000}
       AI_PROVIDER: ${AI_PROVIDER:-none}
       AI_API_KEY: ${AI_API_KEY:-}
@@ -145,7 +185,7 @@ services:
         condition: service_healthy
     # `public` gives the worker outbound access, which email (and a hosted AI provider) needs. The
     # database stays on the internal network.
-    networks: [internal, public]
+    networks: [internal, public, search]
     develop:
       watch:
         - action: sync
@@ -238,8 +278,11 @@ services:
 
 volumes:
   pgdata:
+  opensearch-data:
 
 networks:
   internal:
     internal: true
   public:
+  search:
+    internal: true

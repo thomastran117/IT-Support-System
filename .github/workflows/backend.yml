@@ -32,6 +32,29 @@ jobs:
       - name: Backend, worker and database checks
         run: set -o pipefail; docker compose --profile ci run --rm backend-ci 2>&1 | tee ci-backend.log
 
+      - name: Optional OpenSearch smoke check
+        run: |
+          default_services=$(docker compose config --services)
+          if grep -qx opensearch <<< "$default_services"; then
+            echo 'OpenSearch must require the search profile.' >&2
+            exit 1
+          fi
+          docker compose --profile search config --format json | jq -e '
+            (.services.opensearch.ports // [] | length == 0) and
+            (.services.opensearch.networks | keys == ["search"]) and
+            (.networks.search.internal == true) and
+            (.services.frontend.networks | has("search") | not) and
+            (.services.frontend.environment | keys | all(startswith("OPENSEARCH_") | not))
+          '
+          if [ "$(sysctl -n vm.max_map_count)" -lt 262144 ]; then
+            sudo sysctl -w vm.max_map_count=262144
+          fi
+          docker compose --profile search up --wait --wait-timeout 180 opensearch
+
+      - name: Collect OpenSearch logs on failure
+        if: failure()
+        run: docker compose --profile search logs --no-color opensearch > ci-opensearch.log
+
       - name: Upload logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
@@ -43,4 +66,4 @@ jobs:
 
       - name: Stop containers
         if: always()
-        run: docker compose --profile ci down -v
+        run: docker compose --profile ci --profile search down -v

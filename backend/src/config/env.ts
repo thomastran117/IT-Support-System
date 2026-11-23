@@ -5,6 +5,7 @@ export interface Env {
   databaseUrl: string;
   /** Optional internal cache. Undefined means Redis is disabled; see backend/src/cache/client.ts. */
   redisUrl: string | undefined;
+  openSearch: OpenSearchConfig;
   /** Fastify's own `trustProxy`. false (default) never trusts a forwarded-for header, so a
    * client cannot spoof the IP a rate limiter keys on; set it only when a specific, known
    * reverse proxy sits in front of this deployment. */
@@ -25,6 +26,10 @@ export interface Env {
 }
 
 export type TrustProxy = boolean | string[];
+
+export type OpenSearchConfig =
+  | { enabled: false }
+  | { enabled: true; url: string; auth?: { username: string; password: string } };
 
 export type EmailTransportName = 'none' | 'smtp';
 
@@ -67,6 +72,35 @@ export interface AiConfig {
 }
 
 const AI_PROVIDERS: readonly AiProviderName[] = ['none', 'fake', 'openai'];
+
+function loadOpenSearchConfig(source: NodeJS.ProcessEnv, production: boolean): OpenSearchConfig {
+  const enabled = source.OPENSEARCH_ENABLED || 'false';
+  if (enabled === 'false') return { enabled: false };
+  if (enabled !== 'true') throw new Error('OPENSEARCH_ENABLED must be true or false');
+
+  const rawUrl = source.OPENSEARCH_URL?.trim() ?? '';
+  const endpoint = URL.parse(rawUrl);
+  if (!/^https?:\/\//i.test(rawUrl) || !endpoint || endpoint.username || endpoint.password) {
+    throw new Error('OPENSEARCH_URL must be an absolute HTTP(S) URL without embedded credentials');
+  }
+  if (endpoint.search || endpoint.hash) {
+    throw new Error('OPENSEARCH_URL must not contain a query or fragment');
+  }
+  if (production && endpoint.protocol !== 'https:') {
+    throw new Error('OPENSEARCH_URL must use HTTPS in production');
+  }
+
+  const username = source.OPENSEARCH_USERNAME?.trim();
+  const password = source.OPENSEARCH_PASSWORD;
+  if (username && password)
+    return { enabled: true, url: endpoint.href, auth: { username, password } };
+  if (production || username || password) {
+    throw new Error(
+      'OPENSEARCH_USERNAME and OPENSEARCH_PASSWORD are both required for authentication',
+    );
+  }
+  return { enabled: true, url: endpoint.href };
+}
 
 function loadAiConfig(source: NodeJS.ProcessEnv): AiConfig {
   const provider = (source.AI_PROVIDER || 'none') as AiProviderName;
@@ -172,6 +206,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     frontendOrigin: source.FRONTEND_ORIGIN ?? 'http://localhost:3000',
     databaseUrl: source.DATABASE_URL ?? 'postgres://smartdesk:smartdesk@localhost:5432/smartdesk',
     redisUrl: source.REDIS_URL || undefined,
+    openSearch: loadOpenSearchConfig(source, production),
     trustProxy: loadTrustProxy(source.TRUST_PROXY),
     logLevel: source.LOG_LEVEL ?? 'info',
     production,
