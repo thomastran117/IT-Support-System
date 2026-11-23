@@ -114,7 +114,7 @@ key never turns into N parallel PostgreSQL queries:
   (`lockTtlMs`, `maxWaitMs`) are constructor options for tests; every production call site uses the
   defaults.
 
-This only bounds request *fan-out* against PostgreSQL for the same key; it changes nothing about
+This only bounds request _fan-out_ against PostgreSQL for the same key; it changes nothing about
 what gets cached, for how long, or when it is invalidated, and Redis remains non-load-bearing for
 correctness exactly as described above -- a lock acquisition failure (Redis down) is treated the
 same as contention and falls through to a direct fetch.

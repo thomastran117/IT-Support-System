@@ -170,7 +170,7 @@ describe('createCacheAside', () => {
     expect(calls).toBe(1);
   });
 
-  it('a waiter serves another holder\'s result instead of stampeding the fetch itself', async () => {
+  it("a waiter serves another holder's result instead of stampeding the fetch itself", async () => {
     const cache = createFakeCache(); // shared, as if both callers hit the same Redis
     const holder = createCacheAside(cache, 'ref:teams', 60, { maxWaitMs: 500 });
     const waiter = createCacheAside(cache, 'ref:teams', 60, { maxWaitMs: 500 });
@@ -223,7 +223,7 @@ describe('createCacheAside', () => {
     expect(waiterCalls).toBe(1); // never blocked past its own bounded wait
   });
 
-  it('a crashed holder\'s lease self-heals: the next caller is not deadlocked', async () => {
+  it("a crashed holder's lease self-heals: the next caller is not deadlocked", async () => {
     const cache = createFakeCache();
     // Simulate a holder that acquired the lock and then crashed before fetching or releasing.
     await cache.setIfAbsent('smartdesk:lock:ref:teams:active', 'dead-token', 30);

@@ -67,7 +67,11 @@ export function createCacheAside(
 
   /** Fills `key` behind a short-lived distributed lease, falling through to a direct, uncached
    * fetch if another holder's result does not show up within the bounded wait. */
-  async function fillLocked<T>(key: string, keySuffix: string, fetch: () => Promise<T>): Promise<T> {
+  async function fillLocked<T>(
+    key: string,
+    keySuffix: string,
+    fetch: () => Promise<T>,
+  ): Promise<T> {
     const lock = lockKey(namespace, keySuffix);
     const token = randomUUID();
     let owner: boolean;
