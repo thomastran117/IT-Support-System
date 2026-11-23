@@ -23,7 +23,8 @@
     "docs:db": "tsx scripts/generate-database-docs.ts",
     "test:db": "tsx scripts/test-db.ts",
     "eval:ai": "tsx scripts/evaluate-ai.ts",
-    "baseline:routing": "tsx scripts/routing-baseline.ts"
+    "baseline:routing": "tsx scripts/routing-baseline.ts",
+    "bench:cache": "tsx scripts/evaluate-cache.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.5",
