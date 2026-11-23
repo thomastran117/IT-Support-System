@@ -185,10 +185,12 @@ _AI and evaluation._ Troubleshooting articles searched by employees and linked f
 | `is_published` | `boolean` | NOT NULL | `false` |  |  |  | Only published articles are visible to employees. |
 | `created_at` | `timestamp(6) with time zone` | NOT NULL | `CURRENT_TIMESTAMP` |  |  |  | Creation time (UTC). |
 | `updated_at` | `timestamp(6) with time zone` | NOT NULL | `CURRENT_TIMESTAMP` |  |  |  | Last edit time, set by the service. |
+| `search_revision` | `integer` | NOT NULL | `1` |  |  |  | Increments for changes to the published search projection, including unpublication. |
 
 **CHECK constraints**
 
 - `ck_knowledge_articles_body_nonblank`: `(btrim(body) <> ''::text)`
+- `ck_knowledge_articles_search_revision`: `(search_revision > 0)`
 - `ck_knowledge_articles_title_nonblank`: `(btrim((title)::text) <> ''::text)`
 
 ## `recommendation_articles`
@@ -304,3 +306,35 @@ _Tickets._ Delivery queue for the optional email channel (SD-043). At most one r
 - `ck_notification_deliveries_lease`: `(((state)::text = 'RUNNING'::text) = ((lease_token IS NOT NULL) AND (locked_until IS NOT NULL)))`
 - `ck_notification_deliveries_state`: `((state)::text = ANY ((ARRAY['QUEUED'::character varying, 'RUNNING'::character varying, 'SENT'::character varying, 'FAILED'::character varying, 'SKIPPED'::character varying])::text[]))`
 - `ck_notification_deliveries_terminal`: `(((state)::text = ANY ((ARRAY['SENT'::character varying, 'FAILED'::character varying, 'SKIPPED'::character varying])::text[])) = (completed_at IS NOT NULL))`
+
+## `search_index_jobs`
+
+_Search._ PostgreSQL outbox for ticket and published knowledge search (SD-076). Source changes and jobs commit together. Each entity revision has at most one job. The queue stores IDs and indexing intent, without document content.
+
+| Column | Type | Null | Default | Key | Unique | Indexes | Meaning |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `job_id` | `uuid` | NOT NULL | `gen_random_uuid()` | PK |  | `idx_search_index_jobs_claim` | Primary key. |
+| `entity_type` | `character varying(20)` | NOT NULL |  |  | with entity_id, revision | `uq_search_index_jobs_entity_revision` | TICKET or KNOWLEDGE_ARTICLE. |
+| `entity_id` | `uuid` | NOT NULL |  |  | with entity_type, revision | `uq_search_index_jobs_entity_revision` | Source entity UUID. Jobs can outlive a source row. |
+| `revision` | `integer` | NOT NULL |  |  | with entity_type, entity_id | `uq_search_index_jobs_entity_revision` | Monotonic ticket version or knowledge search revision. |
+| `event_kind` | `character varying(6)` | NOT NULL |  |  |  |  | UPSERT reconciles a searchable source. DELETE removes a document. |
+| `state` | `character varying(10)` | NOT NULL | `'QUEUED'::character varying` |  |  | `idx_search_index_jobs_claim`, `idx_search_index_jobs_lease` | QUEUED, RUNNING, COMPLETED or FAILED. |
+| `attempts` | `integer` | NOT NULL | `0` |  |  |  | Number of times the job has been claimed. |
+| `max_attempts` | `integer` | NOT NULL | `5` |  |  |  | Maximum claims before terminal failure. |
+| `available_at` | `timestamp(6) with time zone` | NOT NULL | `CURRENT_TIMESTAMP` |  |  | `idx_search_index_jobs_claim` | Earliest time a queued job can be claimed. |
+| `lease_token` | `uuid` | NULL |  |  |  |  | Claim token. Only present while RUNNING. |
+| `locked_until` | `timestamp(6) with time zone` | NULL |  |  |  | `idx_search_index_jobs_lease` | Lease expiry for a RUNNING job. |
+| `error_kind` | `character varying(24)` | NULL |  |  |  |  | Bounded failure reason code. |
+| `created_at` | `timestamp(6) with time zone` | NOT NULL | `CURRENT_TIMESTAMP` |  |  |  | When the source change queued the job. |
+| `updated_at` | `timestamp(6) with time zone` | NOT NULL | `CURRENT_TIMESTAMP` |  |  |  | When the job state last changed. |
+| `completed_at` | `timestamp(6) with time zone` | NULL |  |  |  |  | When the job reached COMPLETED or FAILED. |
+
+**CHECK constraints**
+
+- `ck_search_index_jobs_attempts`: `((attempts >= 0) AND (attempts <= max_attempts) AND (max_attempts > 0))`
+- `ck_search_index_jobs_entity_type`: `((entity_type)::text = ANY ((ARRAY['TICKET'::character varying, 'KNOWLEDGE_ARTICLE'::character varying])::text[]))`
+- `ck_search_index_jobs_event_kind`: `((event_kind)::text = ANY ((ARRAY['UPSERT'::character varying, 'DELETE'::character varying])::text[]))`
+- `ck_search_index_jobs_lease`: `((((state)::text = 'RUNNING'::text) = (lease_token IS NOT NULL)) AND (((state)::text = 'RUNNING'::text) = (locked_until IS NOT NULL)))`
+- `ck_search_index_jobs_revision`: `(revision > 0)`
+- `ck_search_index_jobs_state`: `((state)::text = ANY ((ARRAY['QUEUED'::character varying, 'RUNNING'::character varying, 'COMPLETED'::character varying, 'FAILED'::character varying])::text[]))`
+- `ck_search_index_jobs_terminal`: `(((state)::text = ANY ((ARRAY['COMPLETED'::character varying, 'FAILED'::character varying])::text[])) = (completed_at IS NOT NULL))`

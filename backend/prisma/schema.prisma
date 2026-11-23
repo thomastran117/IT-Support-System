@@ -189,13 +189,15 @@ model AiRecommendation {
 }
 
 model KnowledgeArticle {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @map("article_id") @db.Uuid
-  categoryId  String?  @map("category_id") @db.Uuid
-  title       String   @db.VarChar(200)
-  body        String
-  isPublished Boolean  @default(false) @map("is_published")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @map("article_id") @db.Uuid
+  categoryId     String?  @map("category_id") @db.Uuid
+  title          String   @db.VarChar(200)
+  body           String
+  isPublished    Boolean  @default(false) @map("is_published")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  /// Increments when the published search projection changes, including unpublication.
+  searchRevision Int      @default(1) @map("search_revision")
 
   category        TicketCategory?         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   recommendations RecommendationArticle[]
@@ -316,4 +318,28 @@ model NotificationDelivery {
   @@unique([notificationId], map: "uq_notification_deliveries_notification")
   @@index([state, runAfter], map: "idx_notification_deliveries_claim")
   @@map("notification_deliveries")
+}
+
+/// Durable intent to reconcile a ticket or published article in the search projection.
+model SearchIndexJob {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @map("job_id") @db.Uuid
+  entityType  String    @map("entity_type") @db.VarChar(20)
+  entityId    String    @map("entity_id") @db.Uuid
+  revision    Int
+  eventKind   String    @map("event_kind") @db.VarChar(6)
+  state       String    @default("QUEUED") @db.VarChar(10)
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(5) @map("max_attempts")
+  availableAt DateTime  @default(now()) @map("available_at") @db.Timestamptz(6)
+  leaseToken  String?   @map("lease_token") @db.Uuid
+  lockedUntil DateTime? @map("locked_until") @db.Timestamptz(6)
+  errorKind   String?   @map("error_kind") @db.VarChar(24)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+
+  @@unique([entityType, entityId, revision], map: "uq_search_index_jobs_entity_revision")
+  @@index([state, availableAt, id], map: "idx_search_index_jobs_claim")
+  @@index([state, lockedUntil], map: "idx_search_index_jobs_lease")
+  @@map("search_index_jobs")
 }
