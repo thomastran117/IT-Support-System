@@ -6,12 +6,17 @@ import type {
   TeamMemberRefDto,
   TeamRefDto,
 } from '@smartdesk/contracts';
+import { createCacheAside } from '../../cache/cacheAside.js';
+import type { CacheClient } from '../../cache/redisCache.js';
 import { DbError, notFoundError } from '../../db/errors.js';
 import * as teamMembers from '../../db/repositories/teamMembers.js';
 import { withTransaction } from '../../db/transaction.js';
 
 const conflict = (message: string, details: unknown = null) =>
   new DbError('CONFLICT', 409, message, details);
+
+/** Starting point for low-churn, staff-wide reference data; see docs/architecture.md#caching. */
+const REFERENCE_DATA_TTL_SECONDS = 60;
 
 const toRef = (t: { id: string; name: string; description: string | null }): TeamRefDto => ({
   id: t.id,
@@ -29,7 +34,11 @@ const toRef = (t: { id: string; name: string; description: string | null }): Tea
  *    ticket's (team, assignee) pair is a foreign key to the membership. Reassign the tickets first.
  *  - A technician may belong to several teams and works the union of their queues.
  */
-export function createTeamService(prisma: PrismaClient) {
+export function createTeamService(prisma: PrismaClient, cache: CacheClient) {
+  const teamsCache = createCacheAside(cache, 'ref:teams', REFERENCE_DATA_TTL_SECONDS);
+  const categoriesCache = createCacheAside(cache, 'ref:categories', REFERENCE_DATA_TTL_SECONDS);
+  const membersCache = createCacheAside(cache, 'ref:team-members', REFERENCE_DATA_TTL_SECONDS);
+
   const loadTeam = async (db: Parameters<typeof teamMembers.findTeam>[0], id: string) => {
     const team = await teamMembers.findTeam(db, id);
     if (!team) throw notFoundError('Team');
@@ -55,32 +64,38 @@ export function createTeamService(prisma: PrismaClient) {
     // --- Read-only reference data for staff assignment forms ---------------------------------
 
     async listActiveTeams(): Promise<TeamRefDto[]> {
-      const teams = await prisma.supportTeam.findMany({
-        where: { isActive: true },
-        orderBy: { name: 'asc' },
+      return teamsCache.read('active', async () => {
+        const teams = await prisma.supportTeam.findMany({
+          where: { isActive: true },
+          orderBy: { name: 'asc' },
+        });
+        return teams.map(toRef);
       });
-      return teams.map(toRef);
     },
 
     async listActiveCategories(): Promise<CategoryRefDto[]> {
-      const categories = await prisma.ticketCategory.findMany({
-        where: { isActive: true },
-        orderBy: { name: 'asc' },
+      return categoriesCache.read('active', async () => {
+        const categories = await prisma.ticketCategory.findMany({
+          where: { isActive: true },
+          orderBy: { name: 'asc' },
+        });
+        return categories.map((c) => ({ id: c.id, name: c.name, description: c.description }));
       });
-      return categories.map((c) => ({ id: c.id, name: c.name, description: c.description }));
     },
 
     /** Active technicians of an active team: the only people a ticket can be assigned to. */
     async listAssignableMembers(teamId: string): Promise<TeamMemberRefDto[]> {
-      const team = await teamMembers.findTeam(prisma, teamId);
-      // An inactive team is indistinguishable from an unknown one to a technician.
-      if (!team?.isActive) throw notFoundError('Team');
-      const rows = await prisma.teamMember.findMany({
-        where: { teamId, user: { isActive: true, role: 'TECHNICIAN' } },
-        select: { user: { select: { id: true, displayName: true } } },
-        orderBy: { user: { displayName: 'asc' } },
+      return membersCache.read(teamId, async () => {
+        const team = await teamMembers.findTeam(prisma, teamId);
+        // An inactive team is indistinguishable from an unknown one to a technician.
+        if (!team?.isActive) throw notFoundError('Team');
+        const rows = await prisma.teamMember.findMany({
+          where: { teamId, user: { isActive: true, role: 'TECHNICIAN' } },
+          select: { user: { select: { id: true, displayName: true } } },
+          orderBy: { user: { displayName: 'asc' } },
+        });
+        return rows.map((r) => ({ id: r.user.id, displayName: r.user.displayName }));
       });
-      return rows.map((r) => ({ id: r.user.id, displayName: r.user.displayName }));
     },
 
     // --- Administration -----------------------------------------------------------------------
@@ -113,6 +128,7 @@ export function createTeamService(prisma: PrismaClient) {
           data: { name: input.name, description: input.description || null },
         });
       });
+      await teamsCache.invalidate();
       return toAdminTeam(team, 0, 0);
     },
 
@@ -134,6 +150,7 @@ export function createTeamService(prisma: PrismaClient) {
           },
         });
       });
+      await teamsCache.invalidate();
       return this.getTeam(id);
     },
 
@@ -143,6 +160,8 @@ export function createTeamService(prisma: PrismaClient) {
         await loadTeam(tx, id);
         await tx.supportTeam.update({ where: { id }, data: { isActive } });
       });
+      // isActive gates both listActiveTeams and whether this team's members are assignable.
+      await Promise.all([teamsCache.invalidate(), membersCache.invalidate()]);
       return this.getTeam(id);
     },
 
@@ -184,6 +203,7 @@ export function createTeamService(prisma: PrismaClient) {
         }
         await teamMembers.addMember(tx, teamId, userId);
       });
+      await membersCache.invalidate();
       const member = (await this.listMembers(teamId)).find((m) => m.id === userId);
       return member!;
     },
@@ -203,6 +223,7 @@ export function createTeamService(prisma: PrismaClient) {
         }
         await teamMembers.removeMember(tx, teamId, userId);
       });
+      await membersCache.invalidate();
     },
   };
 }

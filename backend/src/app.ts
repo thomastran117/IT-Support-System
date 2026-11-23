@@ -7,6 +7,7 @@ import { API_PREFIX } from '@smartdesk/contracts';
 import type { Env } from './config/env.js';
 import type { DbCheck, PrismaClient } from '@smartdesk/db';
 import type { CacheCheck } from './cache/client.js';
+import { createNoopCache, type CacheClient } from './cache/redisCache.js';
 import type { createFallbackRateLimitStore } from './rateLimit/fallbackStore.js';
 import { createAuthGuards } from './auth/guard.js';
 import { TokenService } from './auth/tokens.js';
@@ -32,6 +33,9 @@ export interface AppOptions {
   env: Env;
   checkDb: DbCheck;
   checkCache: CacheCheck;
+  /** Cache-aside reads (reference data, reports). Defaults to a no-op cache, so every test that
+   * omits this keeps reading fresh from Postgres exactly as before this option existed. */
+  cache?: CacheClient;
   /** Database client; the auth routes are only mounted when provided. */
   prisma?: PrismaClient;
   /** Per-IP request budgets for the auth endpoints (tests lower these). */
@@ -60,6 +64,7 @@ export const REDACT_PATHS = [
 ];
 
 export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
+  const cache = opts.cache ?? createNoopCache();
   const app = Fastify({
     logger: opts.logger ?? {
       level: opts.env.logLevel,
@@ -106,7 +111,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
       { prefix: `${API_PREFIX}/auth` },
     );
     await app.register(adminRoutes(opts.prisma), { prefix: `${API_PREFIX}/admin` });
-    await app.register(reportRoutes(opts.prisma), { prefix: `${API_PREFIX}/admin/reports` });
+    await app.register(reportRoutes(opts.prisma, cache), { prefix: `${API_PREFIX}/admin/reports` });
     await app.register(ticketLabelRoutes(opts.prisma), { prefix: `${API_PREFIX}/admin/tickets` });
     await app.register(labelListRoutes(opts.prisma), {
       prefix: `${API_PREFIX}/admin/classification-labels`,
@@ -115,12 +120,14 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
       prefix: `${API_PREFIX}/admin/knowledge`,
     });
     await app.register(knowledgeRoutes(opts.prisma), { prefix: `${API_PREFIX}/knowledge` });
-    await app.register(adminTeamRoutes(opts.prisma), { prefix: `${API_PREFIX}/admin/teams` });
-    await app.register(adminCategoryRoutes(opts.prisma), {
+    await app.register(adminTeamRoutes(opts.prisma, cache), {
+      prefix: `${API_PREFIX}/admin/teams`,
+    });
+    await app.register(adminCategoryRoutes(opts.prisma, cache), {
       prefix: `${API_PREFIX}/admin/categories`,
     });
-    await app.register(teamRoutes(opts.prisma), { prefix: `${API_PREFIX}/teams` });
-    await app.register(categoryRoutes(opts.prisma), { prefix: `${API_PREFIX}/categories` });
+    await app.register(teamRoutes(opts.prisma, cache), { prefix: `${API_PREFIX}/teams` });
+    await app.register(categoryRoutes(opts.prisma, cache), { prefix: `${API_PREFIX}/categories` });
     await app.register(notificationRoutes(opts.prisma), {
       prefix: `${API_PREFIX}/notifications`,
     });
