@@ -91,6 +91,20 @@ the continuation with a key derived from the server secret, the caller's scope, 
 query. Exact tracking ID lookups go directly to PostgreSQL and apply the same read policy and
 structured filters. See [ticket search API](api.md#ticket-search).
 
+### Published knowledge search
+
+The knowledge endpoint calls `createPublishedKnowledgeSearch`. For plain text, the OpenSearch
+adapter filters by publication and optional category and ranks title and body matches with BM25.
+It reads candidate IDs, revisions, and sort positions in relevance and article ID order.
+One PostgreSQL statement then selects current published candidates in the requested category and
+builds their previews. Only matching revisions contribute to the result order, count, and page.
+[OpenSearch multi-match](https://docs.opensearch.org/latest/query-dsl/full-text/multi-match/) · [OpenSearch pagination](https://docs.opensearch.org/latest/search-plugins/searching-data/paginate/)
+
+Search reads batches of up to 100 candidates and checks whether it can verify the full result set
+within a 300-candidate budget. For larger or incomplete scans, OpenSearch failures, and queries
+using PostgreSQL web search operators, the existing published-only PostgreSQL FTS query builds
+the page and total. See [knowledge search API](api.md#search).
+
 ### Search indexing worker
 
 With `OPENSEARCH_ENABLED=true`, the backend worker claims up to 25 outbox jobs at a time with
@@ -148,7 +162,7 @@ docker compose -p smartdesk-search-test --profile ci --profile search up --wait 
 docker compose -p smartdesk-search-test --profile ci build backend-ci
 docker compose -p smartdesk-search-test --profile ci --profile search run --rm --no-deps \
   -e TEST_OPENSEARCH_URL=http://opensearch:9200/ -w /app/backend backend-ci \
-  sh -c 'npm run migrate && ./node_modules/.bin/vitest run --no-file-parallelism test/integration/openSearch.integration.test.ts test/integration/searchIndexOpenSearch.integration.test.ts test/integration/searchRebuildOpenSearch.integration.test.ts test/integration/ticketSearch.integration.test.ts test/integration/ticketSearchApi.integration.test.ts'
+  sh -c 'npm run migrate && ./node_modules/.bin/vitest run --no-file-parallelism test/integration/openSearch.integration.test.ts test/integration/searchIndexOpenSearch.integration.test.ts test/integration/searchRebuildOpenSearch.integration.test.ts test/integration/ticketSearch.integration.test.ts test/integration/ticketSearchApi.integration.test.ts test/integration/knowledgeOpenSearch.integration.test.ts'
 docker compose -p smartdesk-search-test --profile ci --profile search down -v
 ```
 
@@ -301,7 +315,7 @@ card says so with a "Check again" button, and the routing form is never disabled
 `createAnalysisService({prisma, provider}).analyse(ticketId)` in `analysisService.ts` returns an `AnalysisDraft` (a validated proposal plus `retrievedArticleIds`). It only reads: it never updates a ticket, writes a recommendation (that is SD-036) or exposes any tool or API to the model.
 
 1. Loads the ticket title and description and the **active** categories and teams.
-2. Retrieves up to 5 **published** articles through `searchPublished` (the same path as the knowledge search API) using a loose OR query of distinctive words from the redacted ticket text.
+2. Retrieves up to 5 **published** articles through PostgreSQL `searchPublished` using a loose OR query of distinctive words from the redacted ticket text.
 3. Redacts and truncates ticket and article text, and sends only title, description, the allowlists and the articles. The requester's name, email, id and ticket metadata are never sent.
 4. Calls the provider, then re-checks the category, team and cited article IDs against what was actually sent. Cited articles are returned in retrieval order.
 

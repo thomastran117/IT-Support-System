@@ -16,6 +16,8 @@ import {
   type SearchIndexEventKind,
 } from '../../db/repositories/searchIndexJobs.js';
 import { withTransaction, type Db } from '../../db/transaction.js';
+import type { SearchClient } from '../search/client.js';
+import { createPublishedKnowledgeSearch } from './search.js';
 
 // Everything except tab, LF and CR: NUL and other control characters have no place in an article.
 // eslint-disable-next-line no-control-regex
@@ -67,7 +69,8 @@ export interface ListFilter {
  * Articles are never deleted: recommendations reference them (restrictive FK), and unpublishing
  * simply hides them from readers while the historical link stays intact.
  */
-export function createKnowledgeService(prisma: PrismaClient) {
+export function createKnowledgeService(prisma: PrismaClient, searchClient?: SearchClient) {
+  const searchPublished = createPublishedKnowledgeSearch(prisma, searchClient);
   const isCategoryActive = async (id: string, db: Db = prisma) => {
     const c = await db.ticketCategory.findUnique({ where: { id }, select: { isActive: true } });
     return c?.isActive === true;
@@ -141,17 +144,14 @@ export function createKnowledgeService(prisma: PrismaClient) {
       return toPage(rows.map(toSummary), total, limit, offset);
     },
 
-    /**
-     * Ranked full-text search over published articles. This is the retrieval AI orchestration
-     * calls too, so there is exactly one published-only search path.
-     */
+    /** Ranked full-text search over current published articles. */
     async search(
       query: string,
       filter: { categoryId?: string | undefined },
       limit: number,
       offset: number,
     ): Promise<ArticlePage<KnowledgeSearchResultDto>> {
-      const { hits, total } = await articles.searchPublished(prisma, {
+      const { hits, total } = await searchPublished({
         query,
         categoryId: filter.categoryId,
         limit,

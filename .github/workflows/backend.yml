@@ -58,6 +58,7 @@ jobs:
             ./node_modules/.bin/vitest run --no-file-parallelism \
             test/integration/openSearch.integration.test.ts test/integration/searchIndexOpenSearch.integration.test.ts \
             test/integration/searchRebuildOpenSearch.integration.test.ts test/integration/ticketSearchApi.integration.test.ts \
+            test/integration/knowledgeOpenSearch.integration.test.ts \
             2>&1 | tee ci-search-tests.log
 
       - name: Collect OpenSearch logs on failure
