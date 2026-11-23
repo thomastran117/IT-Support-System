@@ -99,9 +99,17 @@ then use `docker volume rm` with the exact search volume name for this project. 
 stored in `pgdata`. OpenSearch holds a derived projection that can be rebuilt from PostgreSQL once
 the backfill tooling is available.
 
-The Compose profile provisions the node. To opt into application search once it is available, set
-`OPENSEARCH_ENABLED=true` and `OPENSEARCH_URL=http://opensearch:9200` in `.env` and leave the
-credentials empty. `OPENSEARCH_ENABLED` defaults to `false`.
+After the node is healthy, initialize the v1 indexes and aliases from the server image:
+
+```bash
+docker compose --profile search run --rm --build --no-deps -e OPENSEARCH_ENABLED=true \
+  -e OPENSEARCH_URL=http://opensearch:9200/ backend npm run search:init
+```
+
+The initializer is safe to rerun with the original alias layout. It stops if existing aliases
+conflict. Search defaults to disabled. The ticket and knowledge endpoints currently continue to
+use PostgreSQL. See [OpenSearch indexes and aliases](docs/architecture.md#opensearch-indexes-and-aliases)
+for the mapping and verification commands.
 
 For production, use a separate secured OpenSearch deployment with verified TLS, private network
 access, and least-privilege service accounts. Inject `OPENSEARCH_USERNAME` and `OPENSEARCH_PASSWORD`

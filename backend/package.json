@@ -24,6 +24,7 @@
     "test:db": "tsx scripts/test-db.ts",
     "eval:ai": "tsx scripts/evaluate-ai.ts",
     "baseline:routing": "tsx scripts/routing-baseline.ts",
+    "search:init": "tsx scripts/init-search.ts",
     "bench:cache": "tsx scripts/evaluate-cache.ts"
   },
   "dependencies": {

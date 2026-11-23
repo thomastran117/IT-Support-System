@@ -37,6 +37,45 @@ Every package is independently locked and installed in its container image.
 There is intentionally no root npm workspace. Cross-package ordering belongs to the Docker build
 and verification scripts in `docker/`.
 
+## OpenSearch indexes and aliases
+
+The server-only client queries read aliases and returns candidate IDs and optional sort values.
+Callers must reload candidates from PostgreSQL and enforce current access and publication rules
+before returning results. Search requests use a 750 ms timeout per attempt and at most one retry
+for transient failures. The circuit opens for 10 seconds after three consecutive operations fail
+with transient errors. A single probe then determines whether it can close. The API and worker
+start without connecting to OpenSearch.
+
+| Projection | Initial index            | Read alias                 | Write alias                 |
+| ---------- | ------------------------ | -------------------------- | --------------------------- |
+| Tickets    | `smartdesk-tickets-v1`   | `smartdesk-tickets-read`   | `smartdesk-tickets-write`   |
+| Knowledge  | `smartdesk-knowledge-v1` | `smartdesk-knowledge-read` | `smartdesk-knowledge-write` |
+
+Both mappings reject unknown fields. Ticket UUIDs, status, and priority use exact keyword fields.
+Ticket titles and descriptions use the standard text analyzer. Creation and update dates use ISO
+timestamps, and the source version is a long integer. Knowledge uses an exact article and category
+ID, analyzed title and body, publication state, and source version. Its read alias filters for
+published articles. Internal comments, audit data, recommendations, model prompts, and credentials
+are outside both projections.
+
+On a secured deployment, use separate service roles scoped to these projections. The API role
+gets search access, the indexer gets writes through the write aliases, and the provisioning role
+gets index creation and alias inspection. Run `npm run search:init` with provisioning credentials
+once per new cluster. It creates each index and its aliases atomically. Check the alias layout
+before resolving an initializer conflict. Use production certificates and service credentials from
+the deployment secret store. OpenSearch connectivity is private to the server side.
+
+Run the mapping tests against a disposable Compose project with empty search indexes:
+
+```bash
+docker compose -p smartdesk-search-test --profile search up --wait opensearch
+docker compose -p smartdesk-search-test --profile ci build backend-ci
+docker compose -p smartdesk-search-test --profile ci --profile search run --rm --no-deps \
+  -e TEST_OPENSEARCH_URL=http://opensearch:9200/ -w /app/backend backend-ci \
+  ./node_modules/.bin/vitest run test/integration/openSearch.integration.test.ts
+docker compose -p smartdesk-search-test --profile ci --profile search down -v
+```
+
 ## Request and data flow
 
 All API responses use the envelope `{ message, error, details, data }` and include an
