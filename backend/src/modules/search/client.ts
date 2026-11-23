@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { OpenSearchConfig } from '../../config/env.js';
-import { searchIndexes, type SearchCollection } from './indexes.js';
+import { liveSearchFilters, searchIndexes, type SearchCollection } from './indexes.js';
 import { createSearchTransport, SearchError, type SearchTransportOptions } from './transport.js';
 
 const sortValue = z.union([z.string(), z.number(), z.null()]);
@@ -48,7 +48,7 @@ export function createSearchClient(
           // Live ticket projections have status. A removal keeps only its identity and revision.
           query:
             collection === 'tickets'
-              ? { bool: { must: [query], filter: [{ exists: { field: 'status' } }] } }
+              ? { bool: { must: [query], filter: [liveSearchFilters.tickets] } }
               : query,
           size,
           sort,

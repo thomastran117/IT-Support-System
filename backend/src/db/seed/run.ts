@@ -60,7 +60,7 @@ export async function seedDatabase(
   if (options.reset) {
     assertResettable(options.databaseUrl);
     await prisma.$executeRawUnsafe(
-      `TRUNCATE ${[...TABLES, 'search_index_jobs'].map((t) => `"${t}"`).join(', ')} RESTART IDENTITY CASCADE`,
+      `TRUNCATE ${[...TABLES, 'search_index_jobs', 'search_rebuilds'].map((t) => `"${t}"`).join(', ')} RESTART IDENTITY CASCADE`,
     );
   }
 

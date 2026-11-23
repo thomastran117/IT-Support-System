@@ -1758,6 +1758,13 @@
           "nullable": true,
           "default": null,
           "meaning": "When the job reached COMPLETED or FAILED."
+        },
+        {
+          "name": "sequence",
+          "type": "bigint",
+          "nullable": false,
+          "default": "nextval('search_index_jobs_sequence_seq'::regclass)",
+          "meaning": "Ordered replay key. A table lock seals a committed prefix for a rebuild."
         }
       ],
       "primaryKey": ["job_id"],
@@ -1811,6 +1818,104 @@
         {
           "name": "uq_search_index_jobs_entity_revision",
           "columns": ["entity_type", "entity_id", "revision"],
+          "unique": true
+        },
+        {
+          "name": "uq_search_index_jobs_sequence",
+          "columns": ["sequence"],
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "search_rebuilds",
+      "area": "Search",
+      "description": "Resumable backfill and reindex checkpoints for replacement OpenSearch generations (SD-078).",
+      "columns": [
+        {
+          "name": "version",
+          "type": "integer",
+          "nullable": false,
+          "default": null,
+          "meaning": "Destination generation and primary key."
+        },
+        {
+          "name": "build_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": "gen_random_uuid()",
+          "meaning": "Ownership marker stored on both destination indexes."
+        },
+        {
+          "name": "source_version",
+          "type": "integer",
+          "nullable": true,
+          "default": null,
+          "meaning": "Previous live generation, if any."
+        },
+        {
+          "name": "phase",
+          "type": "character varying(10)",
+          "nullable": false,
+          "default": "'PREPARE'::character varying",
+          "meaning": "Durable progress step. CUTOVER pauses worker claims."
+        },
+        {
+          "name": "scan_cursor",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "meaning": "Last source ID in the active keyset scan."
+        },
+        {
+          "name": "replayed_through",
+          "type": "bigint",
+          "nullable": false,
+          "default": "0",
+          "meaning": "Highest sealed sequence fully applied to the destination."
+        },
+        {
+          "name": "replay_until",
+          "type": "bigint",
+          "nullable": false,
+          "default": "0",
+          "meaning": "Upper sequence of the currently sealed replay window."
+        },
+        {
+          "name": "verified_tickets",
+          "type": "integer",
+          "nullable": true,
+          "default": null,
+          "meaning": "Live ticket count verified before handoff."
+        },
+        {
+          "name": "verified_articles",
+          "type": "integer",
+          "nullable": true,
+          "default": null,
+          "meaning": "Published article count verified before handoff."
+        }
+      ],
+      "primaryKey": ["version"],
+      "foreignKeys": [],
+      "checks": [
+        {
+          "name": "ck_search_rebuilds_phase",
+          "rule": "((phase)::text = ANY ((ARRAY['PREPARE'::character varying, 'TICKETS'::character varying, 'KNOWLEDGE'::character varying, 'REPLAY'::character varying, 'CUTOVER'::character varying, 'COMPLETED'::character varying])::text[]))"
+        },
+        {
+          "name": "ck_search_rebuilds_version",
+          "rule": "((version > 0) AND ((source_version IS NULL) OR ((source_version > 0) AND (source_version < version))))"
+        },
+        {
+          "name": "ck_search_rebuilds_watermark",
+          "rule": "((replayed_through >= 0) AND (replay_until >= replayed_through))"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "search_rebuilds_pkey",
+          "columns": ["version"],
           "unique": true
         }
       ]

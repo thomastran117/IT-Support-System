@@ -1,5 +1,6 @@
-import { Prisma, type TransactionClient } from '@smartdesk/db';
+import { Prisma, type PrismaClient, type TransactionClient } from '@smartdesk/db';
 import type { Db } from '../transaction.js';
+import { searchClaimsPaused } from './searchRebuilds.js';
 
 export type SearchIndexEntityType = 'TICKET' | 'KNOWLEDGE_ARTICLE';
 export type SearchIndexEventKind = 'UPSERT' | 'DELETE';
@@ -51,7 +52,17 @@ export function enqueueSearchIndexJob(
 
 /** Claim due and abandoned jobs with the same leased SKIP LOCKED pattern as AI analysis. */
 export async function claimSearchIndexJobs(
-  db: Db,
+  prisma: PrismaClient,
+  options: { limit: number; leaseMs: number; now?: Date },
+): Promise<ClaimedSearchIndexJob[]> {
+  return prisma.$transaction(async (tx) => {
+    if (await searchClaimsPaused(tx)) return [];
+    return claimDueSearchIndexJobs(tx, options);
+  });
+}
+
+async function claimDueSearchIndexJobs(
+  db: TransactionClient,
   { limit, leaseMs, now }: { limit: number; leaseMs: number; now?: Date },
 ): Promise<ClaimedSearchIndexJob[]> {
   await db.$executeRaw`

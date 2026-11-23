@@ -337,9 +337,25 @@ model SearchIndexJob {
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
   completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+  sequence    BigInt    @unique(map: "uq_search_index_jobs_sequence") @default(autoincrement())
 
   @@unique([entityType, entityId, revision], map: "uq_search_index_jobs_entity_revision")
   @@index([state, availableAt, id], map: "idx_search_index_jobs_claim")
   @@index([state, lockedUntil], map: "idx_search_index_jobs_lease")
   @@map("search_index_jobs")
+}
+
+/// Checkpoint and ownership marker for a replacement search index generation.
+model SearchRebuild {
+  version          Int     @id
+  buildId          String  @default(dbgenerated("gen_random_uuid()")) @map("build_id") @db.Uuid
+  sourceVersion    Int?    @map("source_version")
+  phase            String  @default("PREPARE") @db.VarChar(10)
+  scanCursor       String? @map("scan_cursor") @db.Uuid
+  replayedThrough  BigInt  @default(0) @map("replayed_through")
+  replayUntil      BigInt  @default(0) @map("replay_until")
+  verifiedTickets  Int?    @map("verified_tickets")
+  verifiedArticles Int?    @map("verified_articles")
+
+  @@map("search_rebuilds")
 }

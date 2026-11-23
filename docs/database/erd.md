@@ -168,6 +168,18 @@ erDiagram
     timestamptz created_at
     timestamptz updated_at
     timestamptz completed_at
+    bigint sequence
+  }
+  search_rebuilds {
+    int version PK
+    uuid build_id
+    int source_version
+    varchar phase
+    uuid scan_cursor
+    bigint replayed_through
+    bigint replay_until
+    int verified_tickets
+    int verified_articles
   }
   support_teams ||--o{ team_members : "team_id"
   users ||--o{ team_members : "user_id"

@@ -38,6 +38,7 @@ describe('documentation is generated from the spec', () => {
       'notifications',
       'notification_deliveries',
       'search_index_jobs',
+      'search_rebuilds',
     ]);
     for (const table of spec.tables) expect(read('erd.md')).toContain(`  ${table.name} {`);
   });
