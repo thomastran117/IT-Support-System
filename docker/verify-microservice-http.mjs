@@ -176,7 +176,9 @@ if (mode === 'benchmark') {
     assert.equal(data.mode, 'fallback');
     assert.equal(data.reason, 'unavailable');
   }
-  const { data: ticket } = await createTicket(employee, `SD100 manual during ${mode} outage`);
+  const searchCanary = 'sd100fallbackcanary';
+  const title = mode === 'search' ? searchCanary : `SD100 manual during ${mode} outage`;
+  const { data: ticket } = await createTicket(employee, title);
   const categories = (await request('/api/categories', { token: admin })).data;
   const teams = (await request('/api/teams', { token: admin })).data;
   const path = '/api/tickets/' + ticket.id;
@@ -195,7 +197,9 @@ if (mode === 'benchmark') {
   assert.equal(events.filter(({ type }) => type === 'CREATED').length, 1);
   assert.equal(events.filter(({ type }) => type === 'TEAM_ASSIGNED').length, 1);
   if (mode === 'search') {
-    const { data: hits } = await request('/api/tickets/search?q=SD100', { token: employee });
+    const { data: hits } = await request('/api/tickets/search?q=' + searchCanary, {
+      token: employee,
+    });
     assert.equal(hits.mode, 'fallback');
     assert.equal(hits.consistency, 'current');
     assert.ok(hits.items.some(({ id }) => id === ticket.id));
