@@ -80,9 +80,9 @@ filter by their active teams or their own assignment, and admins can select team
 Both dates in the form are inclusive. Clear search returns to the ordinary ticket list or support
 queue. Reset filters keeps the search text and returns to the first page.
 
-Text search shows when the index may be behind and offers access to the ordinary views when
-OpenSearch is disabled or unavailable. Full tracking IDs use PostgreSQL. The list sorts newest
-first, and the team and assigned queues sort by priority.
+Text search labels PostgreSQL results when OpenSearch is disabled, behind, or unavailable. During
+an outage, a page started on OpenSearch offers a first-page restart. Full tracking IDs use
+PostgreSQL. The list sorts newest first, and the team and assigned queues sort by priority.
 
 The frontend GitHub workflow exercises search using a disposable PostgreSQL and OpenSearch stack,
 then stops OpenSearch to exercise the outage flow. On Linux, run the same Playwright scenarios

@@ -340,10 +340,20 @@ const searchTicketSummary = z.strictObject({
   version: z.int().positive(),
 }) satisfies z.ZodType<TicketSummaryDto>;
 
+export const ticketSearchFallbackReasonSchema = z.enum(['disabled', 'unavailable', 'index_lag']);
+export type TicketSearchFallbackReason = z.infer<typeof ticketSearchFallbackReasonSchema>;
+
 export const ticketSearchResponseSchema = z.discriminatedUnion('mode', [
   z.strictObject({
     mode: z.literal('text'),
     consistency: z.literal('eventual'),
+    items: z.array(searchTicketSummary).max(TICKET_PAGE_SIZE_MAX),
+    nextCursor: ticketSearchCursor.nullable(),
+  }),
+  z.strictObject({
+    mode: z.literal('fallback'),
+    consistency: z.literal('current'),
+    reason: ticketSearchFallbackReasonSchema,
     items: z.array(searchTicketSummary).max(TICKET_PAGE_SIZE_MAX),
     nextCursor: ticketSearchCursor.nullable(),
   }),

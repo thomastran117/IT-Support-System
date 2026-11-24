@@ -206,21 +206,30 @@ test.describe('ticket search with the real API', () => {
   });
 });
 
-test('real OpenSearch outage offers the regular list and an exact lookup', async ({
+test('real OpenSearch outage keeps scoped text, regular list and exact lookup available', async ({
   page,
   isMobile,
 }) => {
   test.skip(scenario !== 'unavailable' || isMobile, 'Requires the API with OpenSearch stopped');
   await signIn(page, 'erin');
   await searchInput(page).fill('vpn');
-  await expect(page.getByRole('region', { name: 'My tickets' }).getByRole('alert')).toContainText(
-    'Text search is temporarily unavailable',
-  );
-  await page.getByRole('button', { name: 'Browse my tickets' }).click();
+  await expect(
+    page.getByText('The search index is unavailable. Showing current PostgreSQL results.'),
+  ).toBeVisible();
+  await expect(
+    results(page).getByRole('link', { name: 'VPN disconnects every hour' }),
+  ).toBeVisible();
+  await searchInput(page).fill('external monitor');
+  await expect(page.getByText('No tickets match this search')).toBeVisible();
+  await page.getByRole('button', { name: 'Clear search' }).click();
   await expect(page.getByRole('table', { name: 'Your tickets, newest first' })).toBeVisible();
   await expect(page).toHaveURL(/\/employee$/);
   await searchInput(page).fill(vpnId);
   await expect(
     results(page).getByRole('link', { name: 'VPN disconnects every hour' }),
+  ).toBeVisible();
+  await results(page).getByRole('link', { name: 'VPN disconnects every hour' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'VPN disconnects every hour', level: 1 }),
   ).toBeVisible();
 });

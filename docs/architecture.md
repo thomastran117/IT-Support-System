@@ -92,6 +92,40 @@ the continuation with a key derived from the server secret, the caller's scope, 
 query. Exact tracking ID lookups go directly to PostgreSQL and apply the same read policy and
 structured filters. See [ticket search API](api.md#ticket-search).
 
+### PostgreSQL ticket search and index lag
+
+When OpenSearch is disabled or returns a timeout, circuit-open response, or other search error,
+ticket text search uses PostgreSQL. The fallback uses a bound `plainto_tsquery` and the weighted
+`idx_tickets_fts` GIN expression from migration `0014`. The indexed fields are the ticket title and
+description. The SQL applies the shared requester and active-team scope plus the same structured
+filters before ranking. It reads the principal, ranked IDs, and summaries in one PostgreSQL
+snapshot. [PostgreSQL text search indexes](https://www.postgresql.org/docs/16/textsearch-tables.html)
+
+Before calling OpenSearch, a scoped `EXISTS` query checks the outbox for current ticket revisions
+that match PostgreSQL text and structured filters. A queued, running, or failed matching revision
+uses PostgreSQL. The same rule applies for two seconds after a matching job completes to cover
+refresh lag. This makes committed new and reassigned tickets searchable by their current terms
+while the worker catches up, and keeps lag in other users' tickets out of the decision. Exact UUID
+lookups and ordinary list, detail, and queue requests always read PostgreSQL.
+
+Text pages omit totals and expose a cursor only when another authorized result was found. PostgreSQL
+fetches one extra matching row and uses rank plus ticket ID as its cursor. OpenSearch needs a bounded
+candidate scan and can return a short page. The engines use different ranking and matching rules,
+so a cursor stays with its engine. Authorized edits can shift either engine's results between pages.
+
+Monitor oldest outstanding age and failed jobs in the outbox, alongside the backend log
+`Ticket search using PostgreSQL` grouped by `reason`. A rising queued or running age indicates
+backlog growth. Inspect worker health, alias availability, and failed job reason codes when age or
+fallback frequency rises. This operational query groups jobs without ticket text or IDs.
+
+```sql
+SELECT entity_type, state, count(*) AS jobs,
+       max(statement_timestamp() - created_at) AS oldest_age
+FROM search_index_jobs
+WHERE state IN ('QUEUED', 'RUNNING', 'FAILED')
+GROUP BY entity_type, state;
+```
+
 ### Published knowledge search
 
 The knowledge endpoint calls `createPublishedKnowledgeSearch`. For plain text, the OpenSearch

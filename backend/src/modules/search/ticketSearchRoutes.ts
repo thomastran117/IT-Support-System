@@ -3,9 +3,9 @@ import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { EncryptJWT, jwtDecrypt } from 'jose';
 import { z } from 'zod';
 import {
+  ticketSearchFallbackReasonSchema,
   ticketSearchQuerySchema,
   type TicketSearchResponse,
-  type TicketSearchUnavailable,
 } from '@smartdesk/contracts';
 import type { PrismaClient } from '@smartdesk/db';
 import { isTicketId } from '../../auth/ticketAccess.js';
@@ -13,10 +13,17 @@ import { envelope, HttpError } from '../../plugins/errors.js';
 import { parse } from '../../plugins/validate.js';
 import type { SearchClient } from './client.js';
 import { createTicketSearchService } from './ticketSearch.js';
-import { SearchError } from './transport.js';
 
 const cursorType = 'smartdesk-ticket-search-cursor';
 const positionSchema = z.tuple([z.number().nonnegative(), z.guid()]);
+const cursorSchema = z.discriminatedUnion('source', [
+  z.object({ source: z.literal('opensearch'), position: positionSchema }),
+  z.object({
+    source: z.literal('postgres'),
+    position: positionSchema,
+    reason: ticketSearchFallbackReasonSchema,
+  }),
+]);
 
 /** Mounted under /api/tickets. */
 export const ticketSearchRoutes =
@@ -88,38 +95,35 @@ export const ticketSearchRoutes =
               typ: cursorType,
               requiredClaims: ['exp'],
             });
-            after = positionSchema.parse(payload.position);
+            // Cursors issued before fallback support belong to OpenSearch.
+            after = cursorSchema.parse({ source: 'opensearch', ...payload });
           } catch {
             throw new HttpError(400, 'Invalid or expired ticket search cursor');
           }
         }
-        try {
-          const { items, nextCursor } = await service.search(principal, {
-            text: q,
-            filters,
-            limit,
-            after,
-          });
-          const page: TicketSearchResponse = {
-            mode: 'text',
-            consistency: 'eventual',
-            items,
-            nextCursor: nextCursor
-              ? await new EncryptJWT({ position: nextCursor })
-                  .setProtectedHeader({ alg: 'dir', enc: 'A256GCM', typ: cursorType })
-                  .setExpirationTime('10m')
-                  .encrypt(key)
-              : null,
-          };
-          return envelope('Ticket search', page);
-        } catch (err) {
-          if (!(err instanceof SearchError)) throw err;
-          req.log.warn({ code: err.code, status: err.status }, 'Ticket text search unavailable');
-          throw new HttpError(503, 'Ticket text search unavailable', {
-            code: 'TICKET_SEARCH_UNAVAILABLE',
-            fallback: '/api/tickets',
-          } satisfies TicketSearchUnavailable);
+        const { nextCursor, ...result } = await service.searchText(principal, {
+          text: q,
+          filters,
+          limit,
+          after,
+        });
+        if (result.mode === 'fallback' && !after) {
+          req.log.info({ reason: result.reason }, 'Ticket search using PostgreSQL');
         }
+        const cursorPayload =
+          result.mode === 'fallback'
+            ? { source: 'postgres', position: nextCursor, reason: result.reason }
+            : { source: 'opensearch', position: nextCursor };
+        const page: TicketSearchResponse = {
+          ...result,
+          nextCursor: nextCursor
+            ? await new EncryptJWT(cursorPayload)
+                .setProtectedHeader({ alg: 'dir', enc: 'A256GCM', typ: cursorType })
+                .setExpirationTime('10m')
+                .encrypt(key)
+            : null,
+        };
+        return envelope('Ticket search', page);
       },
     );
   };
