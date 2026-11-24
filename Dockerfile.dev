@@ -53,11 +53,13 @@ WORKDIR /app
 # package manifests to be present while npm installs the consuming application.
 COPY packages/contracts/package.json packages/contracts/package-lock.json packages/contracts/
 COPY packages/db/package.json packages/db/package-lock.json packages/db/
+COPY packages/analytics/package.json packages/analytics/package-lock.json packages/analytics/
 COPY packages/notifications/package.json packages/notifications/package-lock.json packages/notifications/
 COPY backend/package.json backend/package-lock.json backend/
 COPY frontend/package.json frontend/package-lock.json frontend/
 RUN npm ci --prefix packages/contracts \
   && npm ci --prefix packages/db \
+  && npm ci --prefix packages/analytics \
   && npm ci --prefix packages/notifications \
   && npm ci --prefix backend \
   && npm ci --prefix frontend
@@ -68,6 +70,7 @@ RUN npm --prefix packages/ai-analysis run build \
   && npm --prefix packages/contracts run build \
   && npm --prefix backend run generate \
   && npm --prefix packages/db run build \
+  && npm --prefix packages/analytics run build \
   && npm --prefix packages/notifications run build
 
 FROM source AS backend
@@ -91,6 +94,19 @@ COPY backend/services/notifications/ ./
 RUN npm run build
 USER node
 EXPOSE 4020
+CMD ["node", "dist/server.js"]
+
+FROM service-runtime AS analytics-service
+COPY --from=source /app/packages/contracts/ packages/contracts/
+COPY --from=source /app/packages/db/ packages/db/
+COPY --from=source /app/packages/analytics/ packages/analytics/
+WORKDIR /app/backend/services/analytics
+COPY backend/services/analytics/package.json backend/services/analytics/package-lock.json ./
+RUN npm ci
+COPY backend/services/analytics/ ./
+RUN npm run build
+USER node
+EXPOSE 4030
 CMD ["node", "dist/server.js"]
 
 FROM source AS frontend

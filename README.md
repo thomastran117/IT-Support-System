@@ -74,6 +74,11 @@ network using `backend-api`.
 The `notifications` profile runs the independent inbox and email dispatcher. The cutover
 uses the existing notification and delivery tables. [Notifications setup and rollback](docs/architecture/notifications-service.md)
 
+## Opt-in Analytics service
+
+The `analytics` profile runs the independent admin report endpoints against the existing
+PostgreSQL facts using a scoped read-only login. [Analytics setup and rollback](docs/architecture/analytics-service.md)
+
 ## Common operations
 
 ```bash

@@ -37,6 +37,7 @@
     "@fastify/cors": "^11.4.3",
     "@fastify/rate-limit": "^11.2.2",
     "@smartdesk/ai-analysis": "file:../packages/ai-analysis",
+    "@smartdesk/analytics": "file:../packages/analytics",
     "@smartdesk/contracts": "file:../packages/contracts",
     "@smartdesk/db": "file:../packages/db",
     "@smartdesk/notifications": "file:../packages/notifications",

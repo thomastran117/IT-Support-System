@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./delegated-identity": {
+      "types": "./dist/delegatedIdentity.d.ts",
+      "default": "./dist/delegatedIdentity.js"
+    },
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
@@ -11,6 +15,9 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "jose": "^6.2.18"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

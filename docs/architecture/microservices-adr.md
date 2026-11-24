@@ -73,6 +73,12 @@ the recipient ID and notice type so delayed processing uses the original event d
 checks the caller and recipient again on every read or update.
 [Notifications cutover and rollback](notifications-service.md)
 
+### Analytics reads
+
+The Analytics service reads committed Ticket facts using the `smartdesk_analytics` column
+grants. Both deployment modes use the same Q05–Q14 queries and report contracts.
+[Analytics cutover and rollback](analytics-service.md)
+
 ### AI handoff
 
 Keep `ai_analysis_jobs` rows, `(ticket_id, request_id)` uniqueness, existing lease tokens and

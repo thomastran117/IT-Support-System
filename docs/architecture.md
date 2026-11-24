@@ -54,6 +54,10 @@ calls also verify the current user and resource scope.
 In Notifications service mode, only the inbox route and its subpaths target the independent
 Notifications listener. Ticket requests and gateway readiness use the backend. [Notifications service](architecture/notifications-service.md)
 
+In Analytics service mode, the gateway sends admin report requests to the private Analytics
+listener. Analytics reads the committed Ticket facts using scoped PostgreSQL grants.
+[Analytics service](architecture/analytics-service.md)
+
 ## AI service container
 
 `backend/services/ai` is the first package under `backend/services/`. Its Compose profile
