@@ -41,4 +41,5 @@ docker compose --profile ci run --rm frontend-ci
 
 The static runner writes the revision, Semgrep JSON, and per-lockfile npm results under
 `test-results/sd100/`. The existing backend and frontend workflows run the
-package compiler and lint checks.
+package compiler and lint checks. The frontend workflow publishes the raw source and
+lockfile reports as the `microservice-static-analysis` artifact.

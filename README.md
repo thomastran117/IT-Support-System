@@ -89,10 +89,23 @@ retrieval for AI. [Knowledge setup and rollback](docs/architecture/knowledge-ser
 The `identity` profile runs sessions, account administration, and scoped account
 verification for Ticket and the extracted services. [Identity setup and rollback](docs/architecture/identity-service.md)
 
-## Opt-in isolated Ticket deployment
+## Opt-in isolated microservices
 
-The Ticket Compose override runs the remaining ticket and catalog routes with scoped
-database credentials and explicit gateway ownership. [Ticket cutover and rollback](docs/architecture/ticket-service.md)
+The isolated Compose override runs Ticket, Identity, Knowledge, Analytics, and Notifications
+independently. Use the `services` profile with a configured provider to run the AI worker
+as a service. Both layouts use the same frontend, gateway URL, and PostgreSQL schema.
+[Isolated setup, migrations, and rollback](docs/architecture/ticket-service.md)
+
+Run the full isolated demonstration from a fresh checkout with Docker Compose, Node.js, Git,
+and a POSIX shell. The script provisions a disposable database, creates synthetic credentials,
+and runs Chromium, the outage drills, and the rollback check.
+
+```sh
+SD100=1 SD100_PASSIVE_SCAN=1 sh docker/verify-ticket-service.sh
+```
+
+The run records scan and benchmark evidence in `test-results/sd100/`.
+[Deliverable 1 traceability and evidence](docs/architecture/microservice-traceability.md)
 
 ## Common operations
 
@@ -199,20 +212,23 @@ sh docker/verify-service-containers.sh
 `backend-ci` starts PostgreSQL, applies migrations, and runs package, API, worker, and database
 checks. `frontend-ci` includes Chromium and runs unit plus desktop/mobile Playwright tests.
 The service container script uses `jq` and creates a disposable Compose project.
+GitHub runs the browser, service lifecycle, database, search, and scan jobs in parallel. The
+required `backend / verify` and `frontend / verify` checks aggregate their respective job results.
+The backend workflow runs the repository-wide format check once.
 
 ## Repository map
 
-| Path                        | Purpose                                                              |
-| --------------------------- | -------------------------------------------------------------------- |
-| `frontend/`                 | Next.js App Router UI                                                |
-| `backend/`                  | Fastify API, AI worker, Prisma schema/migrations, seeds, SQL reports |
-| `backend/gateway/`          | Fastify public API proxy                                             |
-| `backend/services/ai/`      | Opt-in Fastify AI service container and health endpoints             |
-| `packages/contracts/`       | Browser-safe API types and validation                                |
-| `packages/db/`              | Generated Prisma client adapter shared by API and worker             |
-| `packages/ai-analysis/`     | Provider adapters, proposal validation, and reusable runner          |
-| `packages/service-runtime/` | Server-side environment validation shared by gateway and AI service  |
-| `docs/`                     | Durable technical references and generated schema docs               |
+| Path                        | Purpose                                                                 |
+| --------------------------- | ----------------------------------------------------------------------- |
+| `frontend/`                 | Next.js App Router UI                                                   |
+| `backend/`                  | Fastify API, AI worker, Prisma schema/migrations, seeds, SQL reports    |
+| `backend/gateway/`          | Fastify public API proxy                                                |
+| `backend/services/`         | Separate AI, Identity, Knowledge, Analytics, and Notifications runtimes |
+| `packages/contracts/`       | Browser-safe API types and validation                                   |
+| `packages/db/`              | Generated Prisma client adapter shared by API and worker                |
+| `packages/ai-analysis/`     | Provider adapters, proposal validation, and reusable runner             |
+| `packages/service-runtime/` | Server-side environment validation shared by gateway and AI service     |
+| `docs/`                     | Durable technical references and generated schema docs                  |
 
 Each Node package owns its own manifest and lockfile. The root deliberately has no `package.json`,
 `package-lock.json`, or npm workspace.
@@ -223,5 +239,6 @@ Each Node package owns its own manifest and lockfile. The root deliberately has 
 - [API reference](docs/api.md)
 - [Authentication and authorization](docs/authentication.md)
 - [Database development](docs/database.md)
+- [Microservice traceability and verification](docs/architecture/microservice-traceability.md)
 
 Never commit `.env` files, credentials, generated build output, or local test reports.
