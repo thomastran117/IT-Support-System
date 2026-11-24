@@ -100,14 +100,18 @@ if (process.env.NOTIFICATION_PHASE === 'queue') {
     const team = await db.supportTeam.findFirstOrThrow({ where: { name: 'Network & Access' } });
     const category = await db.ticketCategory.findFirstOrThrow({ where: { name: 'Network/VPN' } });
     const assignee = await db.user.findUniqueOrThrow({ where: { email: 'tara@smartdesk.test' } });
-    await api(path + '/routing', 'POST', admin, {
+    const routed = await api(path + '/routing', 'POST', admin, {
       teamId: team.id, categoryId: category.id, assigneeId: assignee.id, priority: 'MEDIUM',
+      expectedVersion: ticket.version,
     });
-    await api(path + '/transitions', 'POST', admin, { to: 'IN_PROGRESS' });
+    const inProgress = await api(path + '/transitions', 'POST', admin, {
+      to: 'IN_PROGRESS', expectedVersion: routed.version,
+    });
     await api(path + '/comments', 'POST', admin, { body: 'Private service note', isInternal: true }, 201);
     await api(path + '/comments', 'POST', admin, { body: 'Public update' }, 201);
     const resolved = await api(path + '/transitions', 'POST', admin, {
-      to: 'RESOLVED', resolutionSummary: 'Replaced the VPN configuration.',
+      to: 'RESOLVED', expectedVersion: inProgress.version,
+      resolutionSummary: 'Replaced the VPN configuration.',
     });
     assert.equal(resolved.status, 'RESOLVED');
     await api(inbox, 'GET', erin, undefined, 503);
