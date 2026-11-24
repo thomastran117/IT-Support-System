@@ -959,6 +959,16 @@ export const KNOWLEDGE_IDENTITY = {
 } as const;
 export const knowledgePrincipalSchema = z.strictObject({ id: z.guid(), role: roleSchema });
 
+export const TICKET_IDENTITY = {
+  audience: 'smartdesk-identity',
+  scope: 'identity:ticket-principal',
+  path: '/internal/identity/ticket-principal',
+} as const;
+export const ticketIdentityStateSchema = z.strictObject({
+  id: z.guid(),
+  tokenVersion: z.number().int().nonnegative(),
+});
+
 export const KNOWLEDGE_RETRIEVAL = {
   audience: 'smartdesk-knowledge',
   scope: 'knowledge:published-retrieval',

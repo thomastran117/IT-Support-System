@@ -54,6 +54,7 @@ WORKDIR /app
 COPY packages/contracts/package.json packages/contracts/package-lock.json packages/contracts/
 COPY packages/db/package.json packages/db/package-lock.json packages/db/
 COPY packages/analytics/package.json packages/analytics/package-lock.json packages/analytics/
+COPY packages/identity/package.json packages/identity/package-lock.json packages/identity/
 COPY packages/knowledge/package.json packages/knowledge/package-lock.json packages/knowledge/
 COPY packages/notifications/package.json packages/notifications/package-lock.json packages/notifications/
 COPY packages/service-runtime/package.json packages/service-runtime/package-lock.json packages/service-runtime/
@@ -62,6 +63,7 @@ COPY frontend/package.json frontend/package-lock.json frontend/
 RUN npm ci --prefix packages/contracts \
   && npm ci --prefix packages/db \
   && npm ci --prefix packages/analytics \
+  && npm ci --prefix packages/identity \
   && npm ci --prefix packages/knowledge \
   && npm ci --prefix packages/notifications \
   && npm ci --prefix packages/service-runtime \
@@ -77,7 +79,8 @@ RUN npm --prefix packages/ai-analysis run build \
   && npm --prefix packages/analytics run build \
   && npm --prefix packages/knowledge run build \
   && npm --prefix packages/notifications run build \
-  && npm --prefix packages/service-runtime run build
+  && npm --prefix packages/service-runtime run build \
+  && npm --prefix packages/identity run build
 
 FROM source AS backend
 WORKDIR /app/backend
@@ -127,6 +130,19 @@ COPY backend/services/knowledge/ ./
 RUN npm run build
 USER node
 EXPOSE 4040
+CMD ["node", "dist/server.js"]
+
+FROM service-runtime AS identity-service
+COPY --from=source /app/packages/contracts/ packages/contracts/
+COPY --from=source /app/packages/db/ packages/db/
+COPY --from=source /app/packages/identity/ packages/identity/
+WORKDIR /app/backend/services/identity
+COPY backend/services/identity/package.json backend/services/identity/package-lock.json ./
+RUN npm ci
+COPY backend/services/identity/ ./
+RUN npm run build
+USER node
+EXPOSE 4050
 CMD ["node", "dist/server.js"]
 
 FROM source AS frontend

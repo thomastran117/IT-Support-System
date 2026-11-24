@@ -1,0 +1,35 @@
+{
+  "name": "@smartdesk/identity",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./rate-limit": {
+      "types": "./dist/rateLimit.d.ts",
+      "default": "./dist/rateLimit.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@smartdesk/contracts": "file:../contracts",
+    "@smartdesk/db": "file:../db",
+    "@smartdesk/service-runtime": "file:../service-runtime",
+    "argon2": "^0.45.2",
+    "ioredis": "^5.4.2",
+    "jose": "^6.2.18",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@fastify/cookie": "^11.1.5",
+    "@fastify/rate-limit": "^11.2.2",
+    "@types/node": "^26.6.6",
+    "fastify": "^5.12.8",
+    "typescript": "^6.0.3"
+  }
+}

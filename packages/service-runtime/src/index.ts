@@ -37,3 +37,18 @@ export function parseExecutionMode(name: string, value: string | undefined) {
   if (mode !== 'local' && mode !== 'service') throw new Error(`${name} must be local or service`);
   return mode;
 }
+
+export function parseIdentityOrigin(env: NodeJS.ProcessEnv, localSetting?: string) {
+  const service =
+    parseExecutionMode('IDENTITY_EXECUTION_MODE', env.IDENTITY_EXECUTION_MODE) === 'service';
+  const name = service || !localSetting ? 'IDENTITY_SERVICE_ORIGIN' : localSetting;
+  const origin = parseHttpOrigin(
+    name,
+    env[name] ||
+      (name === 'IDENTITY_SERVICE_ORIGIN' ? 'http://localhost:4050' : 'http://localhost:4001'),
+  );
+  if (env.NODE_ENV === 'production' && origin.protocol !== 'https:') {
+    throw new Error(`${name} must use HTTPS in production`);
+  }
+  return origin;
+}

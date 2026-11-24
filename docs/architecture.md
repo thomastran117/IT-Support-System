@@ -62,6 +62,10 @@ In Knowledge service mode, the gateway sends both article route groups to the Kn
 listener. AI retrieves published excerpts over a private scoped system endpoint.
 [Knowledge service](architecture/knowledge-service.md)
 
+In Identity service mode, the gateway sends sessions, user administration, and account
+audit requests to Identity. Ticket verifies access tokens through scoped delegation and
+supplies its own current team memberships. [Identity service](architecture/identity-service.md)
+
 ## AI service container
 
 `backend/services/ai` is the first package under `backend/services/`. Its Compose profile

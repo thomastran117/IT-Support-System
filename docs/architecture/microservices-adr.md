@@ -86,6 +86,13 @@ PostgreSQL full-text search and enqueues revisioned article index intent in the 
 transaction. Existing recommendation links remain auditable across unpublication.
 [Knowledge cutover and rollback](knowledge-service.md)
 
+### Identity and Ticket authority
+
+Identity owns browser token signing, password hashes, account status, roles, token
+versions, and account audit. Ticket owns membership and uses a scoped Identity lookup
+before enforcing its own resource policies. Protected reads and writes require current
+authorization across an Identity outage. [Identity cutover and rollback](identity-service.md)
+
 ### AI handoff
 
 Keep `ai_analysis_jobs` rows, `(ticket_id, request_id)` uniqueness, existing lease tokens and

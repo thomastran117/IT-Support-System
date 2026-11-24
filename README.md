@@ -84,6 +84,11 @@ PostgreSQL facts using a scoped read-only login. [Analytics setup and rollback](
 The `knowledge` profile runs the article reader and authoring APIs plus private published
 retrieval for AI. [Knowledge setup and rollback](docs/architecture/knowledge-service.md)
 
+## Opt-in Identity service
+
+The `identity` profile runs sessions, account administration, and scoped account
+verification for Ticket and the extracted services. [Identity setup and rollback](docs/architecture/identity-service.md)
+
 ## Common operations
 
 ```bash

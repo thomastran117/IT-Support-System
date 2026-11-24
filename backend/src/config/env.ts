@@ -1,11 +1,12 @@
 import { loadEmailConfig, type EmailConfig } from '@smartdesk/notifications';
 import { loadAiConfig, loadAiExecutionMode, type AiConfig } from '@smartdesk/ai-analysis';
-import { parseExecutionMode } from '@smartdesk/service-runtime';
+import { loadSessionConfig, type TokenConfig } from '@smartdesk/identity';
+import { parseExecutionMode, parseIdentityOrigin } from '@smartdesk/service-runtime';
 import { loadServiceKeys } from '../auth/serviceTokens.js';
 
 export type { EmailConfig } from '@smartdesk/notifications';
 
-export interface Env {
+export interface Env extends TokenConfig {
   host: string;
   port: number;
   frontendOrigin: string;
@@ -19,12 +20,9 @@ export interface Env {
   trustProxy: TrustProxy;
   logLevel: string;
   production: boolean;
-  jwtSecret: string;
-  jwtIssuer: string;
-  jwtAudience: string;
+  ticketSearchCursorSecret: string;
+  identity: { identityOrigin: URL; keyId: string; privateKey: string } | undefined;
   internalServiceKeys: ReturnType<typeof loadServiceKeys>;
-  accessTtlSeconds: number;
-  refreshTtlSeconds: number;
   /** Secure flag on the refresh cookie. Defaults to on in production. */
   cookieSecure: boolean;
   /** Provider and queue settings for the selected analysis execution mode. */
@@ -84,14 +82,14 @@ function loadTrustProxy(raw: string | undefined): TrustProxy {
     .filter(Boolean);
 }
 
-const DEV_JWT_SECRET = 'change-me-dev-only-change-me-dev-only';
-
-function positiveInt(source: NodeJS.ProcessEnv, key: string, fallback: number): number {
-  const raw = source[key];
-  if (raw === undefined || raw === '') return fallback;
-  const n = Number(raw);
-  if (!Number.isInteger(n) || n <= 0) throw new Error(`Invalid ${key}: ${raw}`);
-  return n;
+function loadTicketIdentity(source: NodeJS.ProcessEnv) {
+  const identityOrigin = parseIdentityOrigin(source);
+  const keyId = source.TICKET_IDENTITY_KEY_ID ?? '';
+  const privateKey = source.TICKET_IDENTITY_PRIVATE_KEY?.replace(/\\n/g, '\n') ?? '';
+  if (!/^[a-zA-Z0-9_-]{1,64}$/.test(keyId) || !privateKey.trim()) {
+    throw new Error('TICKET_IDENTITY_KEY_ID and TICKET_IDENTITY_PRIVATE_KEY are required');
+  }
+  return { identityOrigin, keyId, privateKey };
 }
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
@@ -110,33 +108,34 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     throw new Error('ANALYTICS_EXECUTION_MODE must be local or service');
   }
 
-  let jwtSecret = source.JWT_SECRET;
-  if (production) {
-    if (!jwtSecret || jwtSecret.length < 32 || jwtSecret.startsWith('change-me')) {
-      throw new Error('JWT_SECRET must be set to a random value of at least 32 characters');
-    }
-  } else if (!jwtSecret || jwtSecret.length < 32) {
-    // Development/test placeholder; never accepted in production (see above).
-    jwtSecret = DEV_JWT_SECRET;
+  const remoteIdentity =
+    parseExecutionMode('IDENTITY_EXECUTION_MODE', source.IDENTITY_EXECUTION_MODE) === 'service';
+  const session = loadSessionConfig(source, !remoteIdentity);
+  const ticketSearchCursorSecret =
+    source.TICKET_SEARCH_CURSOR_SECRET ||
+    (remoteIdentity ? 'change-me-development-ticket-search-only' : session.jwtSecret);
+  if (
+    production &&
+    (ticketSearchCursorSecret.length < 32 || ticketSearchCursorSecret.startsWith('change-me'))
+  ) {
+    throw new Error(
+      'TICKET_SEARCH_CURSOR_SECRET must be set to a random value of at least 32 characters',
+    );
   }
 
   return {
     host: source.HOST ?? '0.0.0.0',
     port,
-    frontendOrigin: source.FRONTEND_ORIGIN ?? 'http://localhost:3000',
+    ...session,
     databaseUrl: source.DATABASE_URL ?? 'postgres://smartdesk:smartdesk@localhost:5432/smartdesk',
     redisUrl: source.REDIS_URL || undefined,
     openSearch: loadOpenSearchConfig(source, production),
     trustProxy: loadTrustProxy(source.TRUST_PROXY),
     logLevel: source.LOG_LEVEL ?? 'info',
     production,
-    jwtSecret,
-    jwtIssuer: source.JWT_ISSUER ?? 'smartdesk-api',
-    jwtAudience: source.JWT_AUDIENCE ?? 'smartdesk-web',
+    ticketSearchCursorSecret,
+    identity: remoteIdentity ? loadTicketIdentity(source) : undefined,
     internalServiceKeys: loadServiceKeys(source.INTERNAL_SERVICE_KEYS),
-    accessTtlSeconds: positiveInt(source, 'ACCESS_TOKEN_TTL_SECONDS', 15 * 60),
-    refreshTtlSeconds: positiveInt(source, 'REFRESH_TOKEN_TTL_SECONDS', 7 * 24 * 60 * 60),
-    cookieSecure: source.COOKIE_SECURE ? source.COOKIE_SECURE === 'true' : production,
     ai: loadAiConfig(source, aiExecutionMode === 'local'),
     aiExecutionMode,
     notificationsExecutionMode,

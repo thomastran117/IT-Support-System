@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
-import Fastify, { type FastifyContextConfig, type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance } from 'fastify';
 import {
   AI_JOB_PATH,
   AI_JOB_SCOPES,
@@ -13,16 +13,22 @@ import {
 } from '@smartdesk/contracts';
 import type { Env } from './config/env.js';
 import type { DbCheck, PrismaClient } from '@smartdesk/db';
+import {
+  createAuthGuards,
+  createInternalGuard,
+  DELEGATED_USER_TOKEN_HEADER,
+  identityLookupRoutes,
+  TokenService,
+} from '@smartdesk/identity';
 import type { CacheCheck } from './cache/client.js';
 import { createNoopCache, type CacheClient } from './cache/redisCache.js';
 import type { createFallbackRateLimitStore } from './rateLimit/fallbackStore.js';
-import { createAuthGuards } from './auth/guard.js';
-import { createInternalGuard, DELEGATED_USER_TOKEN_HEADER } from './auth/internalGuard.js';
+import { createTicketAuthenticator } from './auth/guard.js';
+import { createRemoteIdentityAuthenticator } from './auth/remoteIdentity.js';
 import { createServiceTokenVerifier } from './auth/serviceTokens.js';
-import { TokenService } from './auth/tokens.js';
 import { adminRoutes } from './modules/admin/routes.js';
 import { authRoutes } from './modules/auth/routes.js';
-import { HttpError, registerErrorHandling } from './plugins/errors.js';
+import { registerErrorHandling } from './plugins/errors.js';
 import { adminKnowledgeRoutes, knowledgeRoutes } from './modules/knowledge/routes.js';
 import { healthRoutes } from './modules/health/routes.js';
 import { pingRoutes } from './modules/ping.js';
@@ -80,8 +86,6 @@ export const REDACT_PATHS = [
   'req.cookies',
 ];
 
-const privateIdentityRoute: FastifyContextConfig & { cors: false } = { cors: false };
-
 export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   const cache = opts.cache ?? createNoopCache();
   const app = Fastify({
@@ -118,15 +122,18 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   await app.register(healthRoutes(opts.checkDb, opts.checkCache));
   await app.register(pingRoutes, { prefix: API_PREFIX });
   if (opts.prisma) {
-    const tokens = new TokenService(opts.env);
+    const tokens = opts.env.identity ? undefined : new TokenService(opts.env);
+    const authenticate = tokens
+      ? createTicketAuthenticator(opts.prisma, tokens)
+      : await createRemoteIdentityAuthenticator(opts.prisma, opts.env.identity!);
     const searchClient = opts.searchClient ?? createSearchClient(opts.env.openSearch);
-    app.decorate('authGuards', createAuthGuards(opts.prisma, tokens));
+    app.decorate('authGuards', createAuthGuards(authenticate));
     if (opts.env.internalServiceKeys.length > 0) {
       const verify = await createServiceTokenVerifier(
         'smartdesk-ticket',
         opts.env.internalServiceKeys,
       );
-      const guard = createInternalGuard(opts.prisma, tokens, verify);
+      const guard = createInternalGuard(authenticate, verify);
       await app.register(internalTicketRoutes(opts.prisma, guard('ticket:work-access', 'user')), {
         prefix: '/internal/tickets',
       });
@@ -147,49 +154,29 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
           { prefix: AI_JOB_PATH },
         );
       }
-      const identityRoutes = [
+    }
+    if (tokens) {
+      const lookups = [
         { mode: opts.env.notificationsExecutionMode, identity: NOTIFICATION_IDENTITY },
         { mode: opts.env.analyticsExecutionMode, identity: ANALYTICS_IDENTITY },
         { mode: opts.env.knowledgeExecutionMode, identity: KNOWLEDGE_IDENTITY },
-      ].filter(({ mode }) => mode === 'service');
-      if (identityRoutes.length > 0) {
-        const identityVerifier = await createServiceTokenVerifier(
-          ANALYTICS_IDENTITY.audience,
-          opts.env.internalServiceKeys,
-        );
-        const identityGuard = createInternalGuard(opts.prisma, tokens, identityVerifier);
-        for (const { identity } of identityRoutes) {
-          app.get(
-            identity.path,
-            {
-              config: privateIdentityRoute,
-              exposeHeadRoute: false,
-              preHandler: identityGuard(identity.scope, 'user'),
-            },
-            async (req, reply) => {
-              const actor = req.internalActor;
-              if (actor?.kind !== 'user') throw new HttpError(403, 'Delegated user required');
-              reply.header('cache-control', 'no-store');
-              const { id, role } = actor.principal;
-              return identity === NOTIFICATION_IDENTITY ? { recipientId: id } : { id, role };
-            },
-          );
-          app.options(identity.path, { config: privateIdentityRoute }, (_req, reply) =>
-            reply.callNotFound(),
-          );
-        }
-      }
+      ]
+        .filter(({ mode }) => mode === 'service')
+        .map(({ identity }) => identity);
+      await app.register(
+        identityLookupRoutes({ authenticate, keys: opts.env.internalServiceKeys, lookups }),
+      );
+      await app.register(
+        authRoutes({
+          prisma: opts.prisma,
+          env: opts.env,
+          tokens,
+          rateLimit: opts.authRateLimit ?? { login: 10, refresh: 30, windowMs: 60_000 },
+        }),
+        { prefix: `${API_PREFIX}/auth` },
+      );
+      await app.register(adminRoutes(opts.prisma), { prefix: `${API_PREFIX}/admin` });
     }
-    await app.register(
-      authRoutes({
-        prisma: opts.prisma,
-        env: opts.env,
-        tokens,
-        rateLimit: opts.authRateLimit ?? { login: 10, refresh: 30, windowMs: 60_000 },
-      }),
-      { prefix: `${API_PREFIX}/auth` },
-    );
-    await app.register(adminRoutes(opts.prisma), { prefix: `${API_PREFIX}/admin` });
     if (opts.env.analyticsExecutionMode === 'local') {
       await app.register(reportRoutes(opts.prisma, cache), {
         prefix: `${API_PREFIX}/admin/reports`,
@@ -225,7 +212,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
       ticketSearchRoutes({
         prisma: opts.prisma,
         client: searchClient,
-        jwtSecret: opts.env.jwtSecret,
+        jwtSecret: opts.env.ticketSearchCursorSecret,
         rateLimit: opts.ticketSearchRateLimit ?? { max: 30, windowMs: 60_000 },
       }),
       { prefix: `${API_PREFIX}/tickets` },
