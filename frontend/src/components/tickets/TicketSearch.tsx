@@ -39,6 +39,13 @@ function searchFailure(
   err: unknown,
   hasCursor: boolean,
 ): Omit<Extract<Result, { kind: 'error' }>, 'key'> {
+  if (err instanceof ApiError && err.code === 'TICKET_SEARCH_RESTART') {
+    return {
+      kind: 'error',
+      message: 'The search engine changed. Go to the first page to continue.',
+      restart: true,
+    };
+  }
   switch (errorKind(err)) {
     case 'validation':
       return {
@@ -67,6 +74,17 @@ function searchFailure(
         restart: false,
       };
   }
+}
+
+function searchStatus(page: TicketSearchResponse, continuing: boolean) {
+  if (page.mode === 'text') return 'Recently changed tickets may take time to appear.';
+  if (page.mode === 'exact') return '';
+  if (continuing) return 'Showing current PostgreSQL results for this search.';
+  if (page.reason === 'index_lag')
+    return 'The search index is catching up. Showing current PostgreSQL results.';
+  if (page.reason === 'unavailable')
+    return 'The search index is unavailable. Showing current PostgreSQL results.';
+  return 'Showing current PostgreSQL results.';
 }
 
 function Panel({ detailPath, browseLabel, children }: Props) {
@@ -278,9 +296,7 @@ function Panel({ detailPath, browseLabel, children }: Props) {
         <div className="space-y-4">
           <p role="status" className="text-sm text-slate-600">
             {current.page.items.length} {current.page.items.length === 1 ? 'result' : 'results'} on
-            this page.
-            {current.page.consistency === 'eventual' &&
-              ' Recently changed tickets may take time to appear.'}
+            this page. {searchStatus(current.page, !!cursor)}
           </p>
           {current.page.items.length === 0 ? (
             <EmptyState

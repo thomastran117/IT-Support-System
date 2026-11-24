@@ -3,14 +3,17 @@ import {
   type TicketPriority,
   type TicketStatus,
   type TicketSummaryDto,
+  type TicketSearchFallbackReason,
   type TicketSearchUnavailable,
 } from '@smartdesk/contracts';
-import type { Prisma, PrismaClient } from '@smartdesk/db';
+import type { Prisma, PrismaClient, TransactionClient } from '@smartdesk/db';
 import { loadActivePrincipal, type Principal } from '../../auth/guard.js';
 import { isTicketId, ticketReadFilter, ticketReadScope } from '../../auth/ticketAccess.js';
 import { HttpError } from '../../plugins/errors.js';
 import { findTicketSummaries } from '../tickets/queries.js';
 import type { SearchCandidate, SearchClient } from './client.js';
+import { hasPendingTicketMatches, searchTicketSummaries } from './ticketSearchPostgres.js';
+import { SearchError } from './transport.js';
 
 const MAX_CANDIDATE_PAGES = 3;
 const MAX_CANDIDATE_PAGE_SIZE = 100;
@@ -40,6 +43,16 @@ export interface TicketSearchPage {
   items: TicketSummaryDto[];
   nextCursor: TicketSearchCursor | null;
 }
+
+export type TicketTextSearchCursor =
+  | { source: 'opensearch'; position: TicketSearchCursor }
+  | { source: 'postgres'; position: TicketSearchCursor; reason: TicketSearchFallbackReason };
+
+type TicketTextSearchPage = TicketSearchPage &
+  (
+    | { mode: 'text'; consistency: 'eventual' }
+    | { mode: 'fallback'; consistency: 'current'; reason: TicketSearchFallbackReason }
+  );
 
 type RankedCandidate = { position: TicketSearchCursor; revision: number };
 
@@ -86,7 +99,13 @@ function ticketSearchFilters(filters: TicketSearchFilters) {
       range: { createdAt: { gte: createdFrom?.toISOString(), lt: createdBefore?.toISOString() } },
     });
   }
-  return { where, index, teamId, assigneeId: terms.assigneeId };
+  return {
+    where,
+    index,
+    teamId,
+    assigneeId: terms.assigneeId,
+    values: { ...terms, teamId, createdFrom, createdBefore },
+  };
 }
 
 function requireAllowedFilters(
@@ -102,11 +121,11 @@ function requireAllowedFilters(
     throw new HttpError(403, 'Ticket search filter is outside your scope');
 }
 
-async function hydrateTickets(
+async function withTicketSearchScope<T>(
   prisma: PrismaClient,
   principal: Principal,
-  ids: string[],
   filters: ReturnType<typeof ticketSearchFilters>,
+  read: (tx: TransactionClient, current: Principal) => Promise<T>,
   tokenVersion?: number,
 ) {
   // Check account, membership, filters, and tickets in one PostgreSQL snapshot.
@@ -121,13 +140,30 @@ async function hydrateTickets(
         throw new HttpError(401, 'Authentication required');
       }
       requireAllowedFilters(current.principal, filters);
-      return ids.length === 0
-        ? []
-        : findTicketSummaries(tx, {
-            AND: [ticketReadFilter(current.principal), { id: { in: ids } }, filters.where],
-          });
+      return read(tx, current.principal);
     },
     { isolationLevel: 'RepeatableRead' },
+  );
+}
+
+function hydrateTickets(
+  prisma: PrismaClient,
+  principal: Principal,
+  ids: string[],
+  filters: ReturnType<typeof ticketSearchFilters>,
+  tokenVersion?: number,
+) {
+  return withTicketSearchScope(
+    prisma,
+    principal,
+    filters,
+    async (tx, current) =>
+      ids.length === 0
+        ? []
+        : findTicketSummaries(tx, {
+            AND: [ticketReadFilter(current), { id: { in: ids } }, filters.where],
+          }),
+    tokenVersion,
   );
 }
 
@@ -198,7 +234,7 @@ function rankSummaries(
 
 /** Read tickets for an authenticated principal. OpenSearch supplies a bounded window of candidates. */
 export function createTicketSearchService(prisma: PrismaClient, client?: SearchClient) {
-  return {
+  const service = {
     async lookup(
       principal: Principal,
       id: string,
@@ -257,5 +293,51 @@ export function createTicketSearchService(prisma: PrismaClient, client?: SearchC
       );
       return rankSummaries(candidates, summaries, input.limit);
     },
+
+    async searchText(
+      principal: Principal,
+      input: Omit<TicketSearchInput, 'text' | 'after'> & {
+        text: string;
+        after?: TicketTextSearchCursor;
+      },
+    ): Promise<TicketTextSearchPage> {
+      const { text, limit, after } = input;
+      const filters = ticketSearchFilters(input.filters ?? {});
+      const fallback = async (
+        reason: TicketSearchFallbackReason,
+      ): Promise<TicketTextSearchPage> => {
+        if (after?.source === 'opensearch') {
+          throw new HttpError(409, 'The search engine changed. Start from the first page.', {
+            code: 'TICKET_SEARCH_RESTART',
+          });
+        }
+        const page = await withTicketSearchScope(prisma, principal, filters, (tx, current) =>
+          searchTicketSummaries(tx, current, {
+            text,
+            limit,
+            filters: filters.values,
+            after: after?.position,
+          }),
+        );
+        return { ...page, mode: 'fallback', consistency: 'current', reason };
+      };
+
+      // An existing PostgreSQL cursor stays on PostgreSQL even after OpenSearch recovers.
+      if (after?.source === 'postgres') return fallback(after.reason);
+      if (!client) return fallback('disabled');
+      const pending = await withTicketSearchScope(prisma, principal, filters, (tx, current) =>
+        hasPendingTicketMatches(tx, current, text, filters.values),
+      );
+      if (pending) return fallback('index_lag');
+
+      try {
+        const page = await service.search(principal, { ...input, after: after?.position });
+        return { ...page, mode: 'text', consistency: 'eventual' };
+      } catch (err) {
+        if (!(err instanceof SearchError)) throw err;
+        return fallback('unavailable');
+      }
+    },
   };
+  return service;
 }

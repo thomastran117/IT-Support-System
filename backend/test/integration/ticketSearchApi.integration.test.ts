@@ -1,6 +1,6 @@
 import { Writable } from 'node:stream';
 import type { FastifyInstance } from 'fastify';
-import { ticketSearchResponseSchema, ticketSearchUnavailableSchema } from '@smartdesk/contracts';
+import { ticketSearchResponseSchema } from '@smartdesk/contracts';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { buildApp, type AppOptions } from '../../src/app.js';
 import { TokenService } from '../../src/auth/tokens.js';
@@ -197,7 +197,7 @@ describe.skipIf(!testDatabaseUrl)('ticket search HTTP API', () => {
     expect(engine).toHaveBeenCalledTimes(2);
   });
 
-  it('signals disabled and failed search separately from empty matches and keeps ticket listing available', async () => {
+  it('returns scoped PostgreSQL matches when the index is disabled or fails, with the usual list available', async () => {
     const failing = await appWith({
       searchClient: createSearchClient(
         { enabled: true, url: 'http://search.invalid/' },
@@ -213,17 +213,14 @@ describe.skipIf(!testDatabaseUrl)('ticket search HTTP API', () => {
       }),
       prisma.ticket.count({ where: { requesterId: USERS.erin } }),
     ]);
-    for (const [app, code] of [
-      [disabled, 'TICKET_SEARCH_DISABLED'],
-      [failing, 'TICKET_SEARCH_UNAVAILABLE'],
+    for (const [app, reason] of [
+      [disabled, 'disabled'],
+      [failing, 'unavailable'],
     ] as const) {
-      const unavailable = await get(app, USERS.erin, { q: 'vpn' });
-      expect(unavailable.statusCode).toBe(503);
-      expect(unavailable.body).not.toMatch(/upstream|search\.invalid/);
-      expect(ticketSearchUnavailableSchema.parse(unavailable.json().details)).toEqual({
-        code,
-        fallback: '/api/tickets',
-      });
+      const fallback = await readPage(app, USERS.erin, { q: 'vpn' });
+      expect(fallback).toMatchObject({ mode: 'fallback', reason, consistency: 'current' });
+      expect(fallback.items.map(({ id }) => id)).toContain(TICKETS.vpn);
+      expect(JSON.stringify(fallback)).not.toMatch(/upstream|search\.invalid/);
       const normal = await app.inject({
         method: 'GET',
         url: '/api/tickets?limit=1',
@@ -239,6 +236,12 @@ describe.skipIf(!testDatabaseUrl)('ticket search HTTP API', () => {
       });
     }
     expect((await readPage(failing, USERS.erin, { q: TICKETS.vpn })).items).toHaveLength(1);
+    const detail = await failing.inject({
+      method: 'GET',
+      url: `/api/tickets/${TICKETS.vpn}`,
+      headers: { authorization: `Bearer ${await tokens.sign('access', USERS.erin, 0)}` },
+    });
+    expect(detail.statusCode).toBe(200);
   });
 
   it('rate-limits search by account and omits search terms from application request logs', async () => {

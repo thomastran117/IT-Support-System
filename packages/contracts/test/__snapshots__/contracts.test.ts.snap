@@ -43,6 +43,7 @@ exports[`public runtime surface > keeps its exported names stable 1`] = `
   "loginSchema",
   "reviewRecommendationSchema",
   "roleSchema",
+  "ticketSearchFallbackReasonSchema",
   "ticketSearchQuerySchema",
   "ticketSearchResponseSchema",
   "ticketSearchUnavailableSchema",

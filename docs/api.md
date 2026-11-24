@@ -81,21 +81,26 @@ Out-of-scope filters return `403`. Unknown or repeated parameters, invalid limit
 and invalid cursors return `400`. The endpoint allows 30 requests per minute per account and returns
 `429` when that budget is exhausted.
 
-Search returns `{ mode, consistency, items, nextCursor }` inside the usual response envelope:
+Search returns `{ mode, consistency, items, nextCursor }` inside the usual response envelope.
 
 - A full ticket UUID uses `mode: "exact"` and `consistency: "current"`. PostgreSQL returns at most
   one summary, including when OpenSearch is disabled. Missing, unreadable, and excluded tickets
   all yield an empty page. The exact lookup always has a null cursor.
-- Other text uses `mode: "text"` and `consistency: "eventual"`. OpenSearch ranks title and description
+- OpenSearch text search uses `mode: "text"` and `consistency: "eventual"`. OpenSearch ranks title and description
   matches with BM25, a title boost, and bounded typo tolerance. PostgreSQL rechecks visibility and
-  filters before returning summaries. A new or changed ticket may take time to appear. The cursor
-  expires after 10 minutes and is bound to the account, role, active teams, and the original query.
-  Index changes can shift results between pages. [OpenSearch multi-match](https://docs.opensearch.org/latest/query-dsl/full-text/multi-match/)
+  filters before returning summaries. Index refreshes can shift results between pages.
+  [OpenSearch multi-match](https://docs.opensearch.org/latest/query-dsl/full-text/multi-match/)
+- PostgreSQL text search uses `mode: "fallback"` and `consistency: "current"`, with `reason` set to
+  `disabled`, `unavailable`, or `index_lag`. It matches all searchable English word stems across
+  the title and description, weights title matches higher, and applies the same scope and filters.
+  It can find a newly submitted or reassigned ticket as soon as its database transaction commits
+  when the query matches those terms.
 
-Text search returns `503` with `details.code` set to `TICKET_SEARCH_DISABLED` or
-`TICKET_SEARCH_UNAVAILABLE` when the optional index cannot serve the request.
-`details.fallback` points to `/api/tickets` for the regular newest-first list. The technician queue
-keeps its priority ordering.
+Cursors expire after 10 minutes and are bound to the account, role, active teams, engine, and
+original query. A PostgreSQL cursor stays on PostgreSQL as the index recovers. If OpenSearch can no
+longer serve an OpenSearch cursor, the API returns `409` with `details.code: "TICKET_SEARCH_RESTART"`.
+Repeat the same query without a cursor to start from the first page. Text results omit a total,
+and the regular ticket list sorts newest first. The technician team queue sorts by priority.
 
 ### Comments and events
 
