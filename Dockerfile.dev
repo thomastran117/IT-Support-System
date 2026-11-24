@@ -2,16 +2,38 @@
 
 ARG NODE_IMAGE=node:22-alpine
 
-FROM ${NODE_IMAGE} AS gateway
+FROM ${NODE_IMAGE} AS service-runtime
+WORKDIR /app
+COPY tsconfig.base.json ./
+COPY packages/service-runtime/package.json packages/service-runtime/package-lock.json packages/service-runtime/
+RUN npm ci --prefix packages/service-runtime
+COPY packages/service-runtime/ packages/service-runtime/
+RUN npm --prefix packages/service-runtime run build
+
+FROM service-runtime AS gateway
 WORKDIR /app/backend/gateway
 COPY backend/gateway/package.json backend/gateway/package-lock.json ./
 RUN npm ci
-COPY tsconfig.base.json /app/
 COPY --chown=node:node backend/gateway/ ./
 RUN npm run build
 USER node
 EXPOSE 4000
 CMD ["npm", "run", "dev"]
+
+FROM service-runtime AS ai-service
+WORKDIR /app
+COPY packages/contracts/package.json packages/contracts/package-lock.json packages/contracts/
+RUN npm ci --prefix packages/contracts
+COPY packages/contracts/ packages/contracts/
+RUN npm --prefix packages/contracts run build
+WORKDIR /app/backend/services/ai
+COPY backend/services/ai/package.json backend/services/ai/package-lock.json ./
+RUN npm ci
+COPY backend/services/ai/ ./
+RUN npm run build
+USER node
+EXPOSE 4010
+CMD ["node", "dist/server.js"]
 
 FROM ${NODE_IMAGE} AS dependencies
 WORKDIR /app

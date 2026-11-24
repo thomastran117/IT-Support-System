@@ -49,6 +49,30 @@ curl --fail http://localhost:4000/health/ready
 To restore gateway mode, run `docker compose up -d backend gateway` and check readiness again.
 The [gateway architecture](docs/architecture.md#api-gateway) documents timeouts and proxy settings.
 
+## Opt-in AI service container
+
+Use the `services` profile to build and run the AI service's health endpoints. The existing
+worker still runs AI analysis during this stage of the migration.
+
+```bash
+docker compose --profile services up --build --wait ai-service
+docker compose --profile services ps ai-service
+docker compose --profile services exec ai-service node -e \
+  "fetch('http://127.0.0.1:4010/health/ready').then(async res => console.log(res.status, await res.json()))"
+docker compose --profile services logs -f ai-service
+docker compose --profile services restart ai-service
+```
+
+The service stays on a private network. Its liveness endpoint checks the process. Readiness
+checks the Ticket API through the gateway using the internal DNS name `gateway`. See the
+[service configuration and health checks](docs/architecture.md#ai-service-container).
+
+Targeting `ai-service` starts its gateway, backend, and PostgreSQL dependencies. Use the normal
+stack command for the frontend and background worker.
+
+To revert to the default stack, run `docker compose --profile services stop ai-service`.
+The gateway, backend, and worker continue serving the MVP on their existing routes.
+
 ## Common operations
 
 ```bash
@@ -148,21 +172,25 @@ docker compose --profile ci run --rm backend-ci
 docker compose --profile ci run --rm frontend-ci
 docker compose build gateway
 docker compose run --rm --no-deps gateway npm test
+sh docker/verify-service-containers.sh
 ```
 
 `backend-ci` starts PostgreSQL, applies migrations, and runs package, API, worker, and database
 checks. `frontend-ci` includes Chromium and runs unit plus desktop/mobile Playwright tests.
+The service container script uses `jq` and creates a disposable Compose project.
 
 ## Repository map
 
-| Path                  | Purpose                                                              |
-| --------------------- | -------------------------------------------------------------------- |
-| `frontend/`           | Next.js App Router UI                                                |
-| `backend/`            | Fastify API, AI worker, Prisma schema/migrations, seeds, SQL reports |
-| `backend/gateway/`    | Fastify public API proxy                                             |
-| `packages/contracts/` | Browser-safe API types and validation                                |
-| `packages/db/`        | Generated Prisma client adapter shared by API and worker             |
-| `docs/`               | Durable technical references and generated schema docs               |
+| Path                        | Purpose                                                              |
+| --------------------------- | -------------------------------------------------------------------- |
+| `frontend/`                 | Next.js App Router UI                                                |
+| `backend/`                  | Fastify API, AI worker, Prisma schema/migrations, seeds, SQL reports |
+| `backend/gateway/`          | Fastify public API proxy                                             |
+| `backend/services/ai/`      | Opt-in Fastify AI service container and health endpoints             |
+| `packages/contracts/`       | Browser-safe API types and validation                                |
+| `packages/db/`              | Generated Prisma client adapter shared by API and worker             |
+| `packages/service-runtime/` | Server-side environment validation shared by gateway and AI service  |
+| `docs/`                     | Durable technical references and generated schema docs               |
 
 Each Node package owns its own manifest and lockfile. The root deliberately has no `package.json`,
 `package-lock.json`, or npm workspace.

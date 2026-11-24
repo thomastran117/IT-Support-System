@@ -168,7 +168,7 @@ services:
     depends_on:
       backend:
         condition: service_started
-    networks: [public, api]
+    networks: [public, api, service-health]
     develop:
       watch:
         - action: sync
@@ -180,6 +180,46 @@ services:
           path: ./backend/gateway/package-lock.json
         - action: rebuild
           path: ./backend/gateway/tsconfig.json
+        - action: rebuild
+          path: ./tsconfig.base.json
+        - action: rebuild
+          path: ./packages/service-runtime
+
+  ai-service:
+    profiles: [services]
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: ai-service
+    environment:
+      HOST: 0.0.0.0
+      AI_SERVICE_TICKET_ORIGIN: ${AI_SERVICE_TICKET_ORIGIN:-http://gateway:4000}
+      AI_SERVICE_READY_TIMEOUT_MS: ${AI_SERVICE_READY_TIMEOUT_MS:-1500}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://127.0.0.1:4010/health/ready', { signal: AbortSignal.timeout(6000) })
+          .then(response => process.exit(response.ok ? 0 : 1), () => process.exit(1))
+      interval: 5s
+      timeout: 7s
+      start_period: 10s
+      retries: 6
+    depends_on:
+      gateway:
+        condition: service_started
+    networks: [service-health]
+    develop:
+      watch:
+        - action: rebuild
+          path: ./backend/services/ai
+        - action: rebuild
+          path: ./packages/contracts
+        - action: rebuild
+          path: ./packages/service-runtime
         - action: rebuild
           path: ./tsconfig.base.json
 
@@ -334,6 +374,8 @@ networks:
     internal: true
   public:
   api:
+    internal: true
+  service-health:
     internal: true
   search:
     internal: true
