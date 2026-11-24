@@ -22,6 +22,17 @@ The [Ticket service runbook](../architecture/ticket-service.md) describes the
 rollback procedure used by the gate. The [static report](microservice-static-analysis.md)
 records the source and dependency scans.
 
+## Integrated checks and evidence
+
+| Scenario                           | Verification recorded in the CI log                                                                                                                                                                                                                                               |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Browser                            | Employee session refresh and ticket submission, technician routing and resolution, separation of private and public replies, notification delivery, and administrator Reports and Knowledge views.                                                                                |
+| Public and private HTTP contracts  | Cross-user reads return 404, employee and technician report requests return 403, administrator requests succeed, and private commands require service credentials. The browser network reaches the gateway and has no route to private listeners.                                 |
+| Database ownership and concurrency | The Ticket login is denied writes to Identity, Knowledge, and Notifications data. The gate checks idempotent submission, stale version conflicts, and atomic review and audit behavior.                                                                                           |
+| AI claim and notification replay   | The replacement AI worker commits one recommendation on attempt two after the abandoned lease expires. Notifications consumes the replay once and keeps a single inbox row. The fixture advances the lease and marks a completed receipt failed to inject the two recovery cases. |
+| Independent outages                | Ticket submission, routing, and audit continue with AI, Notifications, or Knowledge stopped, with Analytics paused, and after stopping OpenSearch. Protected Ticket operations fail closed while Identity is unavailable.                                                         |
+| Correlation and rollback           | The gateway and AI identify the stopped Ticket dependency. The legacy deployment reads the same persisted ticket and recommendation responses after rollback.                                                                                                                     |
+
 ## Measurement method
 
 The pre/post comparison isolates the deployment topology on one application

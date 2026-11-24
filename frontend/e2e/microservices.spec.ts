@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 test.skip(process.env.E2E_MICROSERVICE !== 'true', 'Requires the isolated Compose stack');
+test.use({ actionTimeout: 10_000 });
 
 async function signIn(page: Page, name: 'erin' | 'tara' | 'admin', portal: string) {
   await page.goto('/login');
@@ -18,6 +19,8 @@ test('employee, technician, and administrator use the isolated services through 
   test.setTimeout(90_000);
   const technicianContext = await browser.newContext({ baseURL });
   const adminContext = await browser.newContext({ baseURL });
+  technicianContext.setDefaultTimeout(10_000);
+  adminContext.setDefaultTimeout(10_000);
   try {
     await signIn(employee, 'erin', 'employee');
     expect(await employee.evaluate(() => window.isSecureContext)).toBe(true);
@@ -55,7 +58,7 @@ test('employee, technician, and administrator use the isolated services through 
     await technician.getByRole('button', { name: 'Add internal note' }).click();
     await expect(technician.getByTestId('comment').filter({ hasText: privateNote })).toBeVisible();
     const publicReply = 'The VPN profile was refreshed.';
-    await technician.getByLabel('Internal note (staff only)').uncheck();
+    await technician.getByLabel(/Internal note \(staff only/).uncheck();
     await technician.getByLabel('Add a note or reply').fill(publicReply);
     await technician.getByRole('button', { name: 'Send reply' }).click();
     await expect(employee.getByTestId('comment').filter({ hasText: publicReply })).toBeVisible({
@@ -84,6 +87,6 @@ test('employee, technician, and administrator use the isolated services through 
     await expect(admin.getByRole('heading', { name: /knowledge/i, level: 1 })).toBeVisible();
     await expect(admin.getByText(/VPN/i).first()).toBeVisible();
   } finally {
-    await Promise.all([technicianContext.close(), adminContext.close()]);
+    await Promise.allSettled([technicianContext.close(), adminContext.close()]);
   }
 });
