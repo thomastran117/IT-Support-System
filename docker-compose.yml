@@ -266,6 +266,19 @@ services:
       - ./frontend/playwright-report:/app/frontend/playwright-report
       - ./frontend/test-results:/app/frontend/test-results
 
+  hybrid-knowledge-experiment:
+    profiles: [hybrid-experiment]
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: hybrid-knowledge-experiment
+      args:
+        NODE_IMAGE: node:22-bookworm-slim
+    environment:
+      DATABASE_URL: postgres://ci:ci-only-password@postgres-ci:5432/smartdesk_hybrid_knowledge_test
+      TEST_OPENSEARCH_URL: http://opensearch:9200/
+    networks: [internal, search]
+
   docs:
     profiles: [tools]
     build:

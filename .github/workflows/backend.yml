@@ -35,8 +35,8 @@ jobs:
       - name: Optional OpenSearch smoke check
         run: |
           default_services=$(docker compose config --services)
-          if grep -qx opensearch <<< "$default_services"; then
-            echo 'OpenSearch must require the search profile.' >&2
+          if grep -Exq 'opensearch|hybrid-knowledge-experiment' <<< "$default_services"; then
+            echo 'OpenSearch and the hybrid experiment must require explicit profiles.' >&2
             exit 1
           fi
           docker compose --profile search config --format json | jq -e '
@@ -45,6 +45,12 @@ jobs:
             (.networks.search.internal == true) and
             (.services.frontend.networks | has("search") | not) and
             (.services.frontend.environment | keys | all(startswith("OPENSEARCH_") | not))
+          '
+          docker compose --profile hybrid-experiment config --format json | jq -e '
+            .services["hybrid-knowledge-experiment"] as $experiment |
+            ($experiment.ports // [] | length == 0) and
+            ($experiment.networks | keys == ["internal", "search"]) and
+            (.networks.internal.internal == true) and (.networks.search.internal == true)
           '
           if [ "$(sysctl -n vm.max_map_count)" -lt 262144 ]; then
             sudo sysctl -w vm.max_map_count=262144
@@ -59,6 +65,7 @@ jobs:
             test/integration/openSearch.integration.test.ts test/integration/searchIndexOpenSearch.integration.test.ts \
             test/integration/searchRebuildOpenSearch.integration.test.ts test/integration/ticketSearchApi.integration.test.ts \
             test/integration/knowledgeOpenSearch.integration.test.ts test/integration/searchEvaluation.integration.test.ts \
+            test/integration/hybridKnowledge.integration.test.ts \
             2>&1 | tee ci-search-tests.log
 
       - name: Collect OpenSearch logs on failure

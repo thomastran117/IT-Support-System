@@ -135,6 +135,22 @@ const backgroundTopics = [
   ['Mobile notifications', 'Review alerts in the mobile application settings.'],
 ] as const;
 
+export function additionalEvaluationArticles(backgroundCount: number) {
+  return [
+    ...articles,
+    ...Array.from({ length: backgroundCount }, (_, i) => {
+      const [title, body] = backgroundTopics[i % backgroundTopics.length]!;
+      return {
+        id: uuid('article', 1000 + i),
+        title: `${title} guide ${i + 1}`,
+        body,
+        categoryId: i % 3 === 0 ? CATEGORIES.hardware : CATEGORIES.software,
+        isPublished: i % 10 !== 0,
+      };
+    }),
+  ].map((article) => ({ ...article, createdAt: date, updatedAt: date }));
+}
+
 export async function seedSearchEvaluationCorpus(
   prisma: PrismaClient,
   databaseUrl: string,
@@ -159,21 +175,7 @@ export async function seedSearchEvaluationCorpus(
         }),
       ],
     }),
-    prisma.knowledgeArticle.createMany({
-      data: [
-        ...articles,
-        ...Array.from({ length: background.articles }, (_, i) => {
-          const [title, body] = backgroundTopics[i % backgroundTopics.length]!;
-          return {
-            id: uuid('article', 1000 + i),
-            title: `${title} guide ${i + 1}`,
-            body,
-            categoryId: i % 3 === 0 ? CATEGORIES.hardware : CATEGORIES.software,
-            isPublished: i % 10 !== 0,
-          };
-        }),
-      ].map((article) => ({ ...article, createdAt: date, updatedAt: date })),
-    }),
+    prisma.knowledgeArticle.createMany({ data: additionalEvaluationArticles(background.articles) }),
   ]);
 }
 
