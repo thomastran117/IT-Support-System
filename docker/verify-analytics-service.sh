@@ -124,7 +124,7 @@ if (phase === 'outage') {
   const windows = [
     ['2026-03-01', '2026-04-01'],
     ['2026-03-03T05:00:00-05:00', '2026-03-04T08:00:00Z'],
-    ['2026-03-06', '2026-03-07'],
+    ['2026-03-06T11:00:00Z', '2026-03-08T10:00:00Z'],
     ['2026-05-01', '2026-05-02'],
   ];
   const snapshots = [];
@@ -139,6 +139,7 @@ if (phase === 'outage') {
   assert.equal(march.data.dailyIntake.at(-1).date, '2026-03-31');
   assert.equal(evaluation.data.overall.withoutRecommendation, 1);
   assert.deepEqual(rerouted.data.routing, { routed: 1, avgMinutes: 10 });
+  assert.equal(reopened.data.submitted, 1);
   assert.deepEqual(reopened.data.resolution, { resolvedTickets: 0, avgHours: null });
   assert.equal(empty.data.routing.avgMinutes, null);
   assert.equal(emptyEvaluation.data.overall.accuracyPct, null);
