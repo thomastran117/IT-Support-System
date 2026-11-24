@@ -1,12 +1,25 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
-import { EXPECTED, TICKETS, USERS } from '../../src/db/seed/fixtures.js';
+import { buildApp } from '../../src/app.js';
+import { loadEnv } from '../../src/config/env.js';
+import { DEMO_ANCHOR_TICKET, newDemoAnchor } from '../../src/db/seed/demoFixtures.js';
+import {
+  ARTICLES,
+  buildFixtures,
+  DEMO_PASSWORD,
+  EXPECTED,
+  TEAMS,
+  TICKETS,
+  USERS,
+} from '../../src/db/seed/fixtures.js';
 import { assertResettable, countRows, seedDatabase } from '../../src/db/seed/run.js';
 import { createTestPrisma, resetDatabase, testDatabaseUrl } from './helpers/db.js';
 
+const demoNow = new Date('2026-11-24T17:00:00Z');
+
 describe.skipIf(!testDatabaseUrl)('seed fixtures (integration)', () => {
   const prisma = createTestPrisma();
-  const seed = (profile: 'demo' | 'test', reset = false) =>
-    seedDatabase(prisma, { profile, reset, databaseUrl: testDatabaseUrl! });
+  const seed = (profile: 'demo' | 'test', reset = false, now = demoNow) =>
+    seedDatabase(prisma, { profile, reset, now, databaseUrl: testDatabaseUrl! });
 
   beforeEach(() => resetDatabase(prisma));
   afterAll(async () => {
@@ -34,17 +47,244 @@ describe.skipIf(!testDatabaseUrl)('seed fixtures (integration)', () => {
     expect(after).toBe(events);
   });
 
-  it('demo profile is the test data plus two tickets and two articles', async () => {
+  it('seeds the expanded demo and adds it to databases running the original demo', async () => {
     const counts = await seed('demo');
     expect(counts).toMatchObject({
-      tickets: EXPECTED.rowCounts.tickets + 2,
-      knowledge_articles: EXPECTED.rowCounts.knowledge_articles + 2,
-      ticket_events: EXPECTED.rowCounts.ticket_events + 2,
+      users: 40,
+      support_teams: 7,
+      team_members: 13,
+      ticket_categories: 9,
+      tickets: 300,
+      ticket_comments: 360,
+      ticket_events: 2227,
+      knowledge_articles: 31,
+      ai_recommendations: 102,
+      recommendation_articles: 148,
+      classification_labels: 149,
+      notifications: 1007,
     });
-    // Seeding the larger profile over the smaller one only adds rows.
+    expect(await prisma.knowledgeArticle.count({ where: { isPublished: true } })).toBe(26);
+    expect(await prisma.notificationDelivery.count()).toBe(0);
+    expect(await prisma.aiAnalysisJob.count()).toBe(0);
+
     await resetDatabase(prisma);
     await seed('test');
+    const legacy = buildFixtures('demo');
+    await prisma.ticket.createMany({ data: legacy.tickets.slice(EXPECTED.rowCounts.tickets) });
+    await prisma.ticketEvent.createMany({
+      data: legacy.events.slice(EXPECTED.rowCounts.ticket_events),
+    });
+    await prisma.knowledgeArticle.createMany({
+      data: legacy.articles.slice(EXPECTED.rowCounts.knowledge_articles),
+    });
+    const legacyTitle = 'Presenter’s meeting room example';
+    await prisma.ticket.update({ where: { id: TICKETS.demoA }, data: { title: legacyTitle } });
+    const legacyArticle = await prisma.knowledgeArticle.findUniqueOrThrow({
+      where: { id: ARTICLES.demoWifi },
+    });
     expect(await seed('demo')).toEqual(counts);
+    expect(await prisma.ticket.findUniqueOrThrow({ where: { id: TICKETS.demoA } })).toMatchObject({
+      title: legacyTitle,
+    });
+    expect(
+      await prisma.knowledgeArticle.findUniqueOrThrow({ where: { id: ARTICLES.demoWifi } }),
+    ).toEqual(legacyArticle);
+  });
+
+  it('preserves the demo calendar, presenter changes, and inbox reads on a later rerun', async () => {
+    const first = await seed('demo');
+    const ticket = await prisma.ticket.update({
+      where: { id: DEMO_ANCHOR_TICKET },
+      data: { priority: 'HIGH', version: { increment: 1 } },
+    });
+    const unread = await prisma.notification.findFirstOrThrow({
+      where: { recipientId: USERS.erin, readAt: null },
+    });
+    const later = new Date('2026-12-10T12:00:00Z');
+    await prisma.notification.update({ where: { id: unread.id }, data: { readAt: later } });
+    const snapshot = () =>
+      prisma.ticketEvent.findMany({
+        orderBy: { id: 'asc' },
+        select: { id: true, occurredAt: true },
+      });
+    const before = await snapshot();
+
+    expect(await seed('demo', false, later)).toEqual(first);
+    expect(await snapshot()).toEqual(before);
+    expect(ticket.createdAt).toEqual(newDemoAnchor(demoNow));
+    expect(await prisma.ticket.findUniqueOrThrow({ where: { id: ticket.id } })).toEqual(ticket);
+    expect(await prisma.notification.findUniqueOrThrow({ where: { id: unread.id } })).toMatchObject(
+      { readAt: later },
+    );
+  });
+
+  it('uses one calendar when concurrent first seeds cross UTC midnight', async () => {
+    const tomorrow = new Date('2026-11-25T12:00:00Z');
+    const [first, second] = await Promise.all([seed('demo'), seed('demo', false, tomorrow)]);
+    expect(first).toEqual(second);
+    expect(first.tickets).toBe(300);
+    const anchor = await prisma.ticket.findUniqueOrThrow({ where: { id: DEMO_ANCHOR_TICKET } });
+    expect([newDemoAnchor(demoNow), newDemoAnchor(tomorrow)]).toContainEqual(anchor.createdAt);
+    expect(
+      await prisma.ticketEvent.findFirstOrThrow({
+        where: { ticketId: anchor.id, eventType: 'CREATED' },
+      }),
+    ).toMatchObject({ occurredAt: anchor.createdAt });
+  });
+
+  it('derives ticket states, first responses, and inbox items from coherent demo timelines', async () => {
+    await seed('demo');
+    const tickets = await prisma.ticket.findMany({
+      where: { id: { gte: DEMO_ANCHOR_TICKET } },
+      include: {
+        events: { orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }] },
+        comments: { orderBy: { createdAt: 'asc' } },
+        notifications: true,
+      },
+    });
+    const totals: Record<string, number> = {};
+    for (const ticket of tickets) {
+      const { events, comments, notifications } = ticket;
+      expect(events[0]).toMatchObject({ eventType: 'CREATED', occurredAt: ticket.createdAt });
+      expect(events.at(-1)!.occurredAt.getTime()).toBeLessThan(demoNow.getTime());
+      const lastStatus = [...events]
+        .reverse()
+        .find(({ eventType }) => ['STATUS_CHANGED', 'RESOLVED', 'REOPENED'].includes(eventType));
+      const status =
+        lastStatus?.eventType === 'STATUS_CHANGED'
+          ? (lastStatus.details as { to: string }).to
+          : lastStatus?.eventType === 'RESOLVED'
+            ? 'RESOLVED'
+            : 'OPEN';
+      expect(ticket.status).toBe(status);
+      const kind = lastStatus?.eventType === 'REOPENED' ? 'REOPENED' : status;
+      totals[kind] = (totals[kind] ?? 0) + 1;
+
+      const firstReply = comments.find(
+        (comment) => !comment.isInternal && comment.authorId !== ticket.requesterId,
+      );
+      expect(ticket.firstResponseAt).toEqual(firstReply?.createdAt ?? null);
+      for (const notice of notifications) {
+        const event = events.find(({ id }) => id === notice.eventId);
+        expect(event).toBeDefined();
+        expect(event!.actorId).not.toBe(ticket.requesterId);
+        expect(notice.recipientId).toBe(ticket.requesterId);
+        expect(notice.createdAt).toEqual(event!.occurredAt);
+        if (notice.type === 'TECHNICIAN_REPLY')
+          expect(event!.details).toMatchObject({ isInternal: false });
+      }
+    }
+    expect(totals).toEqual({
+      OPEN: 60,
+      REOPENED: 12,
+      TRIAGED: 48,
+      IN_PROGRESS: 72,
+      RESOLVED: 60,
+      CLOSED: 36,
+    });
+  });
+
+  it('supports the employee, technician, and admin walkthrough via their demo logins', async () => {
+    await seed('demo');
+    const app = await buildApp({
+      env: loadEnv({ FRONTEND_ORIGIN: 'http://app.test' }),
+      prisma,
+      logger: false,
+      checkDb: async () => true,
+      checkCache: async () => 'disabled',
+    });
+    const login = async (name: string) => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        payload: { email: `${name}@smartdesk.test`, password: DEMO_PASSWORD },
+      });
+      expect(response.statusCode).toBe(200);
+      return { authorization: `Bearer ${response.json().data.accessToken}` };
+    };
+    const get = async (headers: Awaited<ReturnType<typeof login>>, url: string) => {
+      const response = await app.inject({ method: 'GET', url, headers });
+      expect(response.statusCode, url).toBe(200);
+      return response.json().data;
+    };
+
+    try {
+      const erin = await login('erin');
+      const tara = await login('tara');
+      const admin = await login('admin');
+      const history = await get(erin, '/api/tickets?limit=10');
+      expect(history.nextOffset).toBe(10);
+      expect(history.items).toContainEqual(expect.objectContaining({ id: DEMO_ANCHOR_TICKET }));
+      const inbox = await get(erin, '/api/notifications?limit=10');
+      expect(inbox.nextOffset).toBe(10);
+      expect(inbox.unreadCount).toBeGreaterThan(0);
+      expect(inbox.unreadCount).toBeLessThan(inbox.total);
+      expect(await get(erin, '/api/knowledge?limit=10')).toMatchObject({
+        total: 26,
+        nextOffset: 10,
+      });
+
+      const withNote = await prisma.ticket.findFirstOrThrow({
+        where: {
+          id: { gte: DEMO_ANCHOR_TICKET },
+          requesterId: USERS.erin,
+          assignedTeamId: TEAMS.network,
+          comments: { some: { isInternal: true } },
+        },
+      });
+      const commentsPath = `/api/tickets/${withNote.id}/comments`;
+      expect(await get(tara, commentsPath)).toContainEqual(
+        expect.objectContaining({ isInternal: true }),
+      );
+      expect(await get(erin, commentsPath)).not.toContainEqual(
+        expect.objectContaining({ isInternal: true }),
+      );
+
+      expect(await get(tara, '/api/technician/unassigned?limit=10')).toMatchObject({
+        nextOffset: 10,
+      });
+      const queue = `/api/technician/queue?teamId=${TEAMS.network}&limit=10`;
+      expect(await get(tara, queue)).toMatchObject({ nextOffset: 10 });
+      expect(await get(tara, `${queue}&mine=true`)).toMatchObject({ nextOffset: 10 });
+      const recommendationPath = `/api/tickets/${DEMO_ANCHOR_TICKET}/recommendations`;
+      const [recommendation] = await get(tara, recommendationPath);
+      expect(recommendation).toMatchObject({
+        review: { status: 'PENDING' },
+        articles: expect.arrayContaining([
+          expect.objectContaining({ title: 'Troubleshoot VPN disconnects after sleep' }),
+        ]),
+      });
+
+      const search = await get(admin, '/api/tickets/search?q=VPN&limit=10');
+      expect(search.items).toHaveLength(10);
+      expect(search.nextCursor).toBeTruthy();
+      expect(await get(admin, '/api/admin/knowledge?published=false')).toMatchObject({ total: 5 });
+      const window = 'start=2026-10-26&end=2026-11-25';
+      const reports = await get(admin, `/api/admin/reports/summary?${window}`);
+      expect(reports.submitted).toBe(192);
+      expect(reports.routing.avgMinutes).toBeGreaterThan(0);
+      expect(reports.firstResponse.avgMinutes).toBeGreaterThan(0);
+      expect(reports.resolution.avgHours).toBeGreaterThan(0);
+      const evaluation = await get(admin, `/api/admin/reports/ai-evaluation?${window}`);
+      expect(evaluation.overall.withoutRecommendation).toBeGreaterThan(0);
+      expect(evaluation.overall.accuracyPct).toBeGreaterThan(0);
+      expect(evaluation.overall.accuracyPct).toBeLessThan(100);
+      expect(evaluation.byModel).toHaveLength(2);
+
+      const review = await app.inject({
+        method: 'POST',
+        url: `${recommendationPath}/${recommendation.id}/review`,
+        headers: tara,
+        payload: { decision: 'ACCEPTED', expectedVersion: 1 },
+      });
+      expect(review.statusCode).toBe(200);
+      expect(review.json().data).toMatchObject({
+        decision: 'ACCEPTED',
+        ticket: { status: 'TRIAGED' },
+      });
+    } finally {
+      await app.close();
+    }
   });
 
   it('covers every ticket status, review status, role and event type the issue requires', async () => {
