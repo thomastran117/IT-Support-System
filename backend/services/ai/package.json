@@ -10,9 +10,11 @@
     "test": "tsx --test test/*.test.ts"
   },
   "dependencies": {
+    "@smartdesk/ai-analysis": "file:../../../packages/ai-analysis",
     "@smartdesk/contracts": "file:../../../packages/contracts",
     "@smartdesk/service-runtime": "file:../../../packages/service-runtime",
-    "fastify": "^5.12.8"
+    "fastify": "^5.12.8",
+    "jose": "^6.2.18"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

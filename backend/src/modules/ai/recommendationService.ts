@@ -1,3 +1,4 @@
+import { AI_PRIORITIES, PROMPT_VERSION, type ValidatedProposal } from '@smartdesk/ai-analysis';
 import type { TransactionClient } from '@smartdesk/db';
 import { validationError } from '../../db/errors.js';
 import {
@@ -6,10 +7,7 @@ import {
 } from '../../db/repositories/aiRecommendations.js';
 import { linkArticles } from '../../db/repositories/recommendationArticles.js';
 import { insertServiceEvent } from '../../db/repositories/serviceEvents.js';
-import type { AnalysisDraft } from './analysisService.js';
 import type { PersistDraft } from './jobRunner.js';
-import { PROMPT_VERSION } from './prompt.js';
-import { AI_PRIORITIES } from './schema.js';
 
 const MODEL_VERSION_MAX = 100;
 
@@ -38,14 +36,14 @@ export interface PersistedRecommendation {
  */
 export async function persistRecommendation(
   tx: TransactionClient,
-  ctx: { job: { id: string; ticketId: string }; draft: AnalysisDraft },
+  ctx: { job: { id: string; ticketId: string }; draft: ValidatedProposal; promptVersion?: string },
 ): Promise<PersistedRecommendation> {
   const { job, draft } = ctx;
 
   const existing = await findRecommendationByJob(tx, job.id);
   if (existing) return { recommendationId: existing.id, created: false };
 
-  const modelVersion = `${draft.modelVersion}@prompt-${PROMPT_VERSION}`;
+  const modelVersion = `${draft.modelVersion}@prompt-${ctx.promptVersion ?? PROMPT_VERSION}`;
   if (!draft.modelVersion.trim() || modelVersion.length > MODEL_VERSION_MAX) {
     throw validationError('Invalid model metadata');
   }

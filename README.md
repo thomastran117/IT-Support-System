@@ -51,8 +51,10 @@ The [gateway architecture](docs/architecture.md#api-gateway) documents timeouts 
 
 ## Opt-in AI service container
 
-Use the `services` profile to build and run the AI service's health endpoints. The existing
-worker still runs AI analysis during this stage of the migration.
+Use the `services` profile to build and run the independent AI service. In the default
+`AI_EXECUTION_MODE=local`, the service exposes health endpoints and the existing worker runs
+analysis. Set `AI_EXECUTION_MODE=service` for Ticket, the worker, and the AI service when you
+are ready to switch. [Configuration, cutover, and rollback](docs/architecture.md#ai-service-container)
 
 ```bash
 docker compose --profile services up --build --wait ai-service
@@ -63,15 +65,9 @@ docker compose --profile services logs -f ai-service
 docker compose --profile services restart ai-service
 ```
 
-The service stays on a private network. Its liveness endpoint checks the process. Readiness
-checks the Ticket API through the gateway using the internal DNS name `gateway`. See the
-[service configuration and health checks](docs/architecture.md#ai-service-container).
-
-Targeting `ai-service` starts its gateway, backend, and PostgreSQL dependencies. Use the normal
-stack command for the frontend and background worker.
-
-To revert to the default stack, run `docker compose --profile services stop ai-service`.
-The gateway, backend, and worker continue serving the MVP on their existing routes.
+Targeting `ai-service` starts Ticket and PostgreSQL. Start the normal stack for the gateway,
+frontend, and background worker. The AI service reaches Ticket through the private `api`
+network using `backend-api`.
 
 ## Common operations
 
@@ -189,6 +185,7 @@ The service container script uses `jq` and creates a disposable Compose project.
 | `backend/services/ai/`      | Opt-in Fastify AI service container and health endpoints             |
 | `packages/contracts/`       | Browser-safe API types and validation                                |
 | `packages/db/`              | Generated Prisma client adapter shared by API and worker             |
+| `packages/ai-analysis/`     | Provider adapters, proposal validation, and reusable runner          |
 | `packages/service-runtime/` | Server-side environment validation shared by gateway and AI service  |
 | `docs/`                     | Durable technical references and generated schema docs               |
 

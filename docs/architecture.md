@@ -54,28 +54,73 @@ calls also verify the current user and resource scope.
 ## AI service container
 
 `backend/services/ai` is the first package under `backend/services/`. Its Compose profile
-`services` builds a separate image and starts the compiled Fastify server. The gateway and AI
-service share the internal `service-health` network for the readiness probe. The gateway keeps
-its separate `api` connection to the backend. Public routes and analysis execution stay with
-the existing API and worker while the AI container is exercised.
+`services` builds a separate image and starts the compiled Fastify server. Its private `api`
+connection reaches Ticket directly. The `ai-egress` network gives the selected provider outbound
+access. The AI container uses HTTP for job and input access and has no database connection.
+The public gateway forwards only its existing API and health paths.
 
-| Setting                       | Default                          | Purpose                                                                                                        |
-| ----------------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `AI_SERVICE_TICKET_ORIGIN`    | `http://gateway:4000` in Compose | HTTP(S) origin resolved by service DNS. The URL parser rejects user info, paths, query strings, and fragments. |
-| `AI_SERVICE_READY_TIMEOUT_MS` | `1500`                           | Full readiness probe deadline, from 1 through 5000 milliseconds                                                |
-| `HOST` and `PORT`             | `0.0.0.0:4010` in Compose        | Container listener on the internal network                                                                     |
+| Setting                                          | Default                              | Purpose                                                                     |
+| ------------------------------------------------ | ------------------------------------ | --------------------------------------------------------------------------- |
+| `AI_SERVICE_TICKET_ORIGIN`                       | `http://backend-api:4000` in Compose | Private Ticket origin. Use HTTPS in production.                             |
+| `AI_SERVICE_READY_TIMEOUT_MS`                    | `1500`                               | Full readiness probe deadline, from 1 through 5000 milliseconds             |
+| `HOST` and `PORT`                                | `0.0.0.0:4010` in Compose            | Container listener on the internal network                                  |
+| `AI_EXECUTION_MODE`                              | `local`                              | `service` starts independent execution and pauses the legacy analysis loop. |
+| `AI_SERVICE_KEY_ID` and `AI_SERVICE_PRIVATE_KEY` | Empty                                | Caller key ID and P-256 PKCS#8 signing key for active independent analysis. |
+| `AI_SERVICE_API_KEY`                             | Empty                                | OpenAI credential delivered to the independent container as `AI_API_KEY`.   |
 
 - `GET /health/live` returns `200` with `{"status":"ok"}` when the process can answer HTTP.
 - `GET /health/ready` reports `checks.ticketApi` as `ok` once the existing Ticket API reports a
   healthy database. Connection failures, timeouts, and non-ready responses return `503` with
   `checks.ticketApi` set to `unavailable`. The next probe can pick up recovery.
 
-Compose uses readiness as the container healthcheck. The health probe uses the gateway health
-route. Scoped credentials for protected calls use the existing [internal authentication
-contract](authentication.md#internal-service-authentication). The container currently receives
-only its listener and readiness configuration. The [Compose lifecycle check](../docker/verify-service-containers.sh)
-builds it from its lockfile, restarts it, and verifies readiness loss and recovery in a disposable
-project.
+Compose uses Ticket readiness as the container healthcheck. The lifecycle check exercises
+dependency loss and recovery, then restarts the independent runner after it saves a proposal
+using the fake provider. [Compose lifecycle check](../docker/verify-service-containers.sh)
+
+### AI service cutover and rollback
+
+Provision the AI service with a P-256 private key and set `AI_SERVICE_KEY_ID`. Add its matching
+public key to Ticket's `INTERNAL_SERVICE_KEYS` registry with `service` set to `ai`. Give it
+the four system scopes `ticket:analysis-claim`, `ticket:analysis-inputs`,
+`ticket:analysis-complete`, and `ticket:analysis-fail`. The service signs a short-lived token
+for each call. Keep the private key and any live provider credential with the AI service only
+during this mode. [Internal service authentication](authentication.md#configure-and-rotate-keys)
+
+Set `AI_EXECUTION_MODE=service` with `AI_PROVIDER=fake` for the first cutover. Stop the legacy
+worker so it can drain its active jobs, then recreate Ticket and the worker in service mode.
+Start the independent container after Ticket is ready. The worker can continue its email and
+search loops. To use OpenAI, set `AI_PROVIDER=openai` and supply `AI_SERVICE_API_KEY`.
+
+```bash
+docker compose stop -t 90 worker
+docker compose up -d --build backend worker gateway
+docker compose --profile services up -d --build --wait ai-service
+```
+
+Ticket owns the queue and serves four scoped commands under `/internal/tickets/analysis-jobs`.
+A claim rotates the existing lease token. The input command verifies the job, request, ticket,
+token, and expiry before and after reading from Ticket and the published Knowledge adapter.
+It sends redacted, bounded text and current allowlists. The AI runtime validates proposals
+against those inputs. Ticket rechecks current references when saving a proposal.
+
+Completion marks the job complete, saves the immutable proposal and article links, and publishes
+`recommendation.ready` in one transaction. A loss of the acknowledgement can be retried with the
+same command. A matching completed job acknowledges the existing recommendation. An expired or
+replaced lease cannot change a job or apply a draft. Failure reports carry only a reason code.
+Ticket decides retryability and delays. An abandoned lease expires and becomes eligible for
+another claim, or reaches `FAILED` once attempts are exhausted. Ticket creation, manual routing,
+and review use their existing endpoints during an AI outage. A new lease can repeat the provider
+call after a crash. The job still commits a single recommendation.
+
+For rollback, stop the independent runner and allow it to drain, or let its active leases
+expire. Set `AI_EXECUTION_MODE=local` and restore the existing `AI_API_KEY` to the legacy
+worker if using OpenAI. Recreate Ticket and the worker. Both runners use the same jobs,
+attempt counts, and saved recommendations.
+
+```bash
+docker compose --profile services stop -t 90 ai-service
+docker compose up -d --build backend worker gateway
+```
 
 For a package-local build from a checkout, install and build the shared packages, then install
 and start the service.
@@ -85,14 +130,16 @@ npm --prefix packages/contracts ci
 npm --prefix packages/contracts run build
 npm --prefix packages/service-runtime ci
 npm --prefix packages/service-runtime run build
+npm --prefix packages/ai-analysis ci
+npm --prefix packages/ai-analysis run build
 npm --prefix backend/services/ai ci
 npm --prefix backend/services/ai test
 npm --prefix backend/services/ai run build
 npm --prefix backend/services/ai start
 ```
 
-Outside Compose, the listener defaults to `127.0.0.1:4010` and the Ticket origin defaults to
-`http://localhost:4000`. [Compose start and rollback commands](../README.md#opt-in-ai-service-container)
+Outside Compose, the listener defaults to `127.0.0.1:4010`. Set the Ticket origin to the
+backend listener for scoped commands. [Compose start commands](../README.md#opt-in-ai-service-container)
 
 ## Package boundaries
 
@@ -104,6 +151,8 @@ Every package is independently locked and installed in its container image.
   worker. Prisma generates its client from `backend/prisma/schema.prisma` during image builds.
 - `packages/service-runtime` contains server-side environment parsing used by the gateway and AI
   service. Both install it as an explicit local dependency.
+- `packages/ai-analysis` contains shared provider adapters, prompt construction, validation, and
+  runner logic for the independent AI service and the legacy worker.
 - Applications that share packages use local `file:` references. Docker builds contracts,
   generates Prisma, and builds the database package before starting a consumer.
 
@@ -410,11 +459,11 @@ routing changes only through a review or the routing form. A deterministic, keyw
 risk" cue is shown whenever it applies and is labelled as not AI. If the status cannot be loaded the
 card says so with a "Check again" button, and the routing form is never disabled by any AI state.
 
-## AI provider (backend and worker only)
+## AI provider
 
-`backend/src/modules/ai/` defines the advisory AI boundary. `AIProvider.analyse()` takes the ticket text, the active category/team allowlists and retrieved knowledge articles and returns a `ValidatedProposal`, or throws a classified `ProviderError` (`disabled`, `timeout`, `rate_limited`, `unavailable`, `malformed`, `invalid_reference`; the first four transient kinds are marked retryable).
+`packages/ai-analysis` defines the advisory AI boundary. `AIProvider.analyse()` takes redacted ticket text, active category and team allowlists, and retrieved knowledge articles. It returns a `ValidatedProposal` or throws a classified `ProviderError`. Timeout, rate limiting, and provider unavailability are retryable.
 
-- `AI_PROVIDER` selects `none` (default; analysis unavailable, ticketing unaffected), `fake` (deterministic, used by CI) or `openai`. `AI_API_KEY`, `AI_MODEL`, `AI_TIMEOUT_MS`, `AI_MAX_OUTPUT_TOKENS` and `AI_MAX_INPUT_CHARS` configure the live adapter. The key is read only by the backend and worker, is sent only in the provider's `Authorization` header, and is never logged or placed in error messages.
+- `AI_PROVIDER` selects `none` (default), `fake` (deterministic, used by CI), or `openai`. `AI_MODEL`, `AI_TIMEOUT_MS`, `AI_MAX_OUTPUT_TOKENS`, and `AI_MAX_INPUT_CHARS` configure the live adapter. The process running the adapter sends its provider key only in the provider's `Authorization` header.
 - Model output must match a strict Zod schema (category/team UUIDs, priority `LOW|MEDIUM|HIGH|CRITICAL`, bounded troubleshooting text, optional 0..1 `confidence`, optional cited article IDs). Category, team and article IDs are then checked against the allowlists supplied for that request; hallucinated values are rejected, not repaired.
 - `confidence` is the model's self-reported score and is not a calibrated probability. A proposal is a draft: this module never changes a ticket.
 
@@ -443,7 +492,9 @@ Ticket text and article text are untrusted: the prompt serialises them as one JS
 
 Analysis never runs inside the ticket request. When `AI_PROVIDER` is not `none`, `POST /api/tickets` inserts a row into `ai_analysis_jobs` **in the same transaction as the ticket**, so a job exists if and only if the ticket does and dispatch cannot be lost between commit and queueing. The response returns 201 without calling the provider. An idempotent replay of a submission queues nothing new.
 
-The worker is a second entrypoint of the backend package (`src/worker.ts`, `npm run start:worker`; Compose service `worker`). It is a separate process, shares the AI and repository code, and never imports Fastify.
+In local mode, the analysis runner starts in the backend worker entrypoint (`src/worker.ts`,
+`npm run start:worker`, Compose service `worker`). In service mode, the independent runner uses
+the same queue through authenticated Ticket commands.
 
 - **Claiming:** `FOR UPDATE SKIP LOCKED` with a lease and a rotating `lease_token`. Several workers can run at once and never take the same job. `AI_WORKER_CONCURRENCY` caps parallel analyses per process.
 - **Idempotency:** `(ticket_id, request_id)` is unique, so enqueueing the same request twice gives one job; a re-analysis uses a new request id.
@@ -458,7 +509,9 @@ The worker is a second entrypoint of the backend package (`src/worker.ts`, `npm 
 
 ### Recommendation persistence (SD-036)
 
-`persistRecommendation` (`recommendationService.ts`) is the worker's `persist` hook. It runs inside the transaction that completes the job, and writes one `ai_recommendations` row plus its `recommendation_articles` links.
+`persistRecommendation` (`recommendationService.ts`) runs in the Ticket transaction that
+completes the job. Both execution modes use it to write one `ai_recommendations` row, its
+`recommendation_articles` links, and the service outbox event.
 
 - **One row per attempt:** `ai_recommendations.job_id` is unique, so retries and duplicate delivery produce exactly one recommendation and never re-link articles. Re-analysis is a new job and therefore a new row; earlier rows and their review decisions are kept. `job_id` is NULL for rows that did not come from a job (fixtures, history).
 - **Atomic:** the row and its links commit together or not at all. Any validation or database error throws and rolls the whole graph back; the job is then retried as an ordinary failed attempt.

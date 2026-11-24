@@ -2,12 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { loadEnv } from '../../../src/config/env.js';
 import { createProvider } from '../../../src/modules/ai/index.js';
 import {
+  createFakeProvider,
+  createOpenAiProvider,
   ProviderError,
   validateProposal,
   type AnalysisRequest,
-} from '../../../src/modules/ai/provider.js';
-import { createFakeProvider } from '../../../src/modules/ai/providers/fake.js';
-import { createOpenAiProvider } from '../../../src/modules/ai/providers/openai.js';
+} from '@smartdesk/ai-analysis';
 
 const CAT = '00000001-0000-4000-8000-000000000001';
 const TEAM = '00000001-0000-4000-8000-000000000002';

@@ -3,7 +3,7 @@ import {
   type AIProvider,
   type AnalysisRequest,
   type ValidatedProposal,
-} from '../provider.js';
+} from '@smartdesk/ai-analysis';
 
 /**
  * A trivial keyword classifier used as a deterministic, offline stand-in provider.

@@ -43,14 +43,23 @@ export interface AIProvider {
 export type ProviderErrorKind =
   'disabled' | 'timeout' | 'rate_limited' | 'unavailable' | 'malformed' | 'invalid_reference';
 
-const RETRYABLE: Record<ProviderErrorKind, boolean> = {
+export type AnalysisFailureKind = ProviderErrorKind | 'ticket_missing' | 'internal';
+
+const RETRYABLE: Record<AnalysisFailureKind, boolean> = {
   disabled: false,
   timeout: true,
   rate_limited: true,
   unavailable: true,
   malformed: false,
   invalid_reference: false,
+  ticket_missing: false,
+  internal: true,
 };
+
+export const classifyAnalysisFailure = (kind: AnalysisFailureKind) => ({
+  kind,
+  retryable: RETRYABLE[kind],
+});
 
 /**
  * Classified provider failure. The message is a fixed, secret-free description chosen by us;

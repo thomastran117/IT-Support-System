@@ -8,8 +8,7 @@ import { CATEGORIES, TEAMS, TICKETS, USERS } from '../../src/db/seed/fixtures.js
 import { seedDatabase } from '../../src/db/seed/run.js';
 import { createAnalysisService } from '../../src/modules/ai/analysisService.js';
 import { createJobRunner, type JobLogEntry } from '../../src/modules/ai/jobRunner.js';
-import { ProviderError, type AIProvider } from '../../src/modules/ai/provider.js';
-import { createFakeProvider } from '../../src/modules/ai/providers/fake.js';
+import { createFakeProvider, ProviderError, type AIProvider } from '@smartdesk/ai-analysis';
 import { persistDraft } from '../../src/modules/ai/recommendationService.js';
 import { manualRiskCue } from '../../src/modules/ai/riskCue.js';
 import { ANALYSES_PER_TICKET_PER_HOUR } from '../../src/modules/tickets/analysis.js';

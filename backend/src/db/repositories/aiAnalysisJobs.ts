@@ -20,6 +20,8 @@ export interface AnalysisJob {
   completedAt: Date | null;
 }
 
+type JobLease = Pick<AnalysisJob, 'id' | 'ticketId' | 'requestId' | 'leaseToken'>;
+
 interface JobRow {
   job_id: string;
   ticket_id: string;
@@ -59,6 +61,17 @@ export const BACKOFF_CAP_MS = 15 * 60_000;
 const clock = (now?: Date) =>
   now ? Prisma.sql`${now}::timestamptz` : Prisma.sql`clock_timestamp()`;
 
+const liveLease = (job: JobLease, now?: Date) => Prisma.sql`
+  job_id = ${job.id}::uuid AND ticket_id = ${job.ticketId}::uuid
+  AND request_id = ${job.requestId}::uuid AND lease_token = ${job.leaseToken}::uuid
+  AND state = 'RUNNING' AND locked_until > ${clock(now)}`;
+
+export async function hasActiveAnalysisLease(db: Db, job: JobLease): Promise<boolean> {
+  const [row] = await db.$queryRaw<{ active: boolean }[]>`
+    SELECT EXISTS(SELECT 1 FROM ai_analysis_jobs WHERE ${liveLease(job)}) AS active`;
+  return row!.active;
+}
+
 /**
  * Queue an analysis for a ticket. Idempotent on `(ticketId, requestId)`: repeating a request returns
  * the existing job instead of adding another. Call inside the ticket's transaction so the job exists
@@ -90,7 +103,7 @@ export function failAbandoned(db: Db, now?: Date): Promise<number> {
     UPDATE ai_analysis_jobs
     SET state = 'FAILED', error_kind = 'worker_lost', lease_token = NULL, locked_until = NULL,
         completed_at = ${clock(now)}, updated_at = ${clock(now)}
-    WHERE state = 'RUNNING' AND locked_until < ${clock(now)} AND attempts >= max_attempts`;
+    WHERE state = 'RUNNING' AND locked_until <= ${clock(now)} AND attempts >= max_attempts`;
 }
 
 /**
@@ -107,7 +120,7 @@ export async function claimNext(
     WITH next AS (
       SELECT job_id FROM ai_analysis_jobs
       WHERE (state = 'QUEUED' AND run_after <= ${clock(opts.now)})
-         OR (state = 'RUNNING' AND locked_until < ${clock(opts.now)})
+         OR (state = 'RUNNING' AND locked_until <= ${clock(opts.now)} AND attempts < max_attempts)
       ORDER BY run_after, created_at, job_id
       LIMIT 1
       FOR UPDATE SKIP LOCKED
@@ -130,16 +143,12 @@ export async function claimNext(
  * result, which is what makes duplicate delivery harmless. Run it in the same transaction as any
  * write that must happen exactly once per job.
  */
-export async function completeJob(
-  db: Db,
-  job: Pick<AnalysisJob, 'id' | 'leaseToken'>,
-  now?: Date,
-): Promise<boolean> {
+export async function completeJob(db: Db, job: JobLease, now?: Date): Promise<boolean> {
   const n = await db.$executeRaw`
     UPDATE ai_analysis_jobs
     SET state = 'COMPLETED', error_kind = NULL, lease_token = NULL, locked_until = NULL,
         completed_at = ${clock(now)}, updated_at = ${clock(now)}
-    WHERE job_id = ${job.id}::uuid AND lease_token = ${job.leaseToken}::uuid AND state = 'RUNNING'`;
+    WHERE ${liveLease(job, now)}`;
   return n === 1;
 }
 
@@ -150,7 +159,7 @@ export async function completeJob(
  */
 export async function failAttempt(
   db: Db,
-  job: Pick<AnalysisJob, 'id' | 'leaseToken'>,
+  job: JobLease,
   opts: { errorKind: string; retryable: boolean; backoffBaseMs: number; now?: Date },
 ): Promise<'QUEUED' | 'FAILED' | null> {
   const rows = await db.$queryRaw<{ state: 'QUEUED' | 'FAILED' }[]>`
@@ -163,7 +172,7 @@ export async function failAttempt(
         completed_at = CASE WHEN ${opts.retryable} AND attempts < max_attempts THEN NULL ELSE ${clock(opts.now)} END,
         error_kind = ${opts.errorKind},
         lease_token = NULL, locked_until = NULL, updated_at = ${clock(opts.now)}
-    WHERE job_id = ${job.id}::uuid AND lease_token = ${job.leaseToken}::uuid AND state = 'RUNNING'
+    WHERE ${liveLease(job, opts.now)}
     RETURNING state`;
   return rows[0]?.state ?? null;
 }

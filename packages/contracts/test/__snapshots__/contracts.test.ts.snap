@@ -2,6 +2,8 @@
 
 exports[`public runtime surface > keeps its exported names stable 1`] = `
 [
+  "AI_JOB_PATH",
+  "AI_JOB_SCOPES",
   "API_PREFIX",
   "APPROVABLE_PRIORITIES",
   "ARTICLE_BODY_MAX",
@@ -31,6 +33,10 @@ exports[`public runtime surface > keeps its exported names stable 1`] = `
   "TICKET_STATUSES",
   "TICKET_TITLE_MAX",
   "addTeamMemberSchema",
+  "analysisInputsV1Schema",
+  "analysisJobClaimV1Schema",
+  "analysisJobFailureV1Schema",
+  "analysisJobIdentityV1Schema",
   "approveRoutingSchema",
   "changeRoleSchema",
   "classificationLabelSchema",

@@ -20,8 +20,19 @@ USER node
 EXPOSE 4000
 CMD ["npm", "run", "dev"]
 
+FROM ${NODE_IMAGE} AS ai-analysis-dependencies
+WORKDIR /app
+COPY tsconfig.base.json ./
+COPY packages/ai-analysis/package.json packages/ai-analysis/package-lock.json packages/ai-analysis/
+RUN npm ci --prefix packages/ai-analysis
+
+FROM ai-analysis-dependencies AS ai-analysis
+COPY packages/ai-analysis/ packages/ai-analysis/
+RUN npm --prefix packages/ai-analysis run build
+
 FROM service-runtime AS ai-service
 WORKDIR /app
+COPY --from=ai-analysis /app/packages/ai-analysis/ packages/ai-analysis/
 COPY packages/contracts/package.json packages/contracts/package-lock.json packages/contracts/
 RUN npm ci --prefix packages/contracts
 COPY packages/contracts/ packages/contracts/
@@ -35,7 +46,7 @@ USER node
 EXPOSE 4010
 CMD ["node", "dist/server.js"]
 
-FROM ${NODE_IMAGE} AS dependencies
+FROM ai-analysis-dependencies AS dependencies
 WORKDIR /app
 
 # Each package owns its lockfile. Local file dependencies only need the shared
@@ -51,7 +62,8 @@ RUN npm ci --prefix packages/contracts \
 
 FROM dependencies AS source
 COPY . .
-RUN npm --prefix packages/contracts run build \
+RUN npm --prefix packages/ai-analysis run build \
+  && npm --prefix packages/contracts run build \
   && npm --prefix backend run generate \
   && npm --prefix packages/db run build
 

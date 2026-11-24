@@ -81,6 +81,7 @@ retry endpoints. AI claims through a scoped lease interface and receives only th
 for the claimed job. Revalidate publication and article revision before retrieval, redact and bound
 ticket and article text sent to the provider, and validate proposed category, team, and citation
 IDs against the allowlists.
+[AI service cutover and rollback](../architecture.md#ai-service-cutover-and-rollback)
 
 Initially, place completion behind Ticket's authenticated command. Ticket checks the job, current
 lease token, proposal references, and article publication and commits the pending recommendation,

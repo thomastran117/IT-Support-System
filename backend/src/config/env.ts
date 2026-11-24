@@ -1,3 +1,4 @@
+import { loadAiConfig, loadAiExecutionMode, type AiConfig } from '@smartdesk/ai-analysis';
 import { loadServiceKeys } from '../auth/serviceTokens.js';
 
 export interface Env {
@@ -22,8 +23,9 @@ export interface Env {
   refreshTtlSeconds: number;
   /** Secure flag on the refresh cookie. Defaults to on in production. */
   cookieSecure: boolean;
-  /** AI recommendation provider. The key is backend/worker-only and must never be logged or sent to the browser. */
+  /** Provider and queue settings for the selected analysis execution mode. */
   ai: AiConfig;
+  aiExecutionMode: ReturnType<typeof loadAiExecutionMode>;
   /** Optional email channel for notifications (SD-043). Off unless EMAIL_TRANSPORT=smtp. */
   email: EmailConfig;
 }
@@ -56,26 +58,6 @@ export interface EmailConfig {
   maxAgeMs: number;
 }
 
-export type AiProviderName = 'none' | 'fake' | 'openai';
-
-export interface AiConfig {
-  provider: AiProviderName;
-  apiKey: string;
-  model: string;
-  timeoutMs: number;
-  maxOutputTokens: number;
-  maxInputChars: number;
-  /** Background analysis worker (SD-035). */
-  worker: {
-    concurrency: number;
-    pollIntervalMs: number;
-    maxAttempts: number;
-    backoffBaseMs: number;
-  };
-}
-
-const AI_PROVIDERS: readonly AiProviderName[] = ['none', 'fake', 'openai'];
-
 function loadOpenSearchConfig(source: NodeJS.ProcessEnv, production: boolean): OpenSearchConfig {
   const enabled = source.OPENSEARCH_ENABLED || 'false';
   if (enabled === 'false') return { enabled: false };
@@ -103,31 +85,6 @@ function loadOpenSearchConfig(source: NodeJS.ProcessEnv, production: boolean): O
     );
   }
   return { enabled: true, url: endpoint.href };
-}
-
-function loadAiConfig(source: NodeJS.ProcessEnv): AiConfig {
-  const provider = (source.AI_PROVIDER || 'none') as AiProviderName;
-  if (!AI_PROVIDERS.includes(provider)) {
-    throw new Error(`Invalid AI_PROVIDER: must be one of ${AI_PROVIDERS.join(', ')}`);
-  }
-  const apiKey = source.AI_API_KEY ?? '';
-  if (provider === 'openai' && !apiKey) {
-    throw new Error('AI_API_KEY is required when AI_PROVIDER=openai');
-  }
-  return {
-    provider,
-    apiKey,
-    model: source.AI_MODEL || 'gpt-4o-mini',
-    timeoutMs: positiveInt(source, 'AI_TIMEOUT_MS', 20_000),
-    maxOutputTokens: positiveInt(source, 'AI_MAX_OUTPUT_TOKENS', 1000),
-    maxInputChars: positiveInt(source, 'AI_MAX_INPUT_CHARS', 20_000),
-    worker: {
-      concurrency: positiveInt(source, 'AI_WORKER_CONCURRENCY', 2),
-      pollIntervalMs: positiveInt(source, 'WORKER_POLL_INTERVAL_MS', 5000),
-      maxAttempts: positiveInt(source, 'AI_JOB_MAX_ATTEMPTS', 3),
-      backoffBaseMs: positiveInt(source, 'AI_JOB_BACKOFF_MS', 5000),
-    },
-  };
 }
 
 const EMAIL_TRANSPORTS: readonly EmailTransportName[] = ['none', 'smtp'];
@@ -192,6 +149,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     throw new Error(`Invalid PORT: ${source.PORT}`);
   }
   const production = source.NODE_ENV === 'production';
+  const aiExecutionMode = loadAiExecutionMode(source);
 
   let jwtSecret = source.JWT_SECRET;
   if (production) {
@@ -220,7 +178,8 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     accessTtlSeconds: positiveInt(source, 'ACCESS_TOKEN_TTL_SECONDS', 15 * 60),
     refreshTtlSeconds: positiveInt(source, 'REFRESH_TOKEN_TTL_SECONDS', 7 * 24 * 60 * 60),
     cookieSecure: source.COOKIE_SECURE ? source.COOKIE_SECURE === 'true' : production,
-    ai: loadAiConfig(source),
+    ai: loadAiConfig(source, aiExecutionMode === 'local'),
+    aiExecutionMode,
     email: loadEmailConfig(source),
   };
 }

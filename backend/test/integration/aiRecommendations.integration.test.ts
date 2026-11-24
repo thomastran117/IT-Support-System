@@ -7,7 +7,7 @@ import { ARTICLES, CATEGORIES, TEAMS, TICKETS, USERS } from '../../src/db/seed/f
 import { seedDatabase } from '../../src/db/seed/run.js';
 import type { AnalysisDraft } from '../../src/modules/ai/analysisService.js';
 import { createJobRunner } from '../../src/modules/ai/jobRunner.js';
-import { ProviderError } from '../../src/modules/ai/provider.js';
+import { ProviderError } from '@smartdesk/ai-analysis';
 import { persistDraft, persistRecommendation } from '../../src/modules/ai/recommendationService.js';
 import { createTestPrisma, resetDatabase, testDatabaseUrl } from './helpers/db.js';
 

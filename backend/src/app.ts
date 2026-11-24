@@ -3,7 +3,7 @@ import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyInstance } from 'fastify';
-import { API_PREFIX } from '@smartdesk/contracts';
+import { AI_JOB_PATH, AI_JOB_SCOPES, API_PREFIX } from '@smartdesk/contracts';
 import type { Env } from './config/env.js';
 import type { DbCheck, PrismaClient } from '@smartdesk/db';
 import type { CacheCheck } from './cache/client.js';
@@ -31,6 +31,7 @@ import { reportRoutes } from './modules/reports/routes.js';
 import { createSearchClient, type SearchClient } from './modules/search/client.js';
 import { ticketSearchRoutes } from './modules/search/ticketSearchRoutes.js';
 import { technicianRoutes } from './modules/technician/routes.js';
+import { internalAnalysisRoutes } from './modules/tickets/internalAnalysisRoutes.js';
 import { internalTicketRoutes } from './modules/tickets/internalRoutes.js';
 import { ticketRoutes } from './modules/tickets/routes.js';
 
@@ -120,6 +121,17 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
       await app.register(internalTicketRoutes(opts.prisma, guard('ticket:work-access', 'user')), {
         prefix: '/internal/tickets',
       });
+      if (opts.env.aiExecutionMode === 'service') {
+        await app.register(
+          internalAnalysisRoutes(opts.prisma, opts.env.ai, searchClient, {
+            claim: guard(AI_JOB_SCOPES.claim, 'system'),
+            inputs: guard(AI_JOB_SCOPES.inputs, 'system'),
+            complete: guard(AI_JOB_SCOPES.complete, 'system'),
+            fail: guard(AI_JOB_SCOPES.fail, 'system'),
+          }),
+          { prefix: AI_JOB_PATH },
+        );
+      }
     }
     await app.register(
       authRoutes({

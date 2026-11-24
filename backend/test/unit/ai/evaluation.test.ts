@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { buildFixtures, EXPECTED } from '../../../src/db/seed/fixtures.js';
-import { PROMPT_VERSION } from '../../../src/modules/ai/prompt.js';
+import {
+  createFakeProvider,
+  PROMPT_VERSION,
+  ProviderError,
+  redactText,
+  validateProposal,
+  type AIProvider,
+  type AnalysisRequest,
+} from '@smartdesk/ai-analysis';
 import { createKeywordBaseline } from '../../../src/modules/ai/evaluation/baseline.js';
 import {
   ALLOWED_TEAMS_BY_CATEGORY,
@@ -23,14 +31,6 @@ import {
   assertPromptPinned,
   runEvaluation,
 } from '../../../src/modules/ai/evaluation/run.js';
-import {
-  ProviderError,
-  validateProposal,
-  type AIProvider,
-  type AnalysisRequest,
-} from '../../../src/modules/ai/provider.js';
-import { createFakeProvider } from '../../../src/modules/ai/providers/fake.js';
-import { redactText } from '../../../src/modules/ai/redact.js';
 
 const cats = [
   { id: 'c1', name: 'A' },
