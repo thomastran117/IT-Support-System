@@ -18,7 +18,10 @@ export interface ReportWindow {
 }
 
 async function authorize(prisma: PrismaClient, actorId: string): Promise<void> {
-  const user = await prisma.user.findUnique({ where: { id: actorId } });
+  const user = await prisma.user.findUnique({
+    where: { id: actorId },
+    select: { isActive: true, role: true },
+  });
   if (!user?.isActive || user.role !== 'ADMIN') throw forbiddenError();
 }
 

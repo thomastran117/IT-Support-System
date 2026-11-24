@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@smartdesk/db';
 import { forbiddenError, notFoundError } from '../errors.js';
 import { loadSql, normalizePage, paginated, type PageRequest } from '../sql.js';
+import { findUser } from './teamMembers.js';
 
 /**
  * Typed entry points for the operational queries Q01-Q04 (sql/queries/*.sql).
@@ -18,7 +19,7 @@ interface Actor {
 }
 
 async function loadActor(prisma: PrismaClient, userId: string): Promise<Actor> {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
+  const user = await findUser(prisma, userId);
   if (!user?.isActive) throw forbiddenError();
   return { id: user.id, role: user.role as Role };
 }

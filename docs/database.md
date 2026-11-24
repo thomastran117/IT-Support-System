@@ -89,6 +89,9 @@ shared credential is documented in [Authentication and authorization](authentica
 Operational SQL lives in `backend/sql/queries`; reporting and AI-evaluation SQL lives in
 `backend/sql/reports`. Repository methods add authorization scope before returning operational data.
 
+The [service access migration](database/service-access.md) documents the E14 ownership matrix,
+optional PostgreSQL grants, and rollback steps.
+
 ## Validation
 
 ```bash
