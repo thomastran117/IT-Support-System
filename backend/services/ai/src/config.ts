@@ -1,5 +1,5 @@
 import { loadAiConfig, loadAiExecutionMode } from '@smartdesk/ai-analysis';
-import { parseHttpOrigin, parseInteger } from '@smartdesk/service-runtime';
+import { parseExecutionMode, parseHttpOrigin, parseInteger } from '@smartdesk/service-runtime';
 
 export function loadServiceConfig(env: NodeJS.ProcessEnv = process.env) {
   const logLevel = env.LOG_LEVEL ?? 'info';
@@ -23,11 +23,26 @@ export function loadServiceConfig(env: NodeJS.ProcessEnv = process.env) {
   if (active && env.NODE_ENV === 'production' && ticketOrigin.protocol !== 'https:') {
     throw new Error('AI_SERVICE_TICKET_ORIGIN must use HTTPS in production');
   }
+  const knowledgeMode = parseExecutionMode(
+    'KNOWLEDGE_EXECUTION_MODE',
+    env.KNOWLEDGE_EXECUTION_MODE,
+  );
+  const knowledgeOrigin =
+    active && knowledgeMode === 'service'
+      ? parseHttpOrigin(
+          'KNOWLEDGE_RETRIEVAL_ORIGIN',
+          env.KNOWLEDGE_RETRIEVAL_ORIGIN ?? 'http://localhost:4040',
+        )
+      : undefined;
+  if (knowledgeOrigin && env.NODE_ENV === 'production' && knowledgeOrigin.protocol !== 'https:') {
+    throw new Error('KNOWLEDGE_RETRIEVAL_ORIGIN must use HTTPS in production');
+  }
   return {
     host: env.HOST ?? '127.0.0.1',
     port: parseInteger('PORT', env.PORT ?? 4010, 1, 65535),
     logLevel,
     ticketOrigin,
+    knowledgeOrigin,
     ai,
     signing: active ? { kid, privateKey } : null,
     readyTimeoutMs: parseInteger(

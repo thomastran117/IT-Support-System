@@ -79,6 +79,11 @@ uses the existing notification and delivery tables. [Notifications setup and rol
 The `analytics` profile runs the independent admin report endpoints against the existing
 PostgreSQL facts using a scoped read-only login. [Analytics setup and rollback](docs/architecture/analytics-service.md)
 
+## Opt-in Knowledge service
+
+The `knowledge` profile runs the article reader and authoring APIs plus private published
+retrieval for AI. [Knowledge setup and rollback](docs/architecture/knowledge-service.md)
+
 ## Common operations
 
 ```bash

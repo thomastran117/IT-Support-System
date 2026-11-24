@@ -54,13 +54,17 @@ WORKDIR /app
 COPY packages/contracts/package.json packages/contracts/package-lock.json packages/contracts/
 COPY packages/db/package.json packages/db/package-lock.json packages/db/
 COPY packages/analytics/package.json packages/analytics/package-lock.json packages/analytics/
+COPY packages/knowledge/package.json packages/knowledge/package-lock.json packages/knowledge/
 COPY packages/notifications/package.json packages/notifications/package-lock.json packages/notifications/
+COPY packages/service-runtime/package.json packages/service-runtime/package-lock.json packages/service-runtime/
 COPY backend/package.json backend/package-lock.json backend/
 COPY frontend/package.json frontend/package-lock.json frontend/
 RUN npm ci --prefix packages/contracts \
   && npm ci --prefix packages/db \
   && npm ci --prefix packages/analytics \
+  && npm ci --prefix packages/knowledge \
   && npm ci --prefix packages/notifications \
+  && npm ci --prefix packages/service-runtime \
   && npm ci --prefix backend \
   && npm ci --prefix frontend
 
@@ -71,7 +75,9 @@ RUN npm --prefix packages/ai-analysis run build \
   && npm --prefix backend run generate \
   && npm --prefix packages/db run build \
   && npm --prefix packages/analytics run build \
-  && npm --prefix packages/notifications run build
+  && npm --prefix packages/knowledge run build \
+  && npm --prefix packages/notifications run build \
+  && npm --prefix packages/service-runtime run build
 
 FROM source AS backend
 WORKDIR /app/backend
@@ -107,6 +113,20 @@ COPY backend/services/analytics/ ./
 RUN npm run build
 USER node
 EXPOSE 4030
+CMD ["node", "dist/server.js"]
+
+FROM service-runtime AS knowledge-service
+COPY --from=ai-analysis /app/packages/ai-analysis/ packages/ai-analysis/
+COPY --from=source /app/packages/contracts/ packages/contracts/
+COPY --from=source /app/packages/db/ packages/db/
+COPY --from=source /app/packages/knowledge/ packages/knowledge/
+WORKDIR /app/backend/services/knowledge
+COPY backend/services/knowledge/package.json backend/services/knowledge/package-lock.json ./
+RUN npm ci
+COPY backend/services/knowledge/ ./
+RUN npm run build
+USER node
+EXPOSE 4040
 CMD ["node", "dist/server.js"]
 
 FROM source AS frontend

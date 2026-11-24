@@ -26,7 +26,7 @@ export type PersistDraft = (
 
 interface JobRunnerDeps {
   prisma: PrismaClient;
-  analysis: { analyse(ticketId: string): Promise<AnalysisDraft> };
+  analysis: { analyse(ticketId: string, requestId?: string): Promise<AnalysisDraft> };
   config: JobRunnerConfig;
   persist?: PersistDraft;
   log?: (entry: JobLogEntry) => void;
@@ -40,7 +40,7 @@ export function createJobRunner(deps: JobRunnerDeps) {
     config,
     log: deps.log,
     claim: () => claimNext(prisma, { leaseMs: config.leaseMs, now: deps.now?.() }),
-    analyse: (job) => analysis.analyse(job.ticketId),
+    analyse: (job) => analysis.analyse(job.ticketId, job.requestId),
     complete: (job, draft) =>
       withTransaction(prisma, async (tx) => {
         if (!(await completeJob(tx, job, deps.now?.()))) return false;

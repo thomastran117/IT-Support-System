@@ -52,6 +52,9 @@ jobs:
       - name: Analytics report parity, outage and rollback
         run: set -o pipefail; sh docker/verify-analytics-service.sh 2>&1 | tee ci-analytics-service.log
 
+      - name: Knowledge authoring, published retrieval, outage and rollback
+        run: set -o pipefail; sh docker/verify-knowledge-service.sh 2>&1 | tee ci-knowledge-service.log
+
       - name: Optional OpenSearch smoke check
         run: |
           default_services=$(docker compose config --services)

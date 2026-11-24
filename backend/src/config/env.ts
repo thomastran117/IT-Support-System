@@ -1,5 +1,6 @@
 import { loadEmailConfig, type EmailConfig } from '@smartdesk/notifications';
 import { loadAiConfig, loadAiExecutionMode, type AiConfig } from '@smartdesk/ai-analysis';
+import { parseExecutionMode } from '@smartdesk/service-runtime';
 import { loadServiceKeys } from '../auth/serviceTokens.js';
 
 export type { EmailConfig } from '@smartdesk/notifications';
@@ -31,6 +32,7 @@ export interface Env {
   aiExecutionMode: ReturnType<typeof loadAiExecutionMode>;
   notificationsExecutionMode: 'local' | 'service';
   analyticsExecutionMode: 'local' | 'service';
+  knowledgeExecutionMode: 'local' | 'service';
   /** Optional email channel for notifications (SD-043). Off unless EMAIL_TRANSPORT=smtp. */
   email: EmailConfig;
 }
@@ -139,6 +141,10 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     aiExecutionMode,
     notificationsExecutionMode,
     analyticsExecutionMode,
+    knowledgeExecutionMode: parseExecutionMode(
+      'KNOWLEDGE_EXECUTION_MODE',
+      source.KNOWLEDGE_EXECUTION_MODE,
+    ),
     email: loadEmailConfig(
       notificationsExecutionMode === 'local' ? source : { ...source, EMAIL_TRANSPORT: 'none' },
     ),

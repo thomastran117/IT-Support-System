@@ -5,6 +5,11 @@ export { Prisma, PrismaClient };
 
 /** The client handed to `$transaction` callbacks. */
 export type TransactionClient = Prisma.TransactionClient;
+export {
+  enqueueSearchIndexJob,
+  type SearchIndexEntityType,
+  type SearchIndexEventKind,
+} from './searchIndexIntents.js';
 
 export {
   isRetryable,

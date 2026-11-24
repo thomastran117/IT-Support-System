@@ -952,6 +952,29 @@ export const ANALYTICS_IDENTITY = {
 } as const;
 export const analyticsPrincipalSchema = z.strictObject({ id: z.guid(), role: roleSchema });
 
+export const KNOWLEDGE_IDENTITY = {
+  audience: 'smartdesk-identity',
+  scope: 'identity:knowledge-principal',
+  path: '/internal/identity/knowledge-principal',
+} as const;
+export const knowledgePrincipalSchema = z.strictObject({ id: z.guid(), role: roleSchema });
+
+export const KNOWLEDGE_RETRIEVAL = {
+  audience: 'smartdesk-knowledge',
+  scope: 'knowledge:published-retrieval',
+  path: '/internal/knowledge/published-retrieval',
+} as const;
+export const knowledgeRetrievalQuerySchema = z.strictObject({
+  terms: z
+    .array(
+      z
+        .string()
+        .max(SEARCH_QUERY_MAX)
+        .regex(/^[a-z][a-z0-9]{2,}$/),
+    )
+    .max(12),
+});
+
 // Command for the authenticated AI-to-Ticket completion path. The draft belongs in the request,
 // while recommendation.ready carries only the identifiers of the result after commit.
 export const analysisJobIdentityV1Schema = z.strictObject({
@@ -999,6 +1022,10 @@ export const analysisInputsV1Schema = z.strictObject({
     engine: z.enum(['postgres', 'opensearch', 'none']),
     version: z.number().int().positive(),
   }),
+});
+export const knowledgeRetrievalSchema = analysisInputsV1Schema.pick({
+  articles: true,
+  retrieval: true,
 });
 
 export const AI_JOB_PATH = '/internal/tickets/analysis-jobs';
