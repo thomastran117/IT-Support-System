@@ -2,6 +2,9 @@
 
 SmartDesk is a small service-oriented application packaged as one Docker Compose project.
 
+The [incremental service extraction ADR](architecture/microservices-adr.md) describes the optional
+post-MVP migration and its cutover gates.
+
 ## Runtime services
 
 ```text
