@@ -115,7 +115,8 @@ the knowledge read alias when AI analysis is enabled. The API uses OpenSearch fo
 knowledge text search with PostgreSQL verification.
 
 See the [search evaluation](docs/search-evaluation.md) for the authorization matrix, benchmark
-results, and reproduction commands.
+results, and reproduction commands. The [offline hybrid knowledge experiment](docs/hybrid-knowledge-experiment.md)
+compares the optional embedding approach with the published keyword path.
 
 For production, use a separate secured OpenSearch deployment with verified TLS, private network
 access, and least-privilege service accounts. Inject `OPENSEARCH_USERNAME` and `OPENSEARCH_PASSWORD`
