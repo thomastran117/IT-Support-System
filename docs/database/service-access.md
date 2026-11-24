@@ -10,12 +10,39 @@ domain. See the [Prisma schema](../../backend/prisma/schema.prisma) and [ERD](er
 | Service         | Role                      | Tables and allowed writes                                                                                                                                                                                                                                                                                                        | Transitional reads and interfaces                                                                                                                                                                                      |
 | --------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Ticket          | `smartdesk_ticket`        | Creates and updates `tickets`, `support_teams`, `ticket_categories`, and `classification_labels`. Adds or removes `team_members`. Appends `ticket_comments`, `ticket_events`, `ai_recommendations`, and `recommendation_articles`. Updates only review metadata on recommendations. Owns `ai_analysis_jobs` and its lease state. | Reads account and revocation fields and article citation metadata. Enqueues Ticket search intents in the source transaction. Q01–Q04 stay with Ticket.                                                                 |
-| Notifications   | `smartdesk_notifications` | Creates `notifications` and `notification_deliveries`. Updates notification read state and delivery state or leases.                                                                                                                                                                                                             | Reads ticket IDs and titles and the account and membership fields used by current inbox and delivery checks. Ticket events will supply notification intent.                                                            |
+| Notifications   | `smartdesk_notifications` | Creates `notifications` and `notification_deliveries`. Updates inbox and delivery state and settles its outbox receipts.                                                                                                                                                                                                         | Reads committed eligible Ticket outbox events, ticket IDs and titles, and scoped account and membership fields.                                                                                                        |
 | Knowledge       | `smartdesk_knowledge`     | Creates, edits, publishes, and unpublishes `knowledge_articles`. Enqueues article search intents in the source transaction.                                                                                                                                                                                                      | Reads category and current account or membership fields. Revalidates published sources when serving AI requests.                                                                                                       |
 | Identity        | `smartdesk_identity`      | Manages account state, roles, password hashes, and token versions in `users`. Appends `admin_audit_log`.                                                                                                                                                                                                                         | Exposes scoped account and revocation checks when independently deployed. Ticket keeps team membership authority.                                                                                                      |
 | Analytics       | `smartdesk_analytics`     | Owns report queries. The current schema requires read privileges only.                                                                                                                                                                                                                                                           | Reads the exact source columns used by Q05–Q14 and the account ID, role, and active flag needed for the admin check. Ticket text, comments, recommendation suggestions, and password hashes stay outside these grants. |
 | Search indexing | `smartdesk_search`        | Reads `search_index_jobs` and updates lease or progress fields.                                                                                                                                                                                                                                                                  | Reads rebuild state, Ticket projection fields, and `smartdesk_search_article_sources`. That view includes metadata for tombstones and returns text only for published articles.                                        |
-| Gateway and AI  | None                      | Gateway routes requests. AI will run analysis and submit proposals through Ticket's authenticated commands.                                                                                                                                                                                                                      | Receive only the data permitted by HTTP and event contracts. Ticket owns the queue, saved recommendations, and human review.                                                                                           |
+| Gateway and AI  | None                      | Gateway routes requests. AI runs analysis and submits proposals through Ticket's authenticated commands.                                                                                                                                                                                                                         | Receive data through HTTP contracts. Ticket owns the queue, saved recommendations, and human review.                                                                                                                   |
+
+The generated ERD describes table relationships. The following map shows the writes and
+cross-owner reads within the one shared database in isolated mode.
+
+```mermaid
+flowchart LR
+    subgraph PG["Shared PostgreSQL schema"]
+        Accounts[("Users and account audit")]
+        TicketFacts[("Tickets, teams, jobs, recommendations, and audit")]
+        Articles[("Knowledge articles")]
+        Events[("Service outbox events")]
+        Inbox[("Inbox, delivery state, and receipts")]
+        SearchIntent[("Search intents and rebuild checkpoints")]
+    end
+    Identity -->|Writes| Accounts
+    Ticket -->|Writes| TicketFacts
+    Ticket -->|Appends| Events
+    Knowledge -->|Writes| Articles
+    Notifications -->|Consumes| Events
+    Notifications -->|Writes| Inbox
+    Analytics -->|Scoped report reads| TicketFacts
+    Ticket -->|Enqueues ticket changes| SearchIntent
+    Knowledge -->|Enqueues article changes| SearchIntent
+    Indexer["Optional search indexer"] -->|Leases and settles| SearchIntent
+```
+
+[Generated physical ERD](erd.md) · [Runtime dependency diagram](../architecture.md#isolated-compose-runtime)
 
 Ticket and Knowledge share the search intent table. PostgreSQL row policies scope each producer to
 its entity type. Column grants let producers enqueue intent and deduplicate, while Search can

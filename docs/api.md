@@ -10,6 +10,27 @@ Except for backend health responses, JSON uses:
 Errors set `error`, may add structured `details`, and set `data` to `null`. Authenticated endpoints
 expect `Authorization: Bearer <access-token>`. Every response includes `X-Request-Id`.
 
+## Route ownership in isolated Compose
+
+Clients keep the same gateway origin, paths, refresh cookie, and response contracts.
+The gateway selects the owner by path and returns `404` for paths outside the registry.
+[Gateway route registry](../backend/gateway/src/routing.ts)
+
+| Owner         | Registered paths                                                                                                                                                                                                |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ticket        | `/api/tickets`, `/api/technician`, `/api/teams`, `/api/categories`, `/api/admin/teams`, `/api/admin/categories`, `/api/admin/tickets`, `/api/admin/classification-labels`, and the health, ping, and echo paths |
+| Identity      | `/api/auth`, `/api/admin/users`, and `/api/admin/audit-log`                                                                                                                                                     |
+| Knowledge     | `/api/knowledge` and `/api/admin/knowledge`                                                                                                                                                                     |
+| Analytics     | `/api/admin/reports`                                                                                                                                                                                            |
+| Notifications | `/api/notifications`                                                                                                                                                                                            |
+
+Each API prefix includes its registered subroutes. AI consumes Ticket commands under
+`/internal/tickets/analysis-jobs` and requests published retrieval from Knowledge. The
+delegated Identity lookups and AI commands run over the private network. A browser bearer
+token alone cannot call those commands. The gateway returns `503` when a selected
+upstream is unavailable or times out before response headers.
+[Internal authentication](authentication.md#internal-service-authentication) · [Dependency outages](architecture/microservices-adr.md#dependency-outages)
+
 ## Health and utilities
 
 | Method | Path            | Purpose                                            |

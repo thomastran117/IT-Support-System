@@ -35,14 +35,14 @@ An internal caller sends an ES256 JWT as `Authorization: Bearer <service-token>`
 keeps its own P-256 signing key. The receiving service pins a public key, caller name, and
 grants to each configured `kid`.
 
-| JWT field        | Value                                                                                           |
-| ---------------- | ----------------------------------------------------------------------------------------------- |
-| Protected header | `alg` is `ES256`, `typ` is `smartdesk-service+jwt`, and `kid` selects the configured caller key |
-| `iss` and `sub`  | `smartdesk-internal` and the exact configured caller service name                               |
-| `aud`            | One receiving service, currently `smartdesk-ticket` for Ticket's internal endpoint              |
-| `iat` and `exp`  | Integer UTC epoch seconds. Issue for at most 60 seconds and keep service clocks synchronized.   |
-| `scope`          | One operation allowed both by the endpoint and by the caller's grant                            |
-| `actor`          | `{ "kind": "system" }` or `{ "kind": "user", "tokenHash": "<base64url SHA-256>" }`              |
+| JWT field        | Value                                                                                                                                |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Protected header | `alg` is `ES256`, `typ` is `smartdesk-service+jwt`, and `kid` selects the configured caller key                                      |
+| `iss` and `sub`  | `smartdesk-internal` and the exact configured caller service name                                                                    |
+| `aud`            | One receiving service. Ticket uses `smartdesk-ticket`, Identity uses `smartdesk-identity`, and Knowledge uses `smartdesk-knowledge`. |
+| `iat` and `exp`  | Integer UTC epoch seconds. Issue for at most 60 seconds and keep service clocks synchronized.                                        |
+| `scope`          | One operation allowed both by the endpoint and by the caller's grant                                                                 |
+| `actor`          | `{ "kind": "system" }` or `{ "kind": "user", "tokenHash": "<base64url SHA-256>" }`                                                   |
 
 For a delegated call, send the user's existing access JWT in `X-SmartDesk-Internal-User-Token`.
 Hash the exact token bytes without a `Bearer` prefix and encode the digest as unpadded base64url

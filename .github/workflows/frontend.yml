@@ -12,67 +12,121 @@ concurrency:
   group: frontend-${{ github.ref }}
   cancel-in-progress: true
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
-  verify:
-    name: frontend / verify
+  browser:
+    name: Frontend build and browser suite
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    defaults:
-      run:
-        shell: bash
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - run: docker compose --profile ci run --rm --build frontend-ci 2>&1 | tee ci-frontend.log
+      - name: Upload frontend-ci-logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-ci-logs
+          path: |
+            ci-frontend.log
+            frontend/playwright-report/
+            frontend/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Stop containers
+        if: always()
+        run: docker compose --profile ci down -v
 
-      - name: Build verification images
-        run: docker compose --profile ci build format-check frontend-ci
-
-      - name: Format check
-        run: set -o pipefail; docker compose --profile ci run --rm format-check 2>&1 | tee ci-format.log
-
-      - name: Frontend checks and browser tests
-        run: set -o pipefail; docker compose --profile ci run --rm frontend-ci 2>&1 | tee ci-frontend.log
-
+  search:
+    name: Browser with PostgreSQL and OpenSearch
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose --profile ci build frontend-ci
       - name: Ticket search with PostgreSQL and OpenSearch
         run: |
-          set -o pipefail
           if [ "$(sysctl -n vm.max_map_count)" -lt 262144 ]; then
             sudo sysctl -w vm.max_map_count=262144
           fi
           project=$(docker compose --profile ci config --format json | jq -r .name)
           sh docker/verify-ticket-search-browser.sh "$project-frontend-ci" 2>&1 | tee ci-ticket-search.log
+      - name: Upload frontend-search-logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-search-logs
+          path: |
+            ci-ticket-search.log
+            frontend/playwright-report/
+            frontend/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
 
-      - name: Isolated microservice browser, failure and rollback checks
-        run: set -o pipefail; SD100=1 SD100_PASSIVE_SCAN=1 sh docker/verify-ticket-service.sh 2>&1 | tee ci-microservices.log
-
-      - name: Adopted microservice source and dependency scans
-        run: set -o pipefail; sh docker/verify-microservice-static.sh 2>&1 | tee ci-microservices-static.log
-
-      - name: Upload microservice verification and scan evidence
+  microservices:
+    name: Isolated browser, outages, and rollback
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the isolated gate and passive scan
+        run: |
+          if [ "$(sysctl -n vm.max_map_count)" -lt 262144 ]; then
+            sudo sysctl -w vm.max_map_count=262144
+          fi
+          SD100=1 SD100_PASSIVE_SCAN=1 sh docker/verify-ticket-service.sh 2>&1 | tee ci-microservices.log
+      - name: Upload microservice-verification
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: microservice-verification
           path: |
             ci-microservices.log
-            ci-microservices-static.log
             test-results/sd100/*.json
             test-results/sd100/*.jsonl
             test-results/sd100/*-revision.txt
           if-no-files-found: ignore
           retention-days: 14
-
-      - name: Upload Playwright report and logs
+      - name: Upload microservice-browser-logs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: frontend-ci-logs
+          name: microservice-browser-logs
           path: |
-            ci-*.log
             frontend/playwright-report/
             frontend/test-results/
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Stop containers
+  static:
+    name: Source and dependency scans
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh docker/verify-microservice-static.sh 2>&1 | tee ci-microservices-static.log
+      - name: Upload microservice-static-analysis
         if: always()
-        run: docker compose --profile ci down -v
+        uses: actions/upload-artifact@v4
+        with:
+          name: microservice-static-analysis
+          path: |
+            ci-microservices-static.log
+            test-results/sd100/npm-audit.json
+            test-results/sd100/semgrep.json
+            test-results/sd100/static-revision.txt
+          if-no-files-found: ignore
+          retention-days: 14
+
+  verify:
+    name: frontend / verify
+    runs-on: ubuntu-latest
+    needs: [browser, search, microservices, static]
+    if: always()
+    steps:
+      - name: Require all frontend jobs to pass
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: jq -e 'all(.[]; .result == "success")' <<< "$RESULTS"

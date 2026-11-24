@@ -1,36 +1,29 @@
 # ADR — Incremental Node.js service extraction
 
-**Proposed for SD-087.** The modular Fastify API and worker satisfy the functional MVP architecture.
-E14 is an optional post-MVP extension. It brings the repository closer to the Deliverable 1
-gateway, ticket, AI, notification, and analytics deployment model. Knowledge and Identity can stay
-in the existing API until their separate extractions are justified. E14 adds no submission
-prerequisite to E00–E11. [Epic E14](https://github.com/thomastran117/IT-Support-System/issues/118)
+**Accepted as an opt-in deployment.** Default Compose serves the functional MVP through the
+gateway, modular API, and worker. The optional isolated overlay adopts the Deliverable 1 gateway,
+Ticket, AI, Notifications, and Analytics model. It also includes the later Identity and Knowledge
+extractions. [Epic E14](https://github.com/thomastran117/IT-Support-System/issues/118)
 
 ## Current implementation and ownership
 
-The browser uses the Next.js frontend and the public Fastify API. `backend/src/app.ts` registers the
-HTTP modules on one instance. Compose runs `backend/src/worker.ts` separately from the API, using
-the same backend build, environment loader, and Prisma adapter. The worker runs the PostgreSQL AI
-queue and, when configured, the SMTP dispatcher and OpenSearch indexer. The API and worker
-currently connect to the same database and use the same Prisma model. [Runtime architecture](../architecture.md)
+| Boundary      | Isolated owner and interface                                                                                                                                                                     |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Gateway       | The Fastify gateway owns public routing, request correlation, and transport limits. Registered paths have one owner.                                                                             |
+| Ticket        | The standalone Ticket runtime owns ticket lifecycle, catalogs, queues, Q01–Q04, and immutable audit. Its transactions own the AI queue, recommendations, review, and notification outbox writes. |
+| AI            | The independent AI runtime holds provider credentials and executes analysis. It leases work and submits proposals through Ticket commands, and reads published excerpts through Knowledge.       |
+| Notifications | The service owns the inbox, optional email delivery, and delivery receipts. Its consumer applies Ticket outbox events and deduplicates by event ID.                                              |
+| Analytics     | The service owns Q05–Q14 and report contracts. It reads only the committed source columns granted to its login.                                                                                  |
+| Identity      | The service owns accounts, password hashes, sessions, revocation, and account audit. Ticket retains team membership and checks ticket scope after delegated authentication.                      |
+| Knowledge     | The service owns article lifecycle, published retrieval, and article index intents. Ticket retains historical recommendation links and checks publication when it records citations.             |
 
-| Deliverable 1 boundary | Current module, data, and dependency                                                                                                                                                                                                               | Planned ownership and permitted interactions                                                                                                                                                                                                                                                                                                                                    |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| API gateway            | `app.ts` handles CORS, request IDs, rate limiting, and error envelopes. Compose exposes the API port directly.                                                                                                                                     | Gateway owns public routing, request correlation, and transport limits. It has no database or business-write privileges. It forwards browser credentials and requests to the current route owner.                                                                                                                                                                               |
-| Ticket                 | `modules/tickets`, `modules/technician`, `modules/teams`, `modules/evaluation`, and `db/services/ticketService.ts` handle ticket workflows, staff queues, catalog, and label administration. `modules/search/ticketSearch*.ts` runs ticket search. | Ticket owns `tickets`, `ticket_comments`, `ticket_events`, `support_teams`, `team_members`, `ticket_categories`, `ai_recommendations`, `recommendation_articles`, and `classification_labels`. It publishes committed ticket events, supplies scoped analysis inputs, records proposals through an authenticated command, and keeps Q01–Q04 and ticket visibility checks local. |
-| AI                     | `modules/ai` handles prompt creation, retrieval, provider calls, and validation. Ticket routes enqueue and read `ai_analysis_jobs`. The worker leases jobs and currently persists proposals and article links when completing them.                | AI owns provider configuration and analysis execution. The existing PostgreSQL queue can stay behind Ticket-owned lease commands during extraction. AI receives one job's allowlisted Ticket and published Knowledge inputs and submits a validated proposal tied to that job. Ticket owns the durable recommendation, reviewed outcome, and ticket values.                     |
-| Notifications          | `db/repositories/ticketEvents.ts` writes `notifications` with eligible audit events. `modules/notifications` serves the inbox and runs optional SMTP backed by `notification_deliveries`.                                                          | Notifications owns the inbox, recipient-scoped reads and read state, delivery attempts, and its processing checkpoints. It consumes committed, eligible ticket events and can resolve addresses through scoped Identity lookup. Ticket publishes without waiting for inbox or email processing.                                                                                 |
-| Analytics              | `modules/reports` and `db/repositories/reports.ts` run Q05–Q14 over PostgreSQL facts owned by Ticket. Admin label writes are served by `modules/evaluation`.                                                                                       | Analytics owns the two report endpoints, query definitions, and any future report projection. It can read narrowly scoped views or consume events to build a projection. Ticket keeps independent reference labels and their existing routes.                                                                                                                                   |
-| Knowledge              | `modules/knowledge` owns CRUD, publication, and search over `knowledge_articles`. The AI worker uses the published search adapter. Articles depend on Ticket categories and are referenced by saved recommendations.                               | Knowledge owns article lifecycle and published retrieval, including article index-change intent. It can read category references through a scoped Ticket contract. It supplies bounded published results to AI. Ticket retains historical recommendation links and applies publication rules when exposing article content.                                                     |
-| Identity               | `auth/`, `modules/auth`, and `modules/admin` handle sessions, credential and role changes, guards, and administrator audit over `users` and `admin_audit_log`. Guards and repositories read active account and team state.                         | Identity owns accounts, Argon2 hashes, token versions, session behavior, and account audit. It provides scoped account state and revocation checks. Ticket owns team membership and assignment rules.                                                                                                                                                                           |
+The isolated runtimes share one PostgreSQL server and Prisma schema. Scoped runtime logins
+enforce individual write ownership, while a migration account owns the schema. Ticket and
+Knowledge produce scoped search intents. The optional indexer settles those intents under
+its own role and writes derived OpenSearch projections. Analytics projections, independent
+databases, and separate orchestration infrastructure are deferred.
 
-Table names refer to the current [Prisma schema](../../backend/prisma/schema.prisma). The shared
-`search_index_jobs` table records Ticket and Knowledge projection changes in their source
-transactions. Retain it as a transitional outbox with producer access scoped to each entity type.
-The index worker and rebuild tooling get access to the relevant projection fields, their aliases,
-and the `search_rebuilds` checkpoints. Redis cache and rate-limit state are transient. OpenSearch
-indexes are derived and PostgreSQL verifies authorization, publication, and freshness before a
-result is returned. [Database and outbox](../database.md#search-outbox)
+[Runtime diagram](../architecture.md#isolated-compose-runtime) · [Ownership and grants](../database/service-access.md) · [Deliverable 1 traceability](microservice-traceability.md)
 
 ## Compatibility and transactions
 
@@ -111,7 +104,7 @@ ticket and article text sent to the provider, and validate proposed category, te
 IDs against the allowlists.
 [AI service cutover and rollback](../architecture.md#ai-service-cutover-and-rollback)
 
-Initially, place completion behind Ticket's authenticated command. Ticket checks the job, current
+Completion runs behind Ticket's authenticated command. Ticket checks the job, current
 lease token, proposal references, and article publication and commits the pending recommendation,
 article links, and job completion in one local transaction. After a lost response, the same
 completion request returns the committed result for that job. A stale worker cannot finish another

@@ -5,7 +5,7 @@ SmartDesk is a small service-oriented application packaged as one Docker Compose
 The [incremental service extraction ADR](architecture/microservices-adr.md) describes the optional
 post-MVP migration and its cutover gates.
 
-## Runtime services
+## Default Compose runtime
 
 ```text
 Browser -> frontend (Next.js)
@@ -25,20 +25,57 @@ Browser -> gateway (Fastify) -> backend (Fastify) -> PostgreSQL <- worker
 - **Redis** is an optional, internal-only cache with no persistence, disabled unless the `cache`
   (dev) or `ci` profile starts it; PostgreSQL remains the authoritative store regardless.
 
+## Isolated Compose runtime
+
+```mermaid
+flowchart LR
+    Browser --> Web["Next.js frontend"]
+    Browser --> Gateway["Fastify gateway"]
+    Gateway --> Ticket
+    Gateway --> Identity
+    Gateway --> Knowledge
+    Gateway --> Analytics
+    Gateway --> Notifications
+    Ticket -->|Current account| Identity
+    Knowledge -->|Delegated reader| Identity
+    Analytics -->|Delegated admin| Identity
+    Notifications -->|Delegated recipient| Identity
+    AI -->|Job lease and proposal| Ticket
+    AI -->|Published retrieval| Knowledge
+    Ticket -->|Scoped writes and outbox| PG[("PostgreSQL")]
+    Identity --> PG
+    Knowledge --> PG
+    Analytics -->|Scoped report reads| PG
+    Notifications -->|Outbox and inbox| PG
+    Indexer["Optional search indexer"] --> PG
+    Indexer --> Search[("Optional OpenSearch")]
+    Ticket -->|Search candidates| Search
+```
+
+The overlay keeps the frontend and gateway as the published listeners. The service HTTP
+listeners share the private `api` network and verify delegated or system calls on receipt.
+Each data owner uses a scoped PostgreSQL login. Gateway and AI operate through HTTP.
+The PostgreSQL outbox carries committed Ticket events to Notifications.
+[Deployment runbook](architecture/ticket-service.md) · [Database ownership](database/service-access.md)
+
+The original Deliverable 1 boundaries are mapped to code and test evidence in the
+[microservice traceability matrix](architecture/microservice-traceability.md).
+
 ## API gateway
 
-The gateway forwards `/api`, `/api/*`, `/health/live` and `/health/ready` over the private
-Compose `api` network. The backend listens on its `backend-api` address on that network. The
+In default Compose, the gateway forwards `/api`, `/api/*`, `/health/live` and `/health/ready`
+to the default owners over the private `api` network. The modular backend listens at
+`backend-api:4000`. The isolated overlay routes registered path groups to their current owner. The
 browser continues to use the same API base URL, origin rules, refresh-cookie path and rotation,
 and response envelopes. The gateway forwards authorization, cookies, idempotency keys, and
 retry headers. It passes through backend status, body, and individual `Set-Cookie` headers.
 Requests use the caller's `X-Request-Id` or a generated one across both hops.
 
 `GATEWAY_UPSTREAM_TIMEOUT_MS` defaults to 10000. The gateway makes one upstream attempt per
-request and returns an API error envelope with 503 when the backend is unreachable or the
+request and returns an API error envelope with 503 when the selected service is unreachable or the
 deadline expires before headers are received. A broken upstream connection before headers
-returns 502. A deadline during streaming closes the interrupted response. Backend health
-responses retain their original formats. [API reference](api.md)
+returns 502. A deadline during streaming closes the interrupted response. Gateway health uses
+the backend in default Compose and Ticket in isolated Compose. [API reference](api.md)
 
 The gateway replaces incoming forwarding headers with the client IP that Fastify resolved.
 `TRUST_PROXY` defaults to false at the public listener. If that listener sits behind a known
@@ -74,9 +111,9 @@ and diagnose outages. [Cross-service observability](architecture/service-observa
 
 ## AI service container
 
-`backend/services/ai` is the first package under `backend/services/`. Its Compose profile
-`services` builds a separate image and starts the compiled Fastify server. Its private `api`
-connection reaches Ticket directly. The `ai-egress` network gives the selected provider outbound
+`backend/services/ai` uses the Compose `services` profile to build a separate image and start
+the compiled Fastify server. Its private `api` connection reaches the modular backend or the
+standalone Ticket runtime selected by Compose. The `ai-egress` network gives the selected provider outbound
 access. The AI container uses HTTP for job and input access and has no database connection.
 The public gateway forwards only its existing API and health paths.
 

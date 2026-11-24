@@ -35,6 +35,7 @@ volume and should only be used for an intentional reset.
 
 - [Entity-relationship diagram](database/erd.md)
 - [Data dictionary](database/data-dictionary.md)
+- [Service ownership and PostgreSQL grants](database/service-access.md)
 - `docs/database/schema-spec.json` is the machine-readable input for both generated documents.
 
 After a schema change, update `schema-spec.json` to match the migrated database and regenerate:
