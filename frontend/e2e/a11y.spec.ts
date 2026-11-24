@@ -41,7 +41,14 @@ const SCREENS: Screen[] = [
   { name: 'technician queue', as: 'technician', path: () => '/technician' },
   { name: 'technician triage', as: 'technician', path: (i) => `/technician/tickets/${i.ticket}` },
   { name: 'technician knowledge', as: 'technician', path: () => '/technician/knowledge' },
+  {
+    name: 'technician article',
+    as: 'technician',
+    path: (i) => `/technician/knowledge/${i.article}`,
+  },
   { name: 'admin users', as: 'admin', path: () => '/admin' },
+  { name: 'admin tickets', as: 'admin', path: () => '/admin/tickets' },
+  { name: 'admin ticket detail', as: 'admin', path: (i) => `/admin/tickets/${i.ticket}` },
   { name: 'admin categories', as: 'admin', path: () => '/admin/categories' },
   { name: 'admin teams', as: 'admin', path: () => '/admin/teams' },
   { name: 'admin reports', as: 'admin', path: () => '/admin/reports' },
@@ -63,18 +70,21 @@ async function open(page: Page, screen: Screen) {
 }
 
 test.describe('axe: no WCAG 2.2 A/AA violations', () => {
-  for (const screen of SCREENS) {
-    test(screen.name, async ({ page }) => {
-      await open(page, screen);
-      const results = await new AxeBuilder({ page }).withTags(WCAG).analyze();
-      expect(
-        results.violations.map((v) => ({
-          rule: v.id,
-          impact: v.impact,
-          targets: v.nodes.map((n) => n.target.join(' ')),
-        })),
-      ).toEqual([]);
-    });
+  for (const colorScheme of ['light', 'dark'] as const) {
+    for (const screen of SCREENS) {
+      test(`${screen.name} in ${colorScheme} mode`, async ({ page }) => {
+        await page.emulateMedia({ colorScheme });
+        await open(page, screen);
+        const results = await new AxeBuilder({ page }).withTags(WCAG).analyze();
+        expect(
+          results.violations.map((v) => ({
+            rule: v.id,
+            impact: v.impact,
+            targets: v.nodes.map((n) => n.target.join(' ')),
+          })),
+        ).toEqual([]);
+      });
+    }
   }
 });
 

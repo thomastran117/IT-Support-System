@@ -27,7 +27,7 @@ export const ErrorSummary = forwardRef<HTMLDivElement, { items: SummaryItem[] }>
         tabIndex={-1}
         role="alert"
         aria-labelledby="error-summary-title"
-        className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-950"
+        className="rounded-xl border border-danger-line bg-danger-soft p-4 text-danger"
       >
         <h2 id="error-summary-title" className="font-semibold">
           There is a problem
@@ -56,10 +56,7 @@ export const ErrorSummary = forwardRef<HTMLDivElement, { items: SummaryItem[] }>
 export function Counter({ id, length, max }: { id: string; length: number; max: number }) {
   const over = length > max;
   return (
-    <p
-      id={id}
-      className={`mt-1.5 text-sm ${over ? 'font-medium text-rose-700' : 'text-slate-500'}`}
-    >
+    <p id={id} className={`mt-1.5 text-sm ${over ? 'font-medium text-danger' : 'text-muted'}`}>
       {length.toLocaleString('en')} of {max.toLocaleString('en')} characters
       {over ? ' (too long)' : ''}
     </p>

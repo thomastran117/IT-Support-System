@@ -8,7 +8,7 @@ export default function ArticleEditorPage() {
   return (
     <Suspense
       fallback={
-        <p role="status" className="text-slate-600">
+        <p role="status" className="text-muted">
           Loading…
         </p>
       }

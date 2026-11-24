@@ -96,25 +96,25 @@ function Members({ team, onChanged }: { team: AdminTeamDto; onChanged: () => Pro
         {open ? 'Hide members' : 'Manage members'}
       </button>
       {open && (
-        <div id={panelId} className="mt-3 space-y-3 border-t border-slate-200 pt-3">
+        <div id={panelId} className="mt-3 space-y-3 border-t border-line pt-3">
           {error && (
             <Notice tone="danger" role="alert">
               {error}
             </Notice>
           )}
           {members === null ? (
-            <p role="status" className="text-sm text-slate-600">
+            <p role="status" className="text-sm text-muted">
               Loading members…
             </p>
           ) : members.length === 0 ? (
-            <p className="text-sm text-slate-600">No members yet.</p>
+            <p className="text-sm text-muted">No members yet.</p>
           ) : (
-            <ul className="divide-y divide-slate-100" aria-label={`Members of ${team.name}`}>
+            <ul className="divide-y divide-line" aria-label={`Members of ${team.name}`}>
               {members.map((m) => (
                 <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
                   <span className="text-sm">
                     <span className="font-medium">{m.displayName}</span>{' '}
-                    <span className="text-slate-600">
+                    <span className="text-muted">
                       {m.email}
                       {!m.isActive ? ' (inactive account)' : ''} · {m.assignedTicketCount} assigned
                     </span>
@@ -137,7 +137,7 @@ function Members({ team, onChanged }: { team: AdminTeamDto; onChanged: () => Pro
               <div>
                 <label
                   htmlFor={`add-member-${team.id}`}
-                  className="mb-1 block text-sm font-medium text-slate-700"
+                  className="mb-1 block text-sm font-medium text-muted-strong"
                 >
                   Add a technician
                 </label>
@@ -165,7 +165,7 @@ function Members({ team, onChanged }: { team: AdminTeamDto; onChanged: () => Pro
               </button>
             </div>
           ) : (
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-muted">
               Reactivate the team to add members. Existing members can still be removed.
             </p>
           )}

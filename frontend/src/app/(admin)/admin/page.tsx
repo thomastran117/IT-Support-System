@@ -8,7 +8,6 @@ export default function AdminPage() {
   return (
     <section aria-labelledby="page-title">
       <PageHeader
-        eyebrow="Administration"
         title="Admin area"
         description="Manage access, roles, and account security across SmartDesk."
       />

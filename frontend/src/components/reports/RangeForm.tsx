@@ -19,7 +19,7 @@ export function RangeForm({
   return (
     <form onSubmit={onSubmit} className="app-card flex flex-wrap items-end gap-4 p-4" noValidate>
       <div>
-        <label htmlFor="report-from" className="mb-1 block text-sm font-medium text-slate-700">
+        <label htmlFor="report-from" className="mb-1 block text-sm font-medium text-muted-strong">
           From (UTC)
         </label>
         <input
@@ -33,7 +33,7 @@ export function RangeForm({
         />
       </div>
       <div>
-        <label htmlFor="report-to" className="mb-1 block text-sm font-medium text-slate-700">
+        <label htmlFor="report-to" className="mb-1 block text-sm font-medium text-muted-strong">
           To (UTC, inclusive)
         </label>
         <input
@@ -50,7 +50,7 @@ export function RangeForm({
         Apply
       </button>
       {problem && (
-        <p id="range-problem" role="alert" className="basis-full text-sm text-rose-700">
+        <p id="range-problem" role="alert" className="basis-full text-sm text-danger">
           {problem}
         </p>
       )}

@@ -215,7 +215,6 @@ export function ArticleEditor() {
   return (
     <section aria-labelledby="page-title" className="space-y-6">
       <PageHeader
-        eyebrow="Knowledge base"
         title={isNew ? 'New article' : 'Edit article'}
         description={
           isNew
@@ -235,13 +234,13 @@ export function ArticleEditor() {
           <span
             className={`inline-flex min-h-6 items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
               published
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                : 'border-slate-200 bg-slate-100 text-slate-700'
+                ? 'border-success-line bg-success-soft text-success'
+                : 'border-line bg-panel-hover text-muted-strong'
             }`}
           >
             {published ? 'Published' : 'Draft'}
           </span>
-          <span className="text-slate-600">
+          <span className="text-muted">
             {published ? 'Visible to every signed-in user.' : 'Visible only to administrators.'}
           </span>
         </p>
@@ -282,10 +281,7 @@ export function ArticleEditor() {
           </FormField>
 
           <div>
-            <label
-              htmlFor="categoryId"
-              className="mb-1.5 block text-sm font-semibold text-slate-800"
-            >
+            <label htmlFor="categoryId" className="mb-1.5 block text-sm font-semibold text-ink">
               Category
             </label>
             <select
@@ -328,13 +324,13 @@ export function ArticleEditor() {
               {isNew ? 'Save draft' : 'Save changes'}
             </AsyncButton>
             {!isNew && dirty && (
-              <span className="text-sm text-amber-800">You have unsaved changes.</span>
+              <span className="text-sm text-warning">You have unsaved changes.</span>
             )}
           </div>
 
           {!isNew && (
-            <div className="border-t border-slate-200 pt-5">
-              <h2 className="text-base font-bold text-slate-950">Visibility</h2>
+            <div className="border-t border-line pt-5">
+              <h2 className="text-base font-bold text-ink-strong">Visibility</h2>
               {confirm === null ? (
                 <div className="mt-3">
                   {published ? (
@@ -359,7 +355,7 @@ export function ArticleEditor() {
                     </button>
                   )}
                   {dirty && (
-                    <p className="mt-2 text-sm text-slate-600">
+                    <p className="mt-2 text-sm text-muted">
                       Save your changes before changing visibility.
                     </p>
                   )}
@@ -369,12 +365,12 @@ export function ArticleEditor() {
                   role="alertdialog"
                   aria-labelledby="confirm-title"
                   aria-describedby="confirm-text"
-                  className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4"
+                  className="mt-3 rounded-xl border border-warning-line bg-warning-soft p-4"
                 >
-                  <p id="confirm-title" className="font-semibold text-amber-950">
+                  <p id="confirm-title" className="font-semibold text-warning">
                     {confirm === 'publish' ? 'Publish this article?' : 'Unpublish this article?'}
                   </p>
-                  <p id="confirm-text" className="mt-1 text-sm text-amber-950">
+                  <p id="confirm-text" className="mt-1 text-sm text-warning">
                     {confirm === 'publish'
                       ? 'Every signed-in user will be able to find and read it.'
                       : 'Readers will no longer find or open it. Past ticket recommendations keep their link.'}
@@ -405,12 +401,12 @@ export function ArticleEditor() {
         </div>
 
         <div className="app-card p-5 sm:p-6">
-          <h2 className="text-base font-bold text-slate-950">Preview</h2>
-          <p className="mt-1 mb-4 text-sm text-slate-600">How readers will see the text.</p>
+          <h2 className="text-base font-bold text-ink-strong">Preview</h2>
+          <p className="mt-1 mb-4 text-sm text-muted">How readers will see the text.</p>
           {body.trim() ? (
             <ArticleBody text={body} />
           ) : (
-            <p className="text-sm text-slate-500">Nothing to preview yet.</p>
+            <p className="text-sm text-muted">Nothing to preview yet.</p>
           )}
         </div>
       </form>

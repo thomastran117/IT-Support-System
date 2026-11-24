@@ -323,7 +323,7 @@ export function TriageDetail({ admin = false }: { admin?: boolean }) {
         <h1 id="page-title" className="text-2xl font-semibold">
           Ticket handed over
         </h1>
-        <p role="status" className="rounded border border-emerald-400 bg-emerald-50 p-4">
+        <p role="status" className="rounded border border-success-line bg-success-soft p-4">
           {moved}
         </p>
         <Link href={backHref} className={secondaryButton}>
@@ -339,7 +339,10 @@ export function TriageDetail({ admin = false }: { admin?: boolean }) {
         <h1 id="page-title" className="text-2xl font-semibold">
           {loadError.kind === 'gone' ? 'Ticket not found' : 'Ticket unavailable'}
         </h1>
-        <p role="alert" className="rounded border border-red-300 bg-red-50 p-4 text-red-900">
+        <p
+          role="alert"
+          className="rounded border border-danger-line bg-danger-soft p-4 text-danger"
+        >
           {loadError.message}
         </p>
         <div className="flex gap-3">
@@ -358,7 +361,7 @@ export function TriageDetail({ admin = false }: { admin?: boolean }) {
 
   if (!ticket) {
     return (
-      <p role="status" className="text-slate-600">
+      <p role="status" className="text-muted">
         Loading ticket…
       </p>
     );
@@ -385,8 +388,8 @@ export function TriageDetail({ admin = false }: { admin?: boolean }) {
             data-testid="notice"
             className={`rounded border p-3 ${
               notice.tone === 'error'
-                ? 'border-red-300 bg-red-50 text-red-900'
-                : 'border-emerald-400 bg-emerald-50'
+                ? 'border-danger-line bg-danger-soft text-danger'
+                : 'border-success-line bg-success-soft'
             }`}
           >
             {notice.text}
@@ -394,10 +397,10 @@ export function TriageDetail({ admin = false }: { admin?: boolean }) {
         )}
       </div>
 
-      <header className="app-card space-y-3 p-5 sm:p-6">
+      <header className="space-y-3">
         <h1
           id="page-title"
-          className="text-2xl font-bold tracking-[-0.025em] text-slate-950 sm:text-3xl"
+          className="text-3xl font-semibold tracking-tight wrap-anywhere text-ink-strong sm:text-4xl"
         >
           {ticket.title}
         </h1>
@@ -406,222 +409,226 @@ export function TriageDetail({ admin = false }: { admin?: boolean }) {
           <PriorityBadge priority={ticket.priority} />
           <span>{STATUS_HELP[ticket.status]}</span>
         </p>
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-muted">
           Requested by {ticket.requester.name} on {formatDateTime(ticket.createdAt)}. Tracking ID:{' '}
           <code className="break-all font-mono">{ticket.trackingId}</code>
         </p>
       </header>
 
-      <section aria-labelledby="description-title" className="app-card space-y-3 p-5 sm:p-6">
-        <h2 id="description-title" className="text-lg font-bold text-slate-950">
-          Description
-        </h2>
-        <p className="whitespace-pre-wrap rounded-xl bg-slate-50 p-4 text-slate-700 ring-1 ring-slate-200">
-          {ticket.description}
-        </p>
-        {ticket.resolutionSummary && (
-          <div>
-            <h3 className="font-medium">Resolution</h3>
-            <p className="mt-2 whitespace-pre-wrap rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950">
-              {ticket.resolutionSummary}
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <section
+          aria-labelledby="description-title"
+          className="app-card min-w-0 space-y-3 p-4 sm:p-5"
+        >
+          <h2 id="description-title" className="text-lg font-bold text-ink-strong">
+            Description
+          </h2>
+          <p className="wrap-anywhere whitespace-pre-wrap text-ink">{ticket.description}</p>
+          {ticket.resolutionSummary && (
+            <div>
+              <h3 className="font-medium">Resolution</h3>
+              <p className="mt-2 wrap-anywhere whitespace-pre-wrap rounded-lg border border-success-line bg-success-soft p-4 text-success">
+                {ticket.resolutionSummary}
+              </p>
+            </div>
+          )}
+        </section>
+
+        <div className="min-w-0 space-y-4">
+          <section aria-labelledby="routing-title" className="app-card space-y-4 p-4 sm:p-5">
+            <h2 id="routing-title" className="text-lg font-bold text-ink-strong">
+              Approved routing
+            </h2>
+            <p className="text-sm text-muted">
+              Confirm the category, priority, team, and assignee for this ticket.
             </p>
-          </div>
-        )}
-      </section>
-
-      <section aria-labelledby="routing-title" className="app-card space-y-4 p-5 sm:p-6">
-        <h2 id="routing-title" className="text-lg font-bold text-slate-950">
-          Approved routing
-        </h2>
-        <p className="text-sm text-slate-600">
-          These are the values the ticket is actually worked under. They only change when you
-          approve them here.
-        </p>
-        {!editable ? (
-          <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
-            <div>
-              <dt className="font-medium">Category</dt>
-              <dd>{ticket.category?.name ?? 'Not set'}</dd>
-            </div>
-            <div>
-              <dt className="font-medium">Priority</dt>
-              <dd>{PRIORITY_LABEL[ticket.priority]}</dd>
-            </div>
-            <div>
-              <dt className="font-medium">Team</dt>
-              <dd>{ticket.team?.name ?? 'Not assigned'}</dd>
-            </div>
-            <div>
-              <dt className="font-medium">Assignee</dt>
-              <dd>{ticket.assignee?.name ?? 'Unassigned'}</dd>
-            </div>
-          </dl>
-        ) : (
-          <form
-            onSubmit={onRoute}
-            noValidate
-            className="grid gap-4 sm:grid-cols-2"
-            aria-busy={busy}
-          >
-            <div>
-              <label htmlFor="route-category" className="app-label">
-                Category
-              </label>
-              <select
-                id="route-category"
-                value={form.categoryId}
-                onChange={(e) => setForm({ ...form, categoryId: e.target.value })}
-                className={inputClass}
+            {!editable ? (
+              <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+                <div>
+                  <dt className="font-medium">Category</dt>
+                  <dd>{ticket.category?.name ?? 'Not set'}</dd>
+                </div>
+                <div>
+                  <dt className="font-medium">Priority</dt>
+                  <dd>{PRIORITY_LABEL[ticket.priority]}</dd>
+                </div>
+                <div>
+                  <dt className="font-medium">Team</dt>
+                  <dd>{ticket.team?.name ?? 'Not assigned'}</dd>
+                </div>
+                <div>
+                  <dt className="font-medium">Assignee</dt>
+                  <dd>{ticket.assignee?.name ?? 'Unassigned'}</dd>
+                </div>
+              </dl>
+            ) : (
+              <form
+                onSubmit={onRoute}
+                noValidate
+                className="grid gap-4 sm:grid-cols-2"
+                aria-busy={busy}
               >
-                <option value="">Choose a category</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label htmlFor="route-priority" className="app-label">
-                Priority
-              </label>
-              <select
-                id="route-priority"
-                value={form.priority}
-                onChange={(e) =>
-                  setForm({ ...form, priority: e.target.value as RoutingForm['priority'] })
-                }
-                className={inputClass}
-              >
-                <option value="">Choose a priority</option>
-                {[...APPROVABLE].reverse().map((p) => (
-                  <option key={p} value={p}>
-                    {PRIORITY_LABEL[p]}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label htmlFor="route-team" className="app-label">
-                Team
-              </label>
-              <select
-                id="route-team"
-                value={form.teamId}
-                onChange={(e) => setForm({ ...form, teamId: e.target.value, assigneeId: '' })}
-                className={inputClass}
-              >
-                <option value="">Choose a team</option>
-                {teams.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label htmlFor="route-assignee" className="app-label">
-                Assignee
-              </label>
-              <select
-                id="route-assignee"
-                value={form.assigneeId}
-                disabled={!form.teamId}
-                onChange={(e) => setForm({ ...form, assigneeId: e.target.value })}
-                className={inputClass}
-              >
-                <option value="">Unassigned</option>
-                {members.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.displayName}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="sm:col-span-2">
-              <button type="submit" disabled={busy || !dirty} className={primaryButton}>
-                {ticket.status === 'OPEN' ? 'Approve routing' : 'Save routing'}
-              </button>
-            </div>
-          </form>
-        )}
-        <RecommendationCard
-          key={recs?.[0]?.id ?? 'none'}
-          ticket={ticket}
-          recommendations={recs}
-          loadFailed={recsFailed}
-          categories={categories}
-          teams={teams}
-          busy={busy}
-          onReview={onReview}
-          onRetry={() => void loadRecs()}
-          analysis={analysis}
-          analysisFailed={analysisFailed}
-          analysisNotice={analysisNotice}
-          requesting={requesting}
-          onRequestAnalysis={() => void onRequestAnalysis()}
-          onRetryAnalysis={() => void loadAnalysis()}
-        />
-      </section>
-
-      <section aria-labelledby="status-title" className="app-card space-y-4 p-5 sm:p-6">
-        <h2 id="status-title" className="text-lg font-bold text-slate-950">
-          Progress
-        </h2>
-        {actions.length === 0 ? (
-          <p className="text-slate-600">
-            Approve the routing above to move this ticket to triaged.
-          </p>
-        ) : (
-          <>
-            {needsSummary && (
-              <div>
-                <label htmlFor="summary" className="app-label">
-                  Resolution summary (required to resolve)
-                </label>
-                <textarea
-                  id="summary"
-                  rows={3}
-                  value={summary}
-                  onChange={(e) => setSummary(e.target.value)}
-                  aria-invalid={summaryError ? true : undefined}
-                  aria-describedby={summaryError ? 'summary-error' : undefined}
-                  className={inputClass}
-                />
-                {summaryError && (
-                  <p
-                    id="summary-error"
-                    role="alert"
-                    className="mt-1 text-sm font-medium text-red-700"
+                <div>
+                  <label htmlFor="route-category" className="app-label">
+                    Category
+                  </label>
+                  <select
+                    id="route-category"
+                    value={form.categoryId}
+                    onChange={(e) => setForm({ ...form, categoryId: e.target.value })}
+                    className={inputClass}
                   >
-                    {summaryError}
-                  </p>
-                )}
-              </div>
+                    <option value="">Choose a category</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="route-priority" className="app-label">
+                    Priority
+                  </label>
+                  <select
+                    id="route-priority"
+                    value={form.priority}
+                    onChange={(e) =>
+                      setForm({ ...form, priority: e.target.value as RoutingForm['priority'] })
+                    }
+                    className={inputClass}
+                  >
+                    <option value="">Choose a priority</option>
+                    {[...APPROVABLE].reverse().map((p) => (
+                      <option key={p} value={p}>
+                        {PRIORITY_LABEL[p]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="route-team" className="app-label">
+                    Team
+                  </label>
+                  <select
+                    id="route-team"
+                    value={form.teamId}
+                    onChange={(e) => setForm({ ...form, teamId: e.target.value, assigneeId: '' })}
+                    className={inputClass}
+                  >
+                    <option value="">Choose a team</option>
+                    {teams.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="route-assignee" className="app-label">
+                    Assignee
+                  </label>
+                  <select
+                    id="route-assignee"
+                    value={form.assigneeId}
+                    disabled={!form.teamId}
+                    onChange={(e) => setForm({ ...form, assigneeId: e.target.value })}
+                    className={inputClass}
+                  >
+                    <option value="">Unassigned</option>
+                    {members.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="sm:col-span-2">
+                  <button type="submit" disabled={busy || !dirty} className={primaryButton}>
+                    {ticket.status === 'OPEN' ? 'Approve routing' : 'Save routing'}
+                  </button>
+                </div>
+              </form>
             )}
-            <div className="flex flex-wrap gap-3">
-              {actions.map((a) => (
-                <button
-                  key={a.to}
-                  type="button"
-                  disabled={busy}
-                  className={a.to === 'OPEN' ? secondaryButton : primaryButton}
-                  onClick={() => onStatus(a)}
-                >
-                  {a.label}
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-      </section>
+            <RecommendationCard
+              key={recs?.[0]?.id ?? 'none'}
+              ticket={ticket}
+              recommendations={recs}
+              loadFailed={recsFailed}
+              categories={categories}
+              teams={teams}
+              busy={busy}
+              onReview={onReview}
+              onRetry={() => void loadRecs()}
+              analysis={analysis}
+              analysisFailed={analysisFailed}
+              analysisNotice={analysisNotice}
+              requesting={requesting}
+              onRequestAnalysis={() => void onRequestAnalysis()}
+              onRetryAnalysis={() => void loadAnalysis()}
+            />
+          </section>
+
+          <section aria-labelledby="status-title" className="app-card space-y-4 p-4 sm:p-5">
+            <h2 id="status-title" className="text-lg font-bold text-ink-strong">
+              Progress
+            </h2>
+            {actions.length === 0 ? (
+              <p className="text-muted">
+                Approve the routing above to move this ticket to triaged.
+              </p>
+            ) : (
+              <>
+                {needsSummary && (
+                  <div>
+                    <label htmlFor="summary" className="app-label">
+                      Resolution summary (required to resolve)
+                    </label>
+                    <textarea
+                      id="summary"
+                      rows={3}
+                      value={summary}
+                      onChange={(e) => setSummary(e.target.value)}
+                      aria-invalid={summaryError ? true : undefined}
+                      aria-describedby={summaryError ? 'summary-error' : undefined}
+                      className={inputClass}
+                    />
+                    {summaryError && (
+                      <p
+                        id="summary-error"
+                        role="alert"
+                        className="mt-1 text-sm font-medium text-danger"
+                      >
+                        {summaryError}
+                      </p>
+                    )}
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-3">
+                  {actions.map((a) => (
+                    <button
+                      key={a.to}
+                      type="button"
+                      disabled={busy}
+                      className={a.to === 'OPEN' ? secondaryButton : primaryButton}
+                      onClick={() => onStatus(a)}
+                    >
+                      {a.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </section>
+        </div>
+      </div>
 
       <section aria-labelledby="conversation-title" className="app-card space-y-4 p-5 sm:p-6">
-        <h2 id="conversation-title" className="text-lg font-bold text-slate-950">
+        <h2 id="conversation-title" className="text-lg font-bold text-ink-strong">
           Conversation and notes
         </h2>
         {ticket.comments.length === 0 ? (
-          <p className="text-slate-600">No replies or notes yet.</p>
+          <p className="text-muted">No replies or notes yet.</p>
         ) : (
           <ul className="space-y-3">
             {ticket.comments.map((c) => (
@@ -629,17 +636,17 @@ export function TriageDetail({ admin = false }: { admin?: boolean }) {
                 key={c.id}
                 data-testid="comment"
                 className={`rounded-xl border p-4 ${
-                  c.isInternal ? 'border-amber-300 bg-amber-50' : 'border-slate-200 bg-white'
+                  c.isInternal ? 'border-warning-line bg-warning-soft' : 'border-line bg-panel'
                 }`}
               >
                 <p className="text-sm font-medium">
                   {c.author.id === user?.id ? 'You' : c.author.name}
                   {c.isInternal && (
-                    <span className="ml-2 rounded border border-amber-500 px-1.5 py-0.5 text-xs">
+                    <span className="ml-2 rounded border border-warning px-1.5 py-0.5 text-xs">
                       Internal note
                     </span>
                   )}
-                  <span className="ml-2 font-normal text-slate-600">
+                  <span className="ml-2 font-normal text-muted">
                     <time dateTime={c.createdAt}>{formatDateTime(c.createdAt)}</time>
                   </span>
                 </p>
@@ -664,7 +671,7 @@ export function TriageDetail({ admin = false }: { admin?: boolean }) {
               className={inputClass}
             />
             {noteError && (
-              <p id="note-error" role="alert" className="mt-1 text-sm font-medium text-red-700">
+              <p id="note-error" role="alert" className="mt-1 text-sm font-medium text-danger">
                 {noteError}
               </p>
             )}
@@ -685,14 +692,14 @@ export function TriageDetail({ admin = false }: { admin?: boolean }) {
       </section>
 
       <section aria-labelledby="history-title" className="app-card space-y-4 p-5 sm:p-6">
-        <h2 id="history-title" className="text-lg font-bold text-slate-950">
+        <h2 id="history-title" className="text-lg font-bold text-ink-strong">
           Audit timeline
         </h2>
-        <ol className="space-y-2 border-l-2 border-slate-300 pl-4">
+        <ol className="space-y-2 border-l-2 border-line-strong pl-4">
           {ticket.timeline.map((e) => (
             <li key={e.id} data-testid="timeline-entry" className="text-sm">
               <span className="font-medium">{describeStaffEvent(e)}</span>
-              <span className="ml-2 text-slate-600">
+              <span className="ml-2 text-muted">
                 <time dateTime={e.occurredAt}>{formatDateTime(e.occurredAt)}</time>
               </span>
             </li>

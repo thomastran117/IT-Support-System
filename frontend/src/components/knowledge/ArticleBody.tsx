@@ -6,7 +6,7 @@ function Inlines({ content }: { content: Inline[] }) {
     <>
       {content.map((part, i) =>
         part.kind === 'code' ? (
-          <code key={i} className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[0.9em]">
+          <code key={i} className="rounded bg-panel-hover px-1.5 py-0.5 font-mono text-[0.9em]">
             {part.text}
           </code>
         ) : part.kind === 'strong' ? (
@@ -23,13 +23,13 @@ function Inlines({ content }: { content: Inline[] }) {
 export function ArticleBody({ text }: { text: string }) {
   const blocks = parseMarkdown(text);
   return (
-    <div data-testid="article-body" className="space-y-4 leading-7 text-slate-800">
+    <div data-testid="article-body" className="space-y-4 leading-7 text-ink">
       {blocks.map((block, i) => {
         switch (block.kind) {
           case 'heading': {
             const Tag = `h${block.level}` as 'h2' | 'h3' | 'h4';
             return (
-              <Tag key={i} className="pt-2 text-lg font-bold text-slate-950">
+              <Tag key={i} className="pt-2 text-lg font-bold text-ink-strong">
                 <Inlines content={block.content} />
               </Tag>
             );
@@ -55,7 +55,7 @@ export function ArticleBody({ text }: { text: string }) {
                 key={i}
                 tabIndex={0}
                 aria-label="Code sample"
-                className="overflow-x-auto rounded-xl bg-slate-900 p-4 font-mono text-sm text-slate-100"
+                className="overflow-x-auto rounded-lg border border-line bg-panel-muted p-4 font-mono text-sm text-ink"
               >
                 {block.text}
               </pre>

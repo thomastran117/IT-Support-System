@@ -35,10 +35,10 @@ function Stepper({ status }: { status: TicketStatus }) {
             aria-current={state === 'current' ? 'step' : undefined}
             className={`rounded-xl border p-3 text-sm ${
               state === 'current'
-                ? 'border-blue-300 bg-blue-50 font-semibold text-blue-900 shadow-sm'
+                ? 'border-accent-line bg-accent-soft font-semibold text-accent shadow-sm'
                 : state === 'done'
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
-                  : 'border-slate-200 bg-white text-slate-500'
+                  ? 'border-success-line bg-success-soft text-success'
+                  : 'border-line bg-panel text-muted'
             }`}
           >
             <span className="block">{STATUS_LABEL[s]}</span>
@@ -141,7 +141,10 @@ export function TicketDetail() {
         <h1 id="page-title" className="text-2xl font-semibold">
           {loadError.notFound ? 'Ticket not found' : 'Ticket unavailable'}
         </h1>
-        <p role="alert" className="rounded border border-red-300 bg-red-50 p-4 text-red-900">
+        <p
+          role="alert"
+          className="rounded border border-danger-line bg-danger-soft p-4 text-danger"
+        >
           {loadError.message}
         </p>
         <div className="flex gap-3">
@@ -160,7 +163,7 @@ export function TicketDetail() {
 
   if (!ticket) {
     return (
-      <p role="status" className="text-slate-600">
+      <p role="status" className="text-muted">
         Loading ticket…
       </p>
     );
@@ -184,7 +187,7 @@ export function TicketDetail() {
       {created && (
         <div
           role="status"
-          className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950"
+          className="rounded-xl border border-success-line bg-success-soft p-4 text-success"
         >
           <p className="font-semibold">Your ticket was submitted.</p>
           <p className="mt-1">
@@ -200,7 +203,7 @@ export function TicketDetail() {
       {refreshFailed && (
         <p
           role="status"
-          className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"
+          className="rounded-xl border border-warning-line bg-warning-soft p-4 text-sm text-warning"
         >
           Unable to check for updates right now. What you see may be out of date.{' '}
           <button type="button" className="underline" onClick={() => void load(true)}>
@@ -209,10 +212,10 @@ export function TicketDetail() {
         </p>
       )}
 
-      <header className="app-card space-y-3 p-5 sm:p-6">
+      <header className="space-y-3">
         <h1
           id="page-title"
-          className="text-2xl font-bold tracking-[-0.025em] text-slate-950 sm:text-3xl"
+          className="text-3xl font-semibold tracking-tight wrap-anywhere text-ink-strong sm:text-4xl"
         >
           {ticket.title}
         </h1>
@@ -220,7 +223,7 @@ export function TicketDetail() {
           <StatusBadge status={ticket.status} />
           <span>{STATUS_HELP[ticket.status]}</span>
         </p>
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-muted">
           Tracking ID: <code className="break-all font-mono">{ticket.trackingId}</code>
         </p>
       </header>
@@ -228,7 +231,7 @@ export function TicketDetail() {
       <Stepper status={ticket.status} />
 
       <section aria-labelledby="details-title" className="app-card space-y-4 p-5 sm:p-6">
-        <h2 id="details-title" className="text-lg font-bold text-slate-950">
+        <h2 id="details-title" className="text-lg font-bold text-ink-strong">
           Details
         </h2>
         <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
@@ -261,14 +264,14 @@ export function TicketDetail() {
         </dl>
         <div>
           <h3 className="font-medium">Your description</h3>
-          <p className="mt-2 whitespace-pre-wrap rounded-xl bg-slate-50 p-4 text-slate-700 ring-1 ring-slate-200">
+          <p className="mt-2 whitespace-pre-wrap rounded-xl bg-panel-muted p-4 text-muted-strong ring-1 ring-line">
             {ticket.description}
           </p>
         </div>
         {done && ticket.resolutionSummary && (
           <div>
             <h3 className="font-medium">Resolution</h3>
-            <p className="mt-2 whitespace-pre-wrap rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950">
+            <p className="mt-2 whitespace-pre-wrap rounded-xl border border-success-line bg-success-soft p-4 text-success">
               {ticket.resolutionSummary}
             </p>
           </div>
@@ -278,13 +281,13 @@ export function TicketDetail() {
       <section aria-labelledby="conversation-title" className="app-card space-y-4 p-5 sm:p-6">
         <h2
           id="conversation-title"
-          className="flex items-center gap-2 text-lg font-bold text-slate-950"
+          className="flex items-center gap-2 text-lg font-bold text-ink-strong"
         >
-          <MessageSquareText aria-hidden="true" size={19} className="text-blue-700" />
+          <MessageSquareText aria-hidden="true" size={19} className="text-accent" />
           Conversation
         </h2>
         {ticket.comments.length === 0 ? (
-          <p className="text-slate-600">No replies yet.</p>
+          <p className="text-muted">No replies yet.</p>
         ) : (
           <ul className="space-y-3">
             {ticket.comments.map((c) => (
@@ -293,13 +296,13 @@ export function TicketDetail() {
                 data-testid="comment"
                 className={`rounded-xl border p-4 ${
                   c.author.id === user?.id
-                    ? 'border-blue-200 bg-blue-50'
-                    : 'border-slate-200 bg-white'
+                    ? 'border-accent-line bg-accent-soft'
+                    : 'border-line bg-panel'
                 }`}
               >
                 <p className="text-sm font-medium">
                   {c.author.id === user?.id ? 'You' : c.author.name}
-                  <span className="ml-2 font-normal text-slate-600">
+                  <span className="ml-2 font-normal text-muted">
                     <time dateTime={c.createdAt}>{formatDateTime(c.createdAt)}</time>
                   </span>
                 </p>
@@ -324,7 +327,7 @@ export function TicketDetail() {
               className={inputClass}
             />
             {replyError && (
-              <p id="reply-error" role="alert" className="mt-1 text-sm font-medium text-red-700">
+              <p id="reply-error" role="alert" className="mt-1 text-sm font-medium text-danger">
                 {replyError}
               </p>
             )}
@@ -338,14 +341,14 @@ export function TicketDetail() {
       </section>
 
       <section aria-labelledby="history-title" className="app-card space-y-4 p-5 sm:p-6">
-        <h2 id="history-title" className="text-lg font-bold text-slate-950">
+        <h2 id="history-title" className="text-lg font-bold text-ink-strong">
           History
         </h2>
-        <ol className="space-y-2 border-l-2 border-slate-300 pl-4">
+        <ol className="space-y-2 border-l-2 border-line-strong pl-4">
           {ticket.timeline.map((e) => (
             <li key={e.id} data-testid="timeline-entry" className="text-sm">
               <span className="font-medium">{describeEvent(e)}</span>
-              <span className="ml-2 text-slate-600">
+              <span className="ml-2 text-muted">
                 <time dateTime={e.occurredAt}>{formatDateTime(e.occurredAt)}</time>
               </span>
             </li>

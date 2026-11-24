@@ -40,7 +40,7 @@ export function FormField({
         {label}
       </label>
       {hint && (
-        <p id={`${id}-hint`} className="-mt-1 mb-1.5 text-sm text-slate-600">
+        <p id={`${id}-hint`} className="-mt-1 mb-1.5 text-sm text-muted">
           {hint}
         </p>
       )}
@@ -50,7 +50,7 @@ export function FormField({
         'aria-describedby': describedBy,
       })}
       {error && (
-        <p id={`${id}-error`} className="mt-1.5 text-sm font-medium text-rose-700">
+        <p id={`${id}-error`} className="mt-1.5 text-sm font-medium text-danger">
           {error}
         </p>
       )}

@@ -25,7 +25,7 @@ export function RequireRole({ role, children }: { role: Role; children: ReactNod
 
   if (status !== 'authenticated' || target) {
     return (
-      <p role="status" className="app-card mx-auto max-w-xl p-6 text-slate-600">
+      <p role="status" className="app-card mx-auto max-w-xl p-6 text-muted">
         Checking your session…
       </p>
     );

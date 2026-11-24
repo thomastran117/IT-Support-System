@@ -28,9 +28,9 @@ interface ToastApi {
 const ToastContext = createContext<ToastApi | null>(null);
 
 const TONE: Record<ToastTone, string> = {
-  success: 'border-emerald-300 bg-emerald-50 text-emerald-950',
-  danger: 'border-rose-300 bg-rose-50 text-rose-950',
-  info: 'border-blue-300 bg-blue-50 text-blue-950',
+  success: 'border-success-line bg-success-soft text-success',
+  danger: 'border-danger-line bg-danger-soft text-danger',
+  info: 'border-accent-line bg-accent-soft text-accent',
 };
 
 /** Auto-dismiss delay. Errors stay longer because they usually need reading and acting on. */
@@ -98,7 +98,7 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: numbe
         type="button"
         aria-label="Dismiss message"
         onClick={() => onDismiss(item.id)}
-        className="grid size-8 shrink-0 place-items-center rounded-lg hover:bg-black/5"
+        className="grid size-8 shrink-0 place-items-center rounded-lg hover:bg-panel/40"
       >
         <X aria-hidden="true" size={16} />
       </button>

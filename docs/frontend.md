@@ -29,10 +29,14 @@ an `active` matcher that does not also match its siblings. Every page renders on
 exports `metadata.title` (the document title becomes `<title> · SmartDesk`). Sign-out is always visible in the
 sidebar (desktop) and the navigation drawer (mobile).
 
-## Colour, status and priority
+## Themes, status and priority
 
+- System is the default appearance. Users can choose Light or Dark from sign-in, the desktop workspace
+  header, or the mobile drawer. The preference is stored in the browser.
+- Use semantic color utilities defined in `globals.css`, such as `bg-panel`, `text-muted`, and
+  `text-danger`. Check new surfaces in both themes.
 - Status and priority are always rendered as words; the tone (see `badges.tsx`) is secondary.
-- Pair text and background from the same family (`text-*-800` on `bg-*-50`) to keep AA contrast.
+- Pair semantic text with its matching background, such as `text-warning` on `bg-warning-soft`.
 - `@media (forced-colors: active)` in `globals.css` keeps borders and focus outlines in high-contrast mode.
 - No decorative animation. The only motion is the loading skeleton, disabled under `prefers-reduced-motion`.
 - Do not show placeholder metrics: every number on screen comes from the API.

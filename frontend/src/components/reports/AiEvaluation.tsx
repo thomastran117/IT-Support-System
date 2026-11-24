@@ -110,7 +110,7 @@ function Evaluation({ data }: { data: AiEvaluationReportDto }) {
           By model version
         </h2>
         {data.byModel.length === 0 ? (
-          <p className="text-sm text-slate-600">No recommendations in this period.</p>
+          <p className="text-sm text-muted">No recommendations in this period.</p>
         ) : (
           <DataTable
             caption="Accuracy and acceptance by model version"
@@ -134,7 +134,7 @@ function Evaluation({ data }: { data: AiEvaluationReportDto }) {
             ])}
           />
         )}
-        <p className="text-xs text-slate-600">
+        <p className="text-xs text-muted">
           A labelled ticket is attributed to the model that produced its first valid recommendation.
           Tickets with no valid recommendation have no model and appear only in the overall figure.
         </p>
@@ -145,7 +145,7 @@ function Evaluation({ data }: { data: AiEvaluationReportDto }) {
           Reference versus predicted category
         </h2>
         {data.confusion.length === 0 ? (
-          <p className="text-sm text-slate-600">No labelled tickets in this period.</p>
+          <p className="text-sm text-muted">No labelled tickets in this period.</p>
         ) : (
           <DataTable
             caption="Reference versus predicted category"
@@ -159,7 +159,7 @@ function Evaluation({ data }: { data: AiEvaluationReportDto }) {
         )}
       </section>
 
-      <p className="text-xs text-slate-600">
+      <p className="text-xs text-muted">
         The 90% category-accuracy target is unverified: it is only met if this measured figure, on a
         representative independently labelled set, reaches it. Small or hand-picked label sets prove
         little; the denominators above show how much evidence there is.
@@ -226,13 +226,16 @@ function Labels({ onChanged }: { onChanged: () => void }) {
       <h2 id="labels-heading" className="text-lg font-semibold">
         Independent labels
       </h2>
-      <p className="text-sm text-slate-600">
+      <p className="text-sm text-muted">
         A label is the correct category as judged by you, independent of what the AI proposed. It is
         recorded against your account. Saving again for the same ticket replaces the label.
       </p>
       <form onSubmit={save} className="flex flex-wrap items-end gap-4" noValidate>
         <div className="min-w-64 flex-1">
-          <label htmlFor="label-ticket" className="mb-1 block text-sm font-medium text-slate-700">
+          <label
+            htmlFor="label-ticket"
+            className="mb-1 block text-sm font-medium text-muted-strong"
+          >
             Ticket ID
           </label>
           <input
@@ -245,13 +248,16 @@ function Labels({ onChanged }: { onChanged: () => void }) {
             autoComplete="off"
           />
           {idProblem && (
-            <p id="label-ticket-problem" className="mt-1 text-sm text-rose-700">
+            <p id="label-ticket-problem" className="mt-1 text-sm text-danger">
               {idProblem}
             </p>
           )}
         </div>
         <div>
-          <label htmlFor="label-category" className="mb-1 block text-sm font-medium text-slate-700">
+          <label
+            htmlFor="label-category"
+            className="mb-1 block text-sm font-medium text-muted-strong"
+          >
             Reference category
           </label>
           <select
@@ -282,18 +288,18 @@ function Labels({ onChanged }: { onChanged: () => void }) {
         </Notice>
       )}
       {loadError ? (
-        <p role="alert" className="text-sm text-rose-700">
+        <p role="alert" className="text-sm text-danger">
           Unable to load the labels.
         </p>
       ) : labels === null ? (
-        <p role="status" className="text-sm text-slate-600">
+        <p role="status" className="text-sm text-muted">
           Loading labels…
         </p>
       ) : labels.length === 0 ? (
-        <p className="text-sm text-slate-600">No labels yet.</p>
+        <p className="text-sm text-muted">No labels yet.</p>
       ) : (
         <>
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-muted">
             {total} labelled {total === 1 ? 'ticket' : 'tickets'}
             {total > labels.length ? `, newest ${labels.length} shown` : ''}.
           </p>

@@ -134,7 +134,7 @@ export function CatalogManager<T extends CatalogItem>({
           <div className="min-w-56 flex-1">
             <label
               htmlFor={`search-${noun}`}
-              className="mb-1 block text-sm font-medium text-slate-700"
+              className="mb-1 block text-sm font-medium text-muted-strong"
             >
               Search
             </label>
@@ -149,7 +149,7 @@ export function CatalogManager<T extends CatalogItem>({
           <div>
             <label
               htmlFor={`status-${noun}`}
-              className="mb-1 block text-sm font-medium text-slate-700"
+              className="mb-1 block text-sm font-medium text-muted-strong"
             >
               Show
             </label>
@@ -192,7 +192,7 @@ export function CatalogManager<T extends CatalogItem>({
               <li
                 key={item.id}
                 aria-label={item.name}
-                className={`app-card space-y-3 p-4 ${item.isActive ? '' : 'bg-slate-50'}`}
+                className={`app-card space-y-3 p-4 ${item.isActive ? '' : 'bg-panel-muted'}`}
               >
                 {editing === item.id ? (
                   <NameForm
@@ -212,14 +212,14 @@ export function CatalogManager<T extends CatalogItem>({
                 ) : (
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="flex flex-wrap items-center gap-2 font-semibold text-slate-950">
-                        <span className={item.isActive ? '' : 'text-slate-600'}>{item.name}</span>
+                      <p className="flex flex-wrap items-center gap-2 font-semibold text-ink-strong">
+                        <span className={item.isActive ? '' : 'text-muted'}>{item.name}</span>
                         <ActiveBadge active={item.isActive} />
                       </p>
                       {item.description && (
-                        <p className="mt-1 text-sm text-slate-600">{item.description}</p>
+                        <p className="mt-1 text-sm text-muted">{item.description}</p>
                       )}
-                      <p className="mt-1 text-xs text-slate-600">
+                      <p className="mt-1 text-xs text-muted">
                         {meta ? `${meta(item)} · ` : ''}
                         {item.ticketCount} {item.ticketCount === 1 ? 'ticket' : 'tickets'}
                       </p>

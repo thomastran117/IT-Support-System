@@ -13,7 +13,7 @@ export function ActiveBadge({ active }: { active: boolean }) {
     <span
       className={cx(
         'inline-block rounded-full px-2 py-0.5 text-xs font-semibold',
-        active ? 'bg-emerald-100 text-emerald-900' : 'bg-slate-200 text-slate-800',
+        active ? 'bg-success-soft text-success' : 'bg-panel-hover text-ink',
       )}
     >
       {active ? 'Active' : 'Inactive'}
@@ -112,10 +112,10 @@ export function ConfirmDeactivate({
     <div
       role="group"
       aria-label={title}
-      className="rounded-xl border border-amber-200 bg-amber-50 p-4"
+      className="rounded-xl border border-warning-line bg-warning-soft p-4"
     >
-      <p className="font-semibold text-amber-950">{title}</p>
-      <div className="mt-1 text-sm leading-6 text-amber-950">{children}</div>
+      <p className="font-semibold text-warning">{title}</p>
+      <div className="mt-1 text-sm leading-6 text-warning">{children}</div>
       <div className="mt-3 flex gap-2">
         <button type="button" className="app-button-danger" disabled={busy} onClick={onConfirm}>
           Confirm deactivation

@@ -32,7 +32,7 @@ export function ConfirmDialog({
 }) {
   return (
     <Dialog open={open} onClose={onCancel} title={title}>
-      <div className="text-sm leading-6 text-slate-700">{children}</div>
+      <div className="text-sm leading-6 text-muted-strong">{children}</div>
       <div className="mt-5 flex flex-wrap justify-end gap-2">
         <button
           type="button"

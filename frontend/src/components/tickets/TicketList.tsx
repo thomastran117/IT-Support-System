@@ -1,7 +1,7 @@
 'use client';
 
 import type { TicketPage, TicketPriority, TicketStatus } from '@smartdesk/contracts';
-import { Plus, RotateCcw, SlidersHorizontal } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/lib/auth/AuthProvider';
@@ -31,15 +31,9 @@ const PRIORITIES = Object.keys(PRIORITY_LABEL) as TicketPriority[];
 export function TicketList({ admin = false }: { admin?: boolean }) {
   const detailPath = admin ? '/admin/tickets' : '/employee/tickets';
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
+    <section aria-labelledby="page-title" className="space-y-5">
       <PageHeader
-        eyebrow={admin ? 'Administration' : 'Employee workspace'}
         title={admin ? 'Tickets' : 'My tickets'}
-        description={
-          admin
-            ? 'Find and review support tickets across teams.'
-            : 'Track every request, response, and resolution in one place.'
-        }
         actions={
           admin ? undefined : (
             <Link href="/employee/tickets/new" className={primaryButton}>
@@ -103,26 +97,10 @@ function TicketBrowseList({ admin, detailPath }: { admin: boolean; detailPath: s
     <>
       <form
         aria-label="Filter tickets"
-        className="app-card p-4 sm:p-5"
+        className="flex flex-wrap items-end gap-3"
         onSubmit={(event) => event.preventDefault()}
       >
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-            <SlidersHorizontal aria-hidden="true" size={17} className="text-blue-700" />
-            Filter tickets
-          </div>
-          {filtered && (
-            <button
-              type="button"
-              onClick={resetFilters}
-              className="app-button-quiet min-h-9 px-2.5 py-1.5"
-            >
-              <RotateCcw aria-hidden="true" size={14} />
-              Clear
-            </button>
-          )}
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:max-w-xl">
+        <div className="grid w-full gap-3 min-[360px]:grid-cols-2 sm:w-auto sm:min-w-88">
           <div>
             <label htmlFor="filter-status" className="app-label">
               Status
@@ -166,6 +144,11 @@ function TicketBrowseList({ admin, detailPath }: { admin: boolean; detailPath: s
             </select>
           </div>
         </div>
+        {filtered && (
+          <button type="button" onClick={resetFilters} className="app-button-quiet">
+            Clear
+          </button>
+        )}
       </form>
 
       {error && (
@@ -212,67 +195,70 @@ function TicketBrowseList({ admin, detailPath }: { admin: boolean; detailPath: s
       )}
 
       {page && page.items.length > 0 && (
-        <div aria-busy={loading} className="space-y-4">
-          <div className="app-card overflow-hidden">
-            <table className="app-table responsive-table">
-              <caption className="sr-only">
-                {admin ? 'Tickets, newest first' : 'Your tickets, newest first'}
-              </caption>
-              <thead>
-                <tr>
-                  <th scope="col">Ticket</th>
-                  <th scope="col">Title</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">Priority</th>
-                  <th scope="col">Submitted</th>
-                  <th scope="col">Updated</th>
-                </tr>
-              </thead>
-              <tbody>
-                {page.items.map((ticket) => (
-                  <tr key={ticket.id}>
-                    <td
-                      data-label="Ticket"
-                      data-secondary="true"
-                      className="font-mono text-xs text-slate-500"
-                      title={ticket.trackingId}
+        <div
+          aria-busy={loading}
+          className="app-card min-w-0 md:overflow-hidden max-md:border-0 max-md:bg-transparent max-md:shadow-none"
+        >
+          <table className="app-table app-table-compact responsive-table">
+            <caption className="sr-only">
+              {admin ? 'Tickets, newest first' : 'Your tickets, newest first'}
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Ticket</th>
+                <th scope="col">Title</th>
+                <th scope="col">Status</th>
+                <th scope="col">Priority</th>
+                <th scope="col">Submitted</th>
+                <th scope="col">Updated</th>
+              </tr>
+            </thead>
+            <tbody>
+              {page.items.map((ticket) => (
+                <tr key={ticket.id}>
+                  <td
+                    data-label="Ticket"
+                    data-secondary="true"
+                    className="font-mono text-xs text-muted"
+                    title={ticket.trackingId}
+                  >
+                    {shortId(ticket.trackingId)}
+                  </td>
+                  <th scope="row" data-primary="true" className="font-semibold text-ink-strong">
+                    <Link
+                      href={`${detailPath}/${ticket.id}`}
+                      className="hover:text-accent hover:underline"
                     >
-                      {shortId(ticket.trackingId)}
-                    </td>
-                    <th scope="row" data-primary="true" className="font-semibold text-slate-950">
-                      <Link
-                        href={`${detailPath}/${ticket.id}`}
-                        className="hover:text-blue-700 hover:underline"
-                      >
-                        {ticket.title}
-                      </Link>
-                    </th>
-                    <td data-label="Status">
-                      <StatusBadge status={ticket.status} />
-                    </td>
-                    <td data-label="Priority">
-                      <PriorityBadge priority={ticket.priority} />
-                    </td>
-                    <td data-label="Submitted" className="text-slate-600">
-                      {formatDateTime(ticket.createdAt)}
-                    </td>
-                    <td data-label="Updated" className="text-slate-600">
-                      {formatDateTime(ticket.updatedAt)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      {ticket.title}
+                    </Link>
+                  </th>
+                  <td data-label="Status">
+                    <StatusBadge status={ticket.status} />
+                  </td>
+                  <td data-label="Priority">
+                    <PriorityBadge priority={ticket.priority} />
+                  </td>
+                  <td data-label="Submitted" className="text-muted">
+                    {formatDateTime(ticket.createdAt)}
+                  </td>
+                  <td data-label="Updated" className="text-muted">
+                    {formatDateTime(ticket.updatedAt)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="border-t border-line p-3 max-md:mt-3 max-md:rounded-lg max-md:border max-md:bg-panel">
+            <Pagination
+              offset={page.offset}
+              limit={PAGE_SIZE}
+              count={page.items.length}
+              total={page.total}
+              nextOffset={page.nextOffset}
+              busy={loading}
+              onChange={setOffset}
+            />
           </div>
-          <Pagination
-            offset={page.offset}
-            limit={PAGE_SIZE}
-            count={page.items.length}
-            total={page.total}
-            nextOffset={page.nextOffset}
-            busy={loading}
-            onChange={setOffset}
-          />
         </div>
       )}
     </>

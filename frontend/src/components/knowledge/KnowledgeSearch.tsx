@@ -158,7 +158,6 @@ export function KnowledgeSearch({ basePath }: { basePath: string }) {
   return (
     <section aria-labelledby="page-title" className="space-y-6">
       <PageHeader
-        eyebrow="Help center"
         title="Knowledge base"
         description="Find step-by-step fixes for common problems before you raise a ticket."
       />
@@ -166,7 +165,7 @@ export function KnowledgeSearch({ basePath }: { basePath: string }) {
       <form role="search" onSubmit={onSubmit} className="app-card p-4 sm:p-5">
         <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_16rem_auto] md:items-end">
           <div>
-            <label htmlFor="kb-q" className="mb-1.5 block text-sm font-semibold text-slate-800">
+            <label htmlFor="kb-q" className="mb-1.5 block text-sm font-semibold text-ink">
               Search articles
             </label>
             <input
@@ -182,10 +181,7 @@ export function KnowledgeSearch({ basePath }: { basePath: string }) {
             />
           </div>
           <div>
-            <label
-              htmlFor="kb-category"
-              className="mb-1.5 block text-sm font-semibold text-slate-800"
-            >
+            <label htmlFor="kb-category" className="mb-1.5 block text-sm font-semibold text-ink">
               Category
             </label>
             <select
@@ -209,7 +205,7 @@ export function KnowledgeSearch({ basePath }: { basePath: string }) {
         </div>
       </form>
 
-      <div aria-live="polite" className="text-sm text-slate-600" data-testid="result-summary">
+      <div aria-live="polite" className="text-sm text-muted" data-testid="result-summary">
         {!loading && result && result.total > 0
           ? searching
             ? `Showing ${first}–${last} of ${result.total} results for “${q}”${
@@ -263,18 +259,18 @@ export function KnowledgeSearch({ basePath }: { basePath: string }) {
             >
               {result.rows.map((row) => (
                 <li key={row.id} className="app-card p-5">
-                  <h2 className="text-lg font-bold text-slate-950">
+                  <h2 className="text-lg font-bold text-ink-strong">
                     <Link
                       href={`${basePath}/${row.id}`}
-                      className="underline-offset-4 hover:text-blue-700 hover:underline"
+                      className="underline-offset-4 hover:text-accent hover:underline"
                     >
                       {row.title}
                     </Link>
                   </h2>
-                  {row.preview && <p className="mt-2 text-slate-700">{row.preview}</p>}
-                  <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+                  {row.preview && <p className="mt-2 text-muted-strong">{row.preview}</p>}
+                  <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
                     {row.category && (
-                      <span className="rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 font-semibold text-slate-700">
+                      <span className="rounded-full border border-line bg-panel-hover px-2.5 py-0.5 font-semibold text-muted-strong">
                         {row.category.name}
                       </span>
                     )}
