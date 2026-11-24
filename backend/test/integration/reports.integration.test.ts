@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { DbError } from '../../src/db/errors.js';
 import {
@@ -19,7 +20,6 @@ import {
   uuid,
 } from '../../src/db/seed/fixtures.js';
 import { seedDatabase } from '../../src/db/seed/run.js';
-import { loadSql } from '../../src/db/sql.js';
 import { createTestPrisma, resetDatabase, testDatabaseUrl } from './helpers/db.js';
 
 const win = (start: string, end: string): ReportWindow => ({
@@ -309,7 +309,8 @@ describe.skipIf(!testDatabaseUrl)('report queries Q05-Q10 (integration)', () => 
         'Q13_ai_acceptance_by_model',
         'Q14_ai_confusion',
       ]) {
-        const text = loadSql(`reports/${file}.sql`);
+        const path = new URL(`../../../packages/analytics/sql/${file}.sql`, import.meta.url);
+        const text = readFileSync(path, 'utf8');
         expect(text).toMatch(/^-- Q\d\d/);
         expect(text).toContain('$1::timestamptz');
         expect(text).toContain('$2::timestamptz');
