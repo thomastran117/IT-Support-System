@@ -43,6 +43,9 @@ jobs:
             (.services | to_entries | map(select(.value.networks // {} | has("api")) | .key) | sort == ["backend", "gateway"])
           '
 
+      - name: Independent service container checks
+        run: set -o pipefail; sh docker/verify-service-containers.sh 2>&1 | tee ci-service-containers.log
+
       - name: Optional OpenSearch smoke check
         run: |
           default_services=$(docker compose config --services)

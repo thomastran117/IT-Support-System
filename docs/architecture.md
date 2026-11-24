@@ -51,6 +51,49 @@ Internal endpoints authenticate a scoped service credential at the receiving bac
 calls also verify the current user and resource scope.
 [Internal service authentication](authentication.md#internal-service-authentication)
 
+## AI service container
+
+`backend/services/ai` is the first package under `backend/services/`. Its Compose profile
+`services` builds a separate image and starts the compiled Fastify server. The gateway and AI
+service share the internal `service-health` network for the readiness probe. The gateway keeps
+its separate `api` connection to the backend. Public routes and analysis execution stay with
+the existing API and worker while the AI container is exercised.
+
+| Setting                       | Default                          | Purpose                                                                                                        |
+| ----------------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `AI_SERVICE_TICKET_ORIGIN`    | `http://gateway:4000` in Compose | HTTP(S) origin resolved by service DNS. The URL parser rejects user info, paths, query strings, and fragments. |
+| `AI_SERVICE_READY_TIMEOUT_MS` | `1500`                           | Full readiness probe deadline, from 1 through 5000 milliseconds                                                |
+| `HOST` and `PORT`             | `0.0.0.0:4010` in Compose        | Container listener on the internal network                                                                     |
+
+- `GET /health/live` returns `200` with `{"status":"ok"}` when the process can answer HTTP.
+- `GET /health/ready` reports `checks.ticketApi` as `ok` once the existing Ticket API reports a
+  healthy database. Connection failures, timeouts, and non-ready responses return `503` with
+  `checks.ticketApi` set to `unavailable`. The next probe can pick up recovery.
+
+Compose uses readiness as the container healthcheck. The health probe uses the gateway health
+route. Scoped credentials for protected calls use the existing [internal authentication
+contract](authentication.md#internal-service-authentication). The container currently receives
+only its listener and readiness configuration. The [Compose lifecycle check](../docker/verify-service-containers.sh)
+builds it from its lockfile, restarts it, and verifies readiness loss and recovery in a disposable
+project.
+
+For a package-local build from a checkout, install and build the shared packages, then install
+and start the service.
+
+```bash
+npm --prefix packages/contracts ci
+npm --prefix packages/contracts run build
+npm --prefix packages/service-runtime ci
+npm --prefix packages/service-runtime run build
+npm --prefix backend/services/ai ci
+npm --prefix backend/services/ai test
+npm --prefix backend/services/ai run build
+npm --prefix backend/services/ai start
+```
+
+Outside Compose, the listener defaults to `127.0.0.1:4010` and the Ticket origin defaults to
+`http://localhost:4000`. [Compose start and rollback commands](../README.md#opt-in-ai-service-container)
+
 ## Package boundaries
 
 Every package is independently locked and installed in its container image.
@@ -59,6 +102,8 @@ Every package is independently locked and installed in its container image.
   not import Node-only, Fastify, PostgreSQL, or Prisma code.
 - `packages/db` exports the generated Prisma client and PostgreSQL adapter used by the backend and
   worker. Prisma generates its client from `backend/prisma/schema.prisma` during image builds.
+- `packages/service-runtime` contains server-side environment parsing used by the gateway and AI
+  service. Both install it as an explicit local dependency.
 - Applications that share packages use local `file:` references. Docker builds contracts,
   generates Prisma, and builds the database package before starting a consumer.
 

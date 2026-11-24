@@ -10,6 +10,7 @@
     "test": "tsx --test test/*.test.ts"
   },
   "dependencies": {
+    "@smartdesk/service-runtime": "file:../../packages/service-runtime",
     "fastify": "^5.12.8"
   },
   "devDependencies": {
