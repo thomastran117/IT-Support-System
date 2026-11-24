@@ -114,6 +114,9 @@ To start indexing, set `OPENSEARCH_ENABLED=true` and `OPENSEARCH_URL=http://open
 the knowledge read alias when AI analysis is enabled. The API uses OpenSearch for ticket and
 knowledge text search with PostgreSQL verification.
 
+See the [search evaluation](docs/search-evaluation.md) for the authorization matrix, benchmark
+results, and reproduction commands.
+
 For production, use a separate secured OpenSearch deployment with verified TLS, private network
 access, and least-privilege service accounts. Inject `OPENSEARCH_USERNAME` and `OPENSEARCH_PASSWORD`
 into the backend and worker through deployment secrets when enabling search there. Keep those
