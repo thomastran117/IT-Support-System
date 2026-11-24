@@ -12,55 +12,102 @@ concurrency:
   group: backend-${{ github.ref }}
   cancel-in-progress: true
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
-  verify:
-    name: backend / verify
+  format:
+    name: Repository format
     runs-on: ubuntu-latest
-    timeout-minutes: 25
-    defaults:
-      run:
-        shell: bash
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - run: docker compose --profile ci run --rm --build format-check
 
-      - name: Build verification images
-        run: docker compose --profile ci build format-check backend-ci gateway
+  core:
+    name: Backend, worker, and database
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose --profile ci run --rm --build backend-ci 2>&1 | tee ci-backend.log
+      - name: Upload backend-ci-logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-ci-logs
+          path: ci-backend.log
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Stop containers
+        if: always()
+        run: docker compose --profile ci down -v
 
-      - name: Format check
-        run: set -o pipefail; docker compose --profile ci run --rm format-check 2>&1 | tee ci-format.log
-
-      - name: Backend, worker and database checks
-        run: set -o pipefail; docker compose --profile ci run --rm backend-ci 2>&1 | tee ci-backend.log
-
+  gateway:
+    name: Gateway contracts and network isolation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
       - name: Gateway checks
         run: |
-          set -o pipefail
-          docker compose run --rm --no-deps gateway npm test 2>&1 | tee ci-gateway.log
+          docker compose run --rm --no-deps --build gateway npm test 2>&1 | tee ci-gateway.log
           docker compose config --format json | jq -e '
             (.services.backend.ports // [] | length == 0) and
             (.services.gateway.ports | length == 1) and
             (.networks.api.internal == true) and
             (.services | to_entries | map(select(.value.networks // {} | has("api")) | .key) | sort == ["backend", "gateway"])
           '
+      - name: Upload gateway-ci-logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gateway-ci-logs
+          path: ci-gateway.log
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Stop containers
+        if: always()
+        run: docker compose down -v
 
-      - name: Independent service container checks
-        run: set -o pipefail; sh docker/verify-service-containers.sh 2>&1 | tee ci-service-containers.log
+  lifecycle:
+    name: Service lifecycle (${{ matrix.suite }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          [
+            service-containers,
+            notifications-service,
+            analytics-service,
+            knowledge-service,
+            identity-service,
+            ticket-service,
+          ]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run lifecycle suite
+        env:
+          SUITE: ${{ matrix.suite }}
+        run: sh "docker/verify-$SUITE.sh" 2>&1 | tee "ci-$SUITE.log"
+      - name: Upload lifecycle-${{ matrix.suite }}-logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lifecycle-${{ matrix.suite }}-logs
+          path: ci-*.log
+          if-no-files-found: ignore
+          retention-days: 7
 
-      - name: Notifications service outage, recovery and rollback
-        run: set -o pipefail; sh docker/verify-notifications-service.sh 2>&1 | tee ci-notifications-service.log
-
-      - name: Analytics report parity, outage and rollback
-        run: set -o pipefail; sh docker/verify-analytics-service.sh 2>&1 | tee ci-analytics-service.log
-
-      - name: Knowledge authoring, published retrieval, outage and rollback
-        run: set -o pipefail; sh docker/verify-knowledge-service.sh 2>&1 | tee ci-knowledge-service.log
-
-      - name: Identity session continuity, revocation, outage and rollback
-        run: set -o pipefail; sh docker/verify-identity-service.sh 2>&1 | tee ci-identity-service.log
-
-      - name: Scoped Ticket workflows, correlated telemetry and rollback
-        run: set -o pipefail; sh docker/verify-ticket-service.sh 2>&1 | tee ci-ticket-service.log
-
+  search:
+    name: OpenSearch profiles and integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
       - name: Optional OpenSearch smoke check
         run: |
           default_services=$(docker compose config --services)
@@ -77,14 +124,17 @@ jobs:
           '
           docker compose --profile hybrid-experiment config --format json | jq -e '
             .services["hybrid-knowledge-experiment"] as $experiment |
-            ($experiment.ports // [] | length == 0) and
+            (($experiment.ports // []) | length == 0) and
             ($experiment.networks | keys == ["internal", "search"]) and
             (.networks.internal.internal == true) and (.networks.search.internal == true)
           '
           if [ "$(sysctl -n vm.max_map_count)" -lt 262144 ]; then
             sudo sysctl -w vm.max_map_count=262144
           fi
-          docker compose --profile search up --wait --wait-timeout 180 opensearch
+          docker compose --profile ci --profile search up -d --wait --wait-timeout 180 postgres-ci redis-ci opensearch
+
+      - name: Build the test image and migrate the fresh database
+        run: docker compose --profile ci --profile search run --rm --no-deps --build -w /app/backend backend-ci npm run migrate
 
       - name: OpenSearch mapping, worker, and rebuild integration tests
         run: |
@@ -100,16 +150,25 @@ jobs:
       - name: Collect OpenSearch logs on failure
         if: failure()
         run: docker compose --profile search logs --no-color opensearch > ci-opensearch.log
-
-      - name: Upload logs on failure
+      - name: Upload backend-search-logs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: backend-ci-logs
+          name: backend-search-logs
           path: ci-*.log
           if-no-files-found: ignore
           retention-days: 7
-
       - name: Stop containers
         if: always()
         run: docker compose --profile ci --profile search down -v
+
+  verify:
+    name: backend / verify
+    runs-on: ubuntu-latest
+    needs: [format, core, gateway, lifecycle, search]
+    if: always()
+    steps:
+      - name: Require all backend jobs to pass
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: jq -e 'all(.[]; .result == "success")' <<< "$RESULTS"
