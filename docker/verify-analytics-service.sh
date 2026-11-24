@@ -80,7 +80,8 @@ SQL
 compose exec -T backend npm run db:seed -- --profile test
 
 journey() {
-  compose exec -T -e ANALYTICS_PHASE="$1" -e ANALYTICS_BASELINE="${baseline:-}" +    backend node --input-type=module - <<'NODE'
+  compose exec -T -e ANALYTICS_PHASE="$1" -e ANALYTICS_BASELINE="${baseline:-}" \
+    backend node --input-type=module - <<'NODE'
 import assert from 'node:assert/strict';
 import { createPrisma } from '@smartdesk/db';
 
