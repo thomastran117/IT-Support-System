@@ -10,6 +10,8 @@ const EXTENSION_TABLES = [
   'notification_deliveries',
   'search_index_jobs',
   'search_rebuilds',
+  'service_outbox_events',
+  'service_outbox_deliveries',
 ];
 
 const CORE_TABLES = [

@@ -27,7 +27,7 @@ BEGIN
     public.team_members, public.ticket_comments, public.ticket_events, public.ai_recommendations,
     public.recommendation_articles, public.ai_analysis_jobs, public.knowledge_articles,
     public.notifications, public.notification_deliveries, public.users, public.admin_audit_log,
-    public.search_index_jobs, public.search_rebuilds
+    public.search_index_jobs, public.search_rebuilds, public.service_outbox_events
     FROM smartdesk_ticket, smartdesk_notifications, smartdesk_analytics, smartdesk_knowledge,
          smartdesk_identity, smartdesk_search;
   REVOKE USAGE ON SCHEMA public FROM

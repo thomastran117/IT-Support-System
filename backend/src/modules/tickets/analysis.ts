@@ -100,7 +100,7 @@ export async function getAnalysisStatus(
  */
 export async function requestAnalysis(
   prisma: PrismaClient,
-  opts: { ticketId: string; requestId?: string; maxAttempts: number },
+  opts: { ticketId: string; requestId?: string; maxAttempts: number; correlationId?: string },
 ): Promise<{ job: AnalysisJob; created: boolean }> {
   // The transaction helper turns every thrown error into a database error, so refusals are returned
   // as values and raised as HTTP errors once the transaction is over.
@@ -123,6 +123,7 @@ export async function requestAnalysis(
         ticketId: opts.ticketId,
         ...(opts.requestId ? { requestId: opts.requestId } : {}),
         maxAttempts: opts.maxAttempts,
+        correlationId: opts.correlationId,
       });
       return { job, created: true };
     },

@@ -1347,6 +1347,13 @@
           "nullable": true,
           "default": null,
           "meaning": "When the job reached COMPLETED or FAILED; NULL otherwise."
+        },
+        {
+          "name": "correlation_id",
+          "type": "character varying(64)",
+          "nullable": true,
+          "default": null,
+          "meaning": "SHA-256 digest of the request ID that scheduled this job, when available."
         }
       ],
       "primaryKey": ["job_id"],
@@ -1365,6 +1372,10 @@
         {
           "name": "ck_ai_jobs_attempts",
           "rule": "((attempts >= 0) AND (max_attempts > 0))"
+        },
+        {
+          "name": "ck_ai_jobs_correlation",
+          "rule": "((correlation_id)::text ~ '^[a-f0-9]{64}$'::text)"
         },
         {
           "name": "ck_ai_jobs_lease",
@@ -1921,6 +1932,214 @@
         {
           "name": "search_rebuilds_pkey",
           "columns": ["version"],
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "service_outbox_events",
+      "area": "Cross-service events",
+      "description": "Append-only versioned events emitted in the transaction that creates the ticket fact or recommendation (SD-092). Payloads contain allowlisted references and status values.",
+      "columns": [
+        {
+          "name": "event_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "meaning": "Stable event identity. Reuses the ticket audit ID or recommendation ID."
+        },
+        {
+          "name": "schema_version",
+          "type": "smallint",
+          "nullable": false,
+          "default": null,
+          "meaning": "Envelope and payload contract version."
+        },
+        {
+          "name": "type",
+          "type": "character varying(48)",
+          "nullable": false,
+          "default": null,
+          "meaning": "Stable event type name."
+        },
+        {
+          "name": "occurred_at",
+          "type": "timestamp(6) with time zone",
+          "nullable": false,
+          "default": null,
+          "meaning": "UTC time of the source event."
+        },
+        {
+          "name": "aggregate_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "meaning": "Source ticket ID."
+        },
+        {
+          "name": "aggregate_version",
+          "type": "integer",
+          "nullable": false,
+          "default": null,
+          "meaning": "Ticket version at publication. Multiple independent facts can share a version."
+        },
+        {
+          "name": "correlation_id",
+          "type": "character varying(64)",
+          "nullable": false,
+          "default": null,
+          "meaning": "Digest of the originating HTTP request ID or a fallback UUID."
+        },
+        {
+          "name": "payload",
+          "type": "jsonb",
+          "nullable": false,
+          "default": null,
+          "meaning": "Minimal event-specific fields validated by the shared contract."
+        }
+      ],
+      "primaryKey": ["event_id"],
+      "foreignKeys": [
+        {
+          "name": "service_outbox_events_aggregate_id_fkey",
+          "columns": ["aggregate_id"],
+          "references": {
+            "table": "tickets",
+            "columns": ["ticket_id"]
+          },
+          "onDelete": "RESTRICT"
+        }
+      ],
+      "checks": [
+        {
+          "name": "ck_service_events_envelope",
+          "rule": "((schema_version > 0) AND (aggregate_version >= 0) AND ((correlation_id)::text ~ '^([a-f0-9]{64}|[a-f0-9-]{36})$'::text) AND (jsonb_typeof(payload) = 'object'::text))"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_service_events_aggregate",
+          "columns": ["aggregate_id", "occurred_at", "event_id"],
+          "unique": false
+        },
+        {
+          "name": "idx_service_events_type_order",
+          "columns": ["type", "occurred_at", "event_id"],
+          "unique": false
+        },
+        {
+          "name": "service_outbox_events_pkey",
+          "columns": ["event_id"],
+          "unique": true
+        }
+      ]
+    },
+    {
+      "name": "service_outbox_deliveries",
+      "area": "Cross-service events",
+      "description": "Per-consumer lease and delivery receipts for service events. Completed receipts deduplicate consumption. Failed deliveries can be replayed against the original immutable event.",
+      "columns": [
+        {
+          "name": "consumer",
+          "type": "character varying(48)",
+          "nullable": false,
+          "default": null,
+          "meaning": "Stable subscriber name and part of the deduplication key."
+        },
+        {
+          "name": "event_id",
+          "type": "uuid",
+          "nullable": false,
+          "default": null,
+          "meaning": "Source event and part of the deduplication key."
+        },
+        {
+          "name": "state",
+          "type": "character varying(10)",
+          "nullable": false,
+          "default": "'QUEUED'::character varying",
+          "meaning": "QUEUED, RUNNING, COMPLETED, or FAILED."
+        },
+        {
+          "name": "attempts",
+          "type": "integer",
+          "nullable": false,
+          "default": "0",
+          "meaning": "Number of claims since discovery or operator replay."
+        },
+        {
+          "name": "run_after",
+          "type": "timestamp(6) with time zone",
+          "nullable": false,
+          "default": "now()",
+          "meaning": "Earliest time for a queued retry."
+        },
+        {
+          "name": "lease_token",
+          "type": "uuid",
+          "nullable": true,
+          "default": null,
+          "meaning": "Fences stale workers. Rotates with each claim."
+        },
+        {
+          "name": "locked_until",
+          "type": "timestamp(6) with time zone",
+          "nullable": true,
+          "default": null,
+          "meaning": "Lease expiry used to recover abandoned work."
+        },
+        {
+          "name": "finished_at",
+          "type": "timestamp(6) with time zone",
+          "nullable": true,
+          "default": null,
+          "meaning": "Completion or terminal failure time."
+        },
+        {
+          "name": "error_kind",
+          "type": "character varying(24)",
+          "nullable": true,
+          "default": null,
+          "meaning": "Bounded reason code for a retry or dead letter."
+        }
+      ],
+      "primaryKey": ["consumer", "event_id"],
+      "foreignKeys": [
+        {
+          "name": "service_outbox_deliveries_event_id_fkey",
+          "columns": ["event_id"],
+          "references": {
+            "table": "service_outbox_events",
+            "columns": ["event_id"]
+          },
+          "onDelete": "RESTRICT"
+        }
+      ],
+      "checks": [
+        {
+          "name": "ck_service_deliveries_state",
+          "rule": "((attempts >= 0) AND ((consumer)::text ~ '^[a-z][a-z0-9-]{0,47}$'::text) AND ((error_kind IS NULL) OR ((error_kind)::text = ANY ((ARRAY['handler_failed'::character varying, 'invalid_event'::character varying, 'worker_lost'::character varying])::text[]))) AND ((((state)::text = 'QUEUED'::text) AND (lease_token IS NULL) AND (locked_until IS NULL) AND (finished_at IS NULL)) OR (((state)::text = 'RUNNING'::text) AND (lease_token IS NOT NULL) AND (locked_until IS NOT NULL) AND (finished_at IS NULL)) OR (((state)::text = 'COMPLETED'::text) AND (lease_token IS NULL) AND (locked_until IS NULL) AND (finished_at IS NOT NULL) AND (error_kind IS NULL)) OR (((state)::text = 'FAILED'::text) AND (lease_token IS NULL) AND (locked_until IS NULL) AND (finished_at IS NOT NULL) AND (error_kind IS NOT NULL))))"
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_service_deliveries_claim",
+          "columns": ["consumer", "state", "run_after"],
+          "unique": false
+        },
+        {
+          "name": "idx_service_deliveries_event",
+          "columns": ["event_id"],
+          "unique": false
+        },
+        {
+          "name": "idx_service_deliveries_lease",
+          "columns": ["consumer", "state", "locked_until"],
+          "unique": false
+        },
+        {
+          "name": "service_outbox_deliveries_pkey",
+          "columns": ["consumer", "event_id"],
           "unique": true
         }
       ]

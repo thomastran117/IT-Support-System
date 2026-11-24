@@ -116,6 +116,7 @@ model Ticket {
 
   comments        TicketComment[]
   events          TicketEvent[]
+  outboxEvents    ServiceOutboxEvent[]
   recommendations AiRecommendation[]
   analysisJobs    AiAnalysisJob[]
   notifications   Notification[]
@@ -252,27 +253,68 @@ model AdminAuditLog {
 
 /// Durable AI analysis queue (SD-035): a transactional outbox claimed with SKIP LOCKED and a lease.
 model AiAnalysisJob {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @map("job_id") @db.Uuid
-  ticketId    String    @map("ticket_id") @db.Uuid
-  requestId   String    @default(dbgenerated("gen_random_uuid()")) @map("request_id") @db.Uuid
-  state       String    @default("QUEUED") @db.VarChar(10)
-  attempts    Int       @default(0)
-  maxAttempts Int       @default(3) @map("max_attempts")
-  runAfter    DateTime  @default(now()) @map("run_after") @db.Timestamptz(6)
-  leaseToken  String?   @map("lease_token") @db.Uuid
-  lockedUntil DateTime? @map("locked_until") @db.Timestamptz(6)
-  errorKind   String?   @map("error_kind") @db.VarChar(24)
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
-  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @map("job_id") @db.Uuid
+  ticketId      String    @map("ticket_id") @db.Uuid
+  requestId     String    @default(dbgenerated("gen_random_uuid()")) @map("request_id") @db.Uuid
+  correlationId String?   @map("correlation_id") @db.VarChar(64)
+  state         String    @default("QUEUED") @db.VarChar(10)
+  attempts      Int       @default(0)
+  maxAttempts   Int       @default(3) @map("max_attempts")
+  runAfter      DateTime  @default(now()) @map("run_after") @db.Timestamptz(6)
+  leaseToken    String?   @map("lease_token") @db.Uuid
+  lockedUntil   DateTime? @map("locked_until") @db.Timestamptz(6)
+  errorKind     String?   @map("error_kind") @db.VarChar(24)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  completedAt   DateTime? @map("completed_at") @db.Timestamptz(6)
 
-  ticket         Ticket @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  ticket         Ticket            @relation(fields: [ticketId], references: [id], onDelete: Restrict)
   recommendation AiRecommendation?
 
   @@unique([ticketId, requestId], map: "uq_ai_analysis_jobs_ticket_request")
   @@index([state, runAfter], map: "idx_ai_jobs_claim")
   @@index([ticketId, createdAt(sort: Desc)], map: "idx_ai_jobs_ticket")
   @@map("ai_analysis_jobs")
+}
+
+/// Immutable v1 service events. The aggregate ID identifies a ticket.
+model ServiceOutboxEvent {
+  eventId          String   @id @map("event_id") @db.Uuid
+  schemaVersion    Int      @map("schema_version") @db.SmallInt
+  type             String   @db.VarChar(48)
+  occurredAt       DateTime @map("occurred_at") @db.Timestamptz(6)
+  aggregateId      String   @map("aggregate_id") @db.Uuid
+  aggregateVersion Int      @map("aggregate_version")
+  correlationId    String   @map("correlation_id") @db.VarChar(64)
+  payload          Json     @db.JsonB
+
+  ticket     Ticket                  @relation(fields: [aggregateId], references: [id], onDelete: Restrict)
+  deliveries ServiceOutboxDelivery[]
+
+  @@index([type, occurredAt, eventId], map: "idx_service_events_type_order")
+  @@index([aggregateId, occurredAt, eventId], map: "idx_service_events_aggregate")
+  @@map("service_outbox_events")
+}
+
+/// Each consumer's queue and durable processing receipt.
+model ServiceOutboxDelivery {
+  consumer    String    @db.VarChar(48)
+  eventId     String    @map("event_id") @db.Uuid
+  state       String    @default("QUEUED") @db.VarChar(10)
+  attempts    Int       @default(0)
+  runAfter    DateTime  @default(now()) @map("run_after") @db.Timestamptz(6)
+  leaseToken  String?   @map("lease_token") @db.Uuid
+  lockedUntil DateTime? @map("locked_until") @db.Timestamptz(6)
+  finishedAt  DateTime? @map("finished_at") @db.Timestamptz(6)
+  errorKind   String?   @map("error_kind") @db.VarChar(24)
+
+  event ServiceOutboxEvent @relation(fields: [eventId], references: [eventId], onDelete: Restrict)
+
+  @@id([consumer, eventId])
+  @@index([consumer, state, runAfter], map: "idx_service_deliveries_claim")
+  @@index([consumer, state, lockedUntil], map: "idx_service_deliveries_lease")
+  @@index([eventId], map: "idx_service_deliveries_event")
+  @@map("service_outbox_deliveries")
 }
 
 /// In-app employee notification (SD-040), written in the same transaction as its ticket event.
