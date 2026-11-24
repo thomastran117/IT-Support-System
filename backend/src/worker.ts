@@ -1,3 +1,4 @@
+import { analysisLeaseMs, analysisTimeoutMs } from '@smartdesk/ai-analysis';
 import { createPrisma } from '@smartdesk/db';
 import { loadEnv } from './config/env.js';
 import { createAnalysisService } from './modules/ai/analysisService.js';
@@ -22,24 +23,28 @@ const { ai } = env;
 const write = (level: 'info' | 'error', entry: JobLogEntry) =>
   console[level === 'error' ? 'error' : 'log'](JSON.stringify({ level, ...entry }));
 
-const handlerTimeoutMs = ai.timeoutMs + 10_000;
-const runner = createJobRunner({
-  prisma,
-  analysis: createAnalysisService({
-    prisma,
-    provider: createProvider(env),
-    searchClient: ai.provider === 'none' ? undefined : createSearchClient(env.openSearch),
-  }),
-  persist: persistDraft,
-  config: {
-    concurrency: ai.worker.concurrency,
-    pollIntervalMs: ai.worker.pollIntervalMs,
-    backoffBaseMs: ai.worker.backoffBaseMs,
-    handlerTimeoutMs,
-    leaseMs: handlerTimeoutMs + 30_000,
-  },
-  log: (entry) => write(entry.errorKind && entry.state !== 'COMPLETED' ? 'error' : 'info', entry),
-});
+const handlerTimeoutMs = analysisTimeoutMs(ai);
+const runner =
+  env.aiExecutionMode === 'local'
+    ? createJobRunner({
+        prisma,
+        analysis: createAnalysisService({
+          prisma,
+          provider: createProvider(env),
+          searchClient: ai.provider === 'none' ? undefined : createSearchClient(env.openSearch),
+        }),
+        persist: persistDraft,
+        config: {
+          concurrency: ai.worker.concurrency,
+          pollIntervalMs: ai.worker.pollIntervalMs,
+          backoffBaseMs: ai.worker.backoffBaseMs,
+          handlerTimeoutMs,
+          leaseMs: analysisLeaseMs(ai),
+        },
+        log: (entry) =>
+          write(entry.errorKind && entry.state !== 'COMPLETED' ? 'error' : 'info', entry),
+      })
+    : null;
 
 // Optional email channel (SD-043). Off by default: with EMAIL_TRANSPORT=none no loop starts and
 // nothing is ever sent, and the in-app notification centre works exactly the same.
@@ -83,7 +88,7 @@ async function shutdown(signal: string): Promise<void> {
   const force = setTimeout(() => process.exit(1), handlerTimeoutMs + 5_000);
   force.unref();
   try {
-    await Promise.all([runner.stop(), mailer?.stop(), searchWorker?.stop()]);
+    await Promise.all([runner?.stop(), mailer?.stop(), searchWorker?.stop()]);
     await prisma.$disconnect();
     process.exit(0);
   } catch {
@@ -93,8 +98,8 @@ async function shutdown(signal: string): Promise<void> {
 process.on('SIGINT', () => void shutdown('SIGINT'));
 process.on('SIGTERM', () => void shutdown('SIGTERM'));
 
-write('info', { msg: `ai provider: ${ai.provider}` });
-runner.start();
+write('info', { msg: runner ? `ai provider: ${ai.provider}` : 'ai execution: service' });
+runner?.start();
 // Only the transport kind is logged. Host, user and password never are.
 write('info', { msg: `email transport: ${email.transport}` });
 mailer?.start();

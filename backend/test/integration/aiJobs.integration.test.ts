@@ -13,7 +13,7 @@ import { CATEGORIES, TEAMS, TICKETS, USERS } from '../../src/db/seed/fixtures.js
 import { seedDatabase } from '../../src/db/seed/run.js';
 import type { AnalysisDraft } from '../../src/modules/ai/analysisService.js';
 import { createJobRunner, type JobRunnerConfig } from '../../src/modules/ai/jobRunner.js';
-import { ProviderError } from '../../src/modules/ai/provider.js';
+import { ProviderError } from '@smartdesk/ai-analysis';
 import { createTestPrisma, expectViolation, resetDatabase, testDatabaseUrl } from './helpers/db.js';
 
 const ORIGIN = 'http://app.test';

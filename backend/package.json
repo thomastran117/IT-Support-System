@@ -36,6 +36,7 @@
     "@fastify/cookie": "^11.1.5",
     "@fastify/cors": "^11.4.3",
     "@fastify/rate-limit": "^11.2.2",
+    "@smartdesk/ai-analysis": "file:../packages/ai-analysis",
     "@smartdesk/contracts": "file:../packages/contracts",
     "@smartdesk/db": "file:../packages/db",
     "argon2": "^0.45.2",

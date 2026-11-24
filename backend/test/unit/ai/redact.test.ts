@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildRetrievalTerms } from '../../../src/modules/ai/analysisService.js';
-import { buildUserMessage } from '../../../src/modules/ai/prompt.js';
-import { redactText } from '../../../src/modules/ai/redact.js';
+import { buildUserMessage, redactText } from '@smartdesk/ai-analysis';
 
 describe('redactText', () => {
   it.each([

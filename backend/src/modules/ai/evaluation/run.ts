@@ -1,7 +1,12 @@
 import { createHash } from 'node:crypto';
-import { PROMPT_VERSION, SYSTEM_INSTRUCTIONS } from '../prompt.js';
-import { ProviderError, type AIProvider, type AnalysisRequest } from '../provider.js';
-import { redactText } from '../redact.js';
+import {
+  PROMPT_VERSION,
+  SYSTEM_INSTRUCTIONS,
+  ProviderError,
+  redactText,
+  type AIProvider,
+  type AnalysisRequest,
+} from '@smartdesk/ai-analysis';
 import {
   ALLOWED_TEAMS_BY_CATEGORY,
   DATASET_VERSION,

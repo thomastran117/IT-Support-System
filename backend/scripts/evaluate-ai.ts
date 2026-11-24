@@ -14,13 +14,12 @@
  * --out-md PATH, --out-json PATH. Exit code is 0 whatever the accuracy: this reports, it does not gate.
  */
 import { writeFileSync } from 'node:fs';
+import { createFakeProvider, type AIProvider } from '@smartdesk/ai-analysis';
 import { loadEnv } from '../src/config/env.js';
 import { createProvider } from '../src/modules/ai/index.js';
 import { createKeywordBaseline } from '../src/modules/ai/evaluation/baseline.js';
 import { renderReport } from '../src/modules/ai/evaluation/report.js';
 import { runEvaluation } from '../src/modules/ai/evaluation/run.js';
-import { createFakeProvider } from '../src/modules/ai/providers/fake.js';
-import type { AIProvider } from '../src/modules/ai/provider.js';
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);

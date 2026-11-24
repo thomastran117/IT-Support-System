@@ -111,7 +111,7 @@ services:
       OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD:-}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      # The API listens only on the private network shared with the gateway.
+      # The API listens only on the private network used by the gateway and optional AI service.
       TRUST_PROXY: 'true'
       JWT_SECRET: ${JWT_SECRET:-change-me-dev-only-change-me-dev-only}
       JWT_ISSUER: ${JWT_ISSUER:-smartdesk-api}
@@ -120,6 +120,7 @@ services:
       ACCESS_TOKEN_TTL_SECONDS: ${ACCESS_TOKEN_TTL_SECONDS:-900}
       REFRESH_TOKEN_TTL_SECONDS: ${REFRESH_TOKEN_TTL_SECONDS:-604800}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      AI_EXECUTION_MODE: ${AI_EXECUTION_MODE:-local}
       AI_PROVIDER: ${AI_PROVIDER:-none}
       AI_API_KEY: ${AI_API_KEY:-}
       AI_MODEL: ${AI_MODEL:-gpt-4o-mini}
@@ -127,6 +128,7 @@ services:
       AI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-1000}
       AI_MAX_INPUT_CHARS: ${AI_MAX_INPUT_CHARS:-20000}
       AI_JOB_MAX_ATTEMPTS: ${AI_JOB_MAX_ATTEMPTS:-3}
+      AI_JOB_BACKOFF_MS: ${AI_JOB_BACKOFF_MS:-5000}
     depends_on:
       postgres:
         condition: service_healthy
@@ -151,6 +153,8 @@ services:
           path: ./packages/contracts
         - action: rebuild
           path: ./packages/db
+        - action: rebuild
+          path: ./packages/ai-analysis
 
   gateway:
     build:
@@ -168,7 +172,7 @@ services:
     depends_on:
       backend:
         condition: service_started
-    networks: [public, api, service-health]
+    networks: [public, api]
     develop:
       watch:
         - action: sync
@@ -193,8 +197,19 @@ services:
       target: ai-service
     environment:
       HOST: 0.0.0.0
-      AI_SERVICE_TICKET_ORIGIN: ${AI_SERVICE_TICKET_ORIGIN:-http://gateway:4000}
+      AI_SERVICE_TICKET_ORIGIN: ${AI_SERVICE_TICKET_ORIGIN:-http://backend-api:4000}
       AI_SERVICE_READY_TIMEOUT_MS: ${AI_SERVICE_READY_TIMEOUT_MS:-1500}
+      AI_SERVICE_KEY_ID: ${AI_SERVICE_KEY_ID:-}
+      AI_SERVICE_PRIVATE_KEY: ${AI_SERVICE_PRIVATE_KEY:-}
+      AI_EXECUTION_MODE: ${AI_EXECUTION_MODE:-local}
+      AI_PROVIDER: ${AI_PROVIDER:-none}
+      AI_API_KEY: ${AI_SERVICE_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-gpt-4o-mini}
+      AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-20000}
+      AI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-1000}
+      AI_MAX_INPUT_CHARS: ${AI_MAX_INPUT_CHARS:-20000}
+      AI_WORKER_CONCURRENCY: ${AI_WORKER_CONCURRENCY:-2}
+      WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-5000}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     healthcheck:
       test:
@@ -208,10 +223,11 @@ services:
       timeout: 7s
       start_period: 10s
       retries: 6
+    stop_grace_period: 90s
     depends_on:
-      gateway:
+      backend:
         condition: service_started
-    networks: [service-health]
+    networks: [api, ai-egress]
     develop:
       watch:
         - action: rebuild
@@ -220,6 +236,8 @@ services:
           path: ./packages/contracts
         - action: rebuild
           path: ./packages/service-runtime
+        - action: rebuild
+          path: ./packages/ai-analysis
         - action: rebuild
           path: ./tsconfig.base.json
 
@@ -235,6 +253,7 @@ services:
       OPENSEARCH_USERNAME: ${OPENSEARCH_USERNAME:-}
       OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD:-}
       WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-5000}
+      AI_EXECUTION_MODE: ${AI_EXECUTION_MODE:-local}
       AI_PROVIDER: ${AI_PROVIDER:-none}
       AI_API_KEY: ${AI_API_KEY:-}
       AI_MODEL: ${AI_MODEL:-gpt-4o-mini}
@@ -277,6 +296,8 @@ services:
           path: ./packages/contracts
         - action: rebuild
           path: ./packages/db
+        - action: rebuild
+          path: ./packages/ai-analysis
 
   frontend:
     build:
@@ -375,7 +396,6 @@ networks:
   public:
   api:
     internal: true
-  service-health:
-    internal: true
+  ai-egress:
   search:
     internal: true

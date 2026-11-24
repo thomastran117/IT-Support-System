@@ -940,12 +940,66 @@ export type ServiceEventType = ServiceEventV1['type'];
 
 // Command for the authenticated AI-to-Ticket completion path. The draft belongs in the request,
 // while recommendation.ready carries only the identifiers of the result after commit.
-export const recordRecommendationCommandV1Schema = z.strictObject({
+export const analysisJobIdentityV1Schema = z.strictObject({
   schemaVersion: z.literal(1),
   ticketId: z.guid(),
   jobId: z.guid(),
   requestId: z.guid(),
   leaseToken: z.guid(),
+});
+export type AnalysisJobIdentityV1 = z.infer<typeof analysisJobIdentityV1Schema>;
+
+export const analysisJobClaimV1Schema = analysisJobIdentityV1Schema.extend({
+  attempts: z.number().int().positive(),
+});
+
+export const analysisJobFailureV1Schema = analysisJobIdentityV1Schema.extend({
+  kind: z.enum([
+    'disabled',
+    'timeout',
+    'rate_limited',
+    'unavailable',
+    'malformed',
+    'invalid_reference',
+    'ticket_missing',
+    'internal',
+  ]),
+});
+
+const analysisReference = z.strictObject({ id: z.guid(), name: z.string().max(101) });
+export const analysisInputsV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  ticket: z.strictObject({ title: z.string().max(151), description: z.string().max(4001) }),
+  allowedCategories: z.array(analysisReference),
+  allowedTeams: z.array(analysisReference),
+  articles: z
+    .array(
+      z.strictObject({
+        id: z.guid(),
+        title: z.string().max(201),
+        body: z.string().max(1501),
+      }),
+    )
+    .max(5),
+  retrieval: z.strictObject({
+    engine: z.enum(['postgres', 'opensearch', 'none']),
+    version: z.number().int().positive(),
+  }),
+});
+
+export const AI_JOB_PATH = '/internal/tickets/analysis-jobs';
+export const AI_JOB_SCOPES = {
+  claim: 'ticket:analysis-claim',
+  inputs: 'ticket:analysis-inputs',
+  complete: 'ticket:analysis-complete',
+  fail: 'ticket:analysis-fail',
+} as const;
+
+export const recordRecommendationCommandV1Schema = analysisJobIdentityV1Schema.extend({
+  promptVersion: z
+    .string()
+    .regex(/^v[0-9]{1,8}$/)
+    .optional(),
   draft: z.strictObject({
     categoryId: z.guid(),
     teamId: z.guid(),
