@@ -28,7 +28,8 @@
     "search:requeue": "tsx scripts/requeue-search-index-job.ts",
     "search:backfill": "tsx scripts/rebuild-search.ts",
     "search:reindex": "tsx scripts/rebuild-search.ts",
-    "bench:cache": "tsx scripts/evaluate-cache.ts"
+    "bench:cache": "tsx scripts/evaluate-cache.ts",
+    "bench:search": "tsx scripts/evaluate-search.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.5",
