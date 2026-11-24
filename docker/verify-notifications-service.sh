@@ -41,20 +41,23 @@ export NOTIFICATIONS_PRIVATE_KEY INTERNAL_SERVICE_KEYS
 compose build backend gateway notifications-service
 compose run --rm --no-deps notifications-service npm test
 compose up -d --wait gateway
-compose exec -T backend node --input-type=module - <<'NODE'
+wait_for_gateway() {
+  compose exec -T backend node --input-type=module - <<'NODE'
 import assert from 'node:assert/strict';
 import { setTimeout } from 'node:timers/promises';
 const deadline = Date.now() + 45_000;
 while (true) {
-  const response = await fetch('http://backend-api:4000/health/ready', {
+  const response = await fetch('http://gateway:4000/health/ready', {
     signal: AbortSignal.timeout(5000),
   }).catch(() => null);
   await response?.body?.cancel();
   if (response?.ok) break;
-  assert.ok(Date.now() < deadline, 'Ticket did not become ready');
+  assert.ok(Date.now() < deadline, 'Ticket did not become ready through the gateway');
   await setTimeout(500);
 }
 NODE
+}
+wait_for_gateway
 
 psql() { compose exec -T postgres psql -X -v ON_ERROR_STOP=1 -U smartdesk -d smartdesk; }
 psql < backend/sql/service-access/roles.sql
@@ -169,4 +172,5 @@ journey verify
 compose stop notifications-service
 export NOTIFICATIONS_EXECUTION_MODE=local
 compose up -d --wait gateway
+wait_for_gateway
 journey verify
