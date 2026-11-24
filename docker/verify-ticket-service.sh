@@ -37,7 +37,7 @@ if [ "${SD100:-0}" = 1 ]; then
   export GATEWAY_UPSTREAM_TIMEOUT_MS=2500
   export OPENSEARCH_URL=http://opensearch:9200/
   export SEARCH_DATABASE_URL=postgres://search_test:search-test-only@postgres:5432/smartdesk
-  evidence=frontend/test-results/sd100
+  evidence=test-results/sd100
   mkdir -p "$evidence"
 fi
 

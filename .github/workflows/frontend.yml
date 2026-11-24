@@ -55,9 +55,9 @@ jobs:
           path: |
             ci-microservices.log
             ci-microservices-static.log
-            frontend/test-results/sd100/*.json
-            frontend/test-results/sd100/*.jsonl
-            frontend/test-results/sd100/*-revision.txt
+            test-results/sd100/*.json
+            test-results/sd100/*.jsonl
+            test-results/sd100/*-revision.txt
           if-no-files-found: ignore
           retention-days: 14
 

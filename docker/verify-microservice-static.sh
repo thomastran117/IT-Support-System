@@ -2,7 +2,7 @@
 set -eu
 
 project=smartdesk-static-ci-$$
-evidence=frontend/test-results/sd100
+evidence=test-results/sd100
 mkdir -p "$evidence"
 compose() {
   docker compose -p "$project" -f docker-compose.yml -f docker/compose.microservice-static.yml --profile microservice-static "$@"

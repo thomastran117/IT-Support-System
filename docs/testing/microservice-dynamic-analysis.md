@@ -17,7 +17,7 @@ and OpenSearch disabled and uses the same fake provider in both layouts.
 
 The `microservice-verification` artifact from the frontend workflow includes the
 tested revision, test log, request latency JSON, Docker resource snapshots, and
-ZAP output. Local runs place those files in `frontend/test-results/sd100/`.
+ZAP output. Local runs place those files in `test-results/sd100/`.
 The [Ticket service runbook](../architecture/ticket-service.md) describes the
 rollback procedure used by the gate. The [static report](microservice-static-analysis.md)
 records the source and dependency scans.
