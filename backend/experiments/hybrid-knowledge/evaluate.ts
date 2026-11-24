@@ -86,77 +86,101 @@ async function evaluate(
     const start = performance.now();
     if (engine === 'hybrid') {
       const result = await hybrid(q, categoryId);
-      assert.equal(result.mode, 'hybrid', `Unexpected hybrid fallback for ${q}`);
-      return { ids: result.ids, ms: performance.now() - start };
+      return { ids: result.ids, path: result.mode, ms: performance.now() - start };
     }
     const result = await lexical({ query: q, categoryId, limit: resultLimit, offset: 0 });
-    assert.equal(result.engine, 'opensearch', `Unexpected lexical fallback for ${q}`);
-    return { ids: result.hits.map(({ id }) => id), ms: performance.now() - start };
+    return {
+      ids: result.hits.map(({ id }) => id),
+      path: result.engine,
+      ms: performance.now() - start,
+    };
   }
 
   const cases: {
     query: Query;
-    ids: Record<Engine, string[]>;
+    reference: Record<Engine, Awaited<ReturnType<typeof run>>>;
     timings: Record<Engine, number[]>;
   }[] = [];
   for (const query of hybridQueries) {
-    const ids: Record<Engine, string[]> = { lexical: [], hybrid: [] };
-    for (let i = 0; i < 3; i++) {
-      for (const engine of engines) ids[engine] = (await run(engine, query)).ids;
+    for (let i = 0; i < 2; i++) {
+      for (const engine of engines) await run(engine, query);
     }
-    cases.push({ query, ids, timings: { lexical: [], hybrid: [] } });
+    const reference = { lexical: await run('lexical', query), hybrid: await run('hybrid', query) };
+    if (reference.lexical.path === 'opensearch') {
+      assert.equal(reference.hybrid.path, 'hybrid', `Unexpected vector fallback for ${query.q}`);
+    } else {
+      assert.equal(reference.hybrid.path, 'lexical', `Unexpected vector search for ${query.q}`);
+      assert.deepEqual(
+        reference.hybrid.ids,
+        reference.lexical.ids,
+        `Fallback results differ for ${query.q}`,
+      );
+    }
+    cases.push({ query, reference, timings: { lexical: [], hybrid: [] } });
   }
 
   for (let round = 0; round < rounds; round++) {
-    for (const [i, { query, ids, timings }] of cases.entries()) {
+    for (const [i, { query, reference, timings }] of cases.entries()) {
       for (const engine of (round + i) % 2 === 0 ? engines : (['hybrid', 'lexical'] as const)) {
-        const result = await run(engine, query);
-        assert.deepEqual(result.ids, ids[engine], `Unstable results for ${engine} ${query.q}`);
-        timings[engine].push(result.ms);
+        const { ms, ids, path } = await run(engine, query);
+        assert.equal(path, reference[engine].path, `Unstable path for ${engine} ${query.q}`);
+        assert.deepEqual(ids, reference[engine].ids, `Unstable results for ${engine} ${query.q}`);
+        timings[engine].push(ms);
       }
     }
   }
 
+  const cohorts = {
+    all: cases,
+    'sd-085': cases.filter(({ query }) => query.group === 'sd-085'),
+    paraphrase: cases.filter(({ query }) => query.group === 'paraphrase'),
+    'vector-eligible': cases.filter(({ reference }) => reference.hybrid.path === 'hybrid'),
+  };
   const summary = Object.fromEntries(
-    ['all', 'sd-085', 'paraphrase'].map((group) => {
-      const subset = cases.filter(({ query }) => group === 'all' || query.group === group);
-      return [
-        group,
-        Object.fromEntries(
-          engines.map((engine) => {
-            const measures = subset.map(({ ids, query }) => quality(ids[engine], query.relevant));
-            const mean = (field: keyof ReturnType<typeof quality>) =>
-              Number(
-                (
-                  measures.reduce((total, value) => total + value[field], 0) / measures.length
-                ).toFixed(4),
+    Object.entries(cohorts)
+      .filter(([, subset]) => subset.length > 0)
+      .map(([group, subset]) => {
+        return [
+          group,
+          Object.fromEntries(
+            engines.map((engine) => {
+              const measures = subset.map(({ reference, query }) =>
+                quality(reference[engine].ids, query.relevant),
               );
-            return [
-              engine,
-              {
-                ...latencies(subset.flatMap(({ timings }) => timings[engine])),
-                precisionAt3: mean('precisionAt3'),
-                mrrAt3: mean('reciprocalRankAt3'),
-              },
-            ];
-          }),
-        ),
-      ];
-    }),
+              const mean = (field: keyof ReturnType<typeof quality>) =>
+                Number(
+                  (
+                    measures.reduce((total, value) => total + value[field], 0) / measures.length
+                  ).toFixed(4),
+                );
+              return [
+                engine,
+                {
+                  ...latencies(subset.flatMap(({ timings }) => timings[engine])),
+                  precisionAt3: mean('precisionAt3'),
+                  mrrAt3: mean('reciprocalRankAt3'),
+                },
+              ];
+            }),
+          ),
+        ];
+      }),
   );
   return {
     index: { ...index, totalMs: vectorIndexMs },
     summary,
-    queries: cases.map(({ query, ids, timings }) => ({
+    queries: cases.map(({ query, reference, timings }) => ({
       ...query,
       lexical: {
-        ids: ids.lexical,
-        ...quality(ids.lexical, query.relevant),
+        ids: reference.lexical.ids,
+        path: reference.lexical.path,
+        ...quality(reference.lexical.ids, query.relevant),
         ...latencies(timings.lexical),
       },
       hybrid: {
-        ids: ids.hybrid,
-        ...quality(ids.hybrid, query.relevant),
+        ids: reference.hybrid.ids,
+        path: reference.hybrid.path,
+        ...quality(reference.hybrid.ids, query.relevant),
         ...latencies(timings.hybrid),
       },
     })),
