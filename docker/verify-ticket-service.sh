@@ -18,6 +18,7 @@ export TICKET_IDENTITY_KEY_ID=ticket-ci AI_SERVICE_KEY_ID=ai-ci
 export KNOWLEDGE_KEY_ID=knowledge-ci ANALYTICS_KEY_ID=analytics-ci NOTIFICATIONS_KEY_ID=notifications-ci
 
 project=smartdesk-ticket-ci-$$
+ticket_log_before_search=
 legacy() { docker compose -p "$project" --env-file .env.example -f docker-compose.yml "$@"; }
 compose() {
   if [ "${SD100:-0}" = 1 ]; then
@@ -35,6 +36,7 @@ if [ "${SD100:-0}" = 1 ]; then
   export FRONTEND_ORIGIN=http://127.0.0.1:3100
   export GATEWAY_UPSTREAM_TIMEOUT_MS=2500
   export OPENSEARCH_URL=http://opensearch:9200/
+  export SEARCH_DATABASE_URL=postgres://search_test:search-test-only@postgres:5432/smartdesk
   evidence=frontend/test-results/sd100
   mkdir -p "$evidence"
 fi
@@ -128,6 +130,12 @@ GRANT smartdesk_analytics TO analytics_test WITH INHERIT TRUE, SET FALSE, ADMIN 
 CREATE ROLE notifications_test LOGIN PASSWORD 'notifications-test-only';
 GRANT smartdesk_notifications TO notifications_test WITH INHERIT TRUE, SET FALSE, ADMIN FALSE;
 SQL
+if [ "${SD100:-0}" = 1 ]; then
+  psql <<'SQL'
+CREATE ROLE search_test LOGIN PASSWORD 'search-test-only';
+GRANT smartdesk_search TO search_test WITH INHERIT TRUE, SET FALSE, ADMIN FALSE;
+SQL
+fi
 
 legacy_baseline() {
   AI_EXECUTION_MODE=local legacy -f docker/compose.microservice-baseline.yml "$@"
@@ -473,7 +481,10 @@ NODE
   export OPENSEARCH_ENABLED=true
   compose --profile search up -d --wait --wait-timeout 180 opensearch
   legacy run --rm --no-deps backend npm run search:backfill -- --version 1
-  compose up -d --wait ticket-service
+  compose --profile search build search-indexer
+  ticket_log_before_search=$(compose logs --no-color --no-log-prefix ticket-service)
+  compose --profile search up -d --wait ticket-service search-indexer
+  wait_for_db_value 0 -c "SELECT count(*) FROM search_index_jobs WHERE state <> 'COMPLETED' OR completed_at > statement_timestamp() - interval '2 seconds'"
   probe search-ready
   compose --profile search stop opensearch
   probe search
@@ -505,11 +516,13 @@ assert.equal(login.status, 200);
 await login.body?.cancel();
 NODE
 window_end=$(node -p 'Date.now()')
-compose logs --no-color --no-log-prefix \
-  gateway ticket-service identity-service ai-service knowledge-service analytics-service notifications-service \
-  | node docker/check-service-observability.mjs "$window_start" "$window_end"
+{
+  if [ -n "$ticket_log_before_search" ]; then printf '%s\n' "$ticket_log_before_search"; fi
+  compose logs --no-color --no-log-prefix \
+    gateway ticket-service identity-service ai-service knowledge-service analytics-service notifications-service
+} | node docker/check-service-observability.mjs "$window_start" "$window_end"
 
-compose down
+compose --profile search down
 export AI_EXECUTION_MODE=local
 export IDENTITY_EXECUTION_MODE=local KNOWLEDGE_EXECUTION_MODE=local
 export ANALYTICS_EXECUTION_MODE=local NOTIFICATIONS_EXECUTION_MODE=local

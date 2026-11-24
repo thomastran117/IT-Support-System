@@ -171,6 +171,11 @@ if (mode === 'benchmark') {
     await request('/api/knowledge/search?q=vpn', { token: employee, expected: 503 });
   if (mode === 'notifications')
     await request('/api/notifications', { token: employee, expected: 503 });
+  if (mode === 'search') {
+    const { data } = await request('/api/tickets/search?q=vpn', { token: employee });
+    assert.equal(data.mode, 'fallback');
+    assert.equal(data.reason, 'unavailable');
+  }
   const { data: ticket } = await createTicket(employee, `SD100 manual during ${mode} outage`);
   const categories = (await request('/api/categories', { token: admin })).data;
   const teams = (await request('/api/teams', { token: admin })).data;
