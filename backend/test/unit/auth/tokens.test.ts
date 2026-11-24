@@ -81,4 +81,25 @@ describe('loadEnv auth settings', () => {
   it('rejects non-positive lifetimes', () => {
     expect(() => loadEnv({ ACCESS_TOKEN_TTL_SECONDS: '0' })).toThrow(/ACCESS_TOKEN_TTL_SECONDS/);
   });
+
+  it('configures Ticket without a browser signing key in Identity service mode', () => {
+    const settings = {
+      NODE_ENV: 'production',
+      IDENTITY_EXECUTION_MODE: 'service',
+      IDENTITY_SERVICE_ORIGIN: 'https://identity.internal.test',
+      TICKET_IDENTITY_KEY_ID: 'ticket',
+      TICKET_IDENTITY_PRIVATE_KEY: 'loaded by the Ticket signer',
+      TICKET_SEARCH_CURSOR_SECRET: 'c'.repeat(40),
+    };
+    const env = loadEnv(settings);
+    expect(env.jwtSecret).toBe('');
+    expect(env.ticketSearchCursorSecret).toBe(settings.TICKET_SEARCH_CURSOR_SECRET);
+    expect(env.identity?.identityOrigin.protocol).toBe('https:');
+    expect(() => loadEnv({ ...settings, TICKET_SEARCH_CURSOR_SECRET: '' })).toThrow(
+      /TICKET_SEARCH_CURSOR_SECRET/,
+    );
+    expect(() =>
+      loadEnv({ ...settings, IDENTITY_SERVICE_ORIGIN: 'http://identity.internal.test' }),
+    ).toThrow(/IDENTITY_SERVICE_ORIGIN/);
+  });
 });

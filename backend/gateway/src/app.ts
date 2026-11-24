@@ -82,6 +82,7 @@ export interface GatewayOptions {
   notificationsUpstream?: URL;
   analyticsUpstream?: URL;
   knowledgeUpstream?: URL;
+  identityUpstream?: URL;
   timeoutMs: number;
   frontendOrigin: string;
   trustProxy?: boolean | string[];
@@ -165,6 +166,9 @@ export function buildGateway(opts: GatewayOptions) {
     { prefix: '/api/admin/reports', upstream: opts.analyticsUpstream },
     { prefix: '/api/knowledge', upstream: opts.knowledgeUpstream },
     { prefix: '/api/admin/knowledge', upstream: opts.knowledgeUpstream },
+    { prefix: '/api/auth', upstream: opts.identityUpstream },
+    { prefix: '/api/admin/users', upstream: opts.identityUpstream },
+    { prefix: '/api/admin/audit-log', upstream: opts.identityUpstream },
   ]) {
     if (!upstream) continue;
     app.all(prefix, (req, reply) => proxy(req, reply, upstream));

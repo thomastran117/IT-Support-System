@@ -38,6 +38,13 @@ const app = buildGateway({
           process.env.GATEWAY_KNOWLEDGE_ORIGIN ?? 'http://localhost:4040',
         )
       : undefined,
+  identityUpstream:
+    process.env.IDENTITY_EXECUTION_MODE === 'service'
+      ? parseHttpOrigin(
+          'GATEWAY_IDENTITY_ORIGIN',
+          process.env.GATEWAY_IDENTITY_ORIGIN ?? 'http://localhost:4050',
+        )
+      : undefined,
   timeoutMs,
   trustProxy,
   frontendOrigin: process.env.FRONTEND_ORIGIN ?? 'http://localhost:3000',

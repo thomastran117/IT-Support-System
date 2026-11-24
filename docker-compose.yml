@@ -117,6 +117,11 @@ services:
       JWT_ISSUER: ${JWT_ISSUER:-smartdesk-api}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-smartdesk-web}
       INTERNAL_SERVICE_KEYS: ${INTERNAL_SERVICE_KEYS:-}
+      IDENTITY_EXECUTION_MODE: ${IDENTITY_EXECUTION_MODE:-local}
+      IDENTITY_SERVICE_ORIGIN: ${IDENTITY_SERVICE_ORIGIN:-http://identity-api:4050}
+      TICKET_IDENTITY_KEY_ID: ${TICKET_IDENTITY_KEY_ID:-}
+      TICKET_IDENTITY_PRIVATE_KEY: ${TICKET_IDENTITY_PRIVATE_KEY:-}
+      TICKET_SEARCH_CURSOR_SECRET: ${TICKET_SEARCH_CURSOR_SECRET:-}
       ANALYTICS_EXECUTION_MODE: ${ANALYTICS_EXECUTION_MODE:-local}
       KNOWLEDGE_EXECUTION_MODE: ${KNOWLEDGE_EXECUTION_MODE:-local}
       NOTIFICATIONS_EXECUTION_MODE: ${NOTIFICATIONS_EXECUTION_MODE:-local}
@@ -164,6 +169,8 @@ services:
           path: ./packages/knowledge
         - action: rebuild
           path: ./packages/service-runtime
+        - action: rebuild
+          path: ./packages/identity
 
   gateway:
     build:
@@ -172,6 +179,8 @@ services:
       target: gateway
     environment:
       GATEWAY_UPSTREAM_URL: http://backend-api:4000
+      IDENTITY_EXECUTION_MODE: ${IDENTITY_EXECUTION_MODE:-local}
+      GATEWAY_IDENTITY_ORIGIN: ${IDENTITY_SERVICE_ORIGIN:-http://identity-api:4050}
       NOTIFICATIONS_EXECUTION_MODE: ${NOTIFICATIONS_EXECUTION_MODE:-local}
       GATEWAY_NOTIFICATIONS_ORIGIN: http://notifications-api:4020
       ANALYTICS_EXECUTION_MODE: ${ANALYTICS_EXECUTION_MODE:-local}
@@ -267,6 +276,8 @@ services:
     environment:
       HOST: notifications-api
       NOTIFICATIONS_DATABASE_URL: ${NOTIFICATIONS_DATABASE_URL:-}
+      IDENTITY_EXECUTION_MODE: ${IDENTITY_EXECUTION_MODE:-local}
+      IDENTITY_SERVICE_ORIGIN: ${IDENTITY_SERVICE_ORIGIN:-http://identity-api:4050}
       NOTIFICATIONS_IDENTITY_ORIGIN: ${NOTIFICATIONS_IDENTITY_ORIGIN:-http://backend-api:4000}
       NOTIFICATIONS_KEY_ID: ${NOTIFICATIONS_KEY_ID:-}
       NOTIFICATIONS_PRIVATE_KEY: ${NOTIFICATIONS_PRIVATE_KEY:-}
@@ -317,6 +328,8 @@ services:
     environment:
       HOST: analytics-api
       ANALYTICS_DATABASE_URL: ${ANALYTICS_DATABASE_URL:-}
+      IDENTITY_EXECUTION_MODE: ${IDENTITY_EXECUTION_MODE:-local}
+      IDENTITY_SERVICE_ORIGIN: ${IDENTITY_SERVICE_ORIGIN:-http://identity-api:4050}
       ANALYTICS_IDENTITY_ORIGIN: ${ANALYTICS_IDENTITY_ORIGIN:-http://backend-api:4000}
       ANALYTICS_KEY_ID: ${ANALYTICS_KEY_ID:-}
       ANALYTICS_PRIVATE_KEY: ${ANALYTICS_PRIVATE_KEY:-}
@@ -353,6 +366,8 @@ services:
     environment:
       HOST: 0.0.0.0
       KNOWLEDGE_DATABASE_URL: ${KNOWLEDGE_DATABASE_URL:-}
+      IDENTITY_EXECUTION_MODE: ${IDENTITY_EXECUTION_MODE:-local}
+      IDENTITY_SERVICE_ORIGIN: ${IDENTITY_SERVICE_ORIGIN:-http://identity-api:4050}
       KNOWLEDGE_IDENTITY_ORIGIN: ${KNOWLEDGE_IDENTITY_ORIGIN:-http://backend-api:4000}
       KNOWLEDGE_KEY_ID: ${KNOWLEDGE_KEY_ID:-}
       KNOWLEDGE_PRIVATE_KEY: ${KNOWLEDGE_PRIVATE_KEY:-}
@@ -381,6 +396,45 @@ services:
         aliases: [knowledge-api]
       api:
         aliases: [knowledge-api]
+
+  identity-service:
+    profiles: [identity]
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: identity-service
+    environment:
+      HOST: identity-api
+      IDENTITY_DATABASE_URL: ${IDENTITY_DATABASE_URL:-}
+      REDIS_URL: ${REDIS_URL:-}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      JWT_SECRET: ${IDENTITY_JWT_SECRET:-${JWT_SECRET:-change-me-dev-only-change-me-dev-only}}
+      JWT_ISSUER: ${JWT_ISSUER:-smartdesk-api}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-smartdesk-web}
+      ACCESS_TOKEN_TTL_SECONDS: ${ACCESS_TOKEN_TTL_SECONDS:-900}
+      REFRESH_TOKEN_TTL_SECONDS: ${REFRESH_TOKEN_TTL_SECONDS:-604800}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      INTERNAL_SERVICE_KEYS: ${INTERNAL_SERVICE_KEYS:-}
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://identity-api:4050/health/ready', { signal: AbortSignal.timeout(5000) })
+          .then(response => process.exit(response.ok ? 0 : 1), () => process.exit(1))
+      interval: 5s
+      timeout: 6s
+      start_period: 10s
+      retries: 6
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      internal:
+      api:
+        aliases: [identity-api]
 
   worker:
     build:
@@ -448,6 +502,8 @@ services:
           path: ./packages/knowledge
         - action: rebuild
           path: ./packages/service-runtime
+        - action: rebuild
+          path: ./packages/identity
 
   frontend:
     build:
