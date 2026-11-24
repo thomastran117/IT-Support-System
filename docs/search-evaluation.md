@@ -3,9 +3,9 @@
 ## Measured results
 
 The November 23, 2026 run used SHA `9d6f93b1fe61ac04c67019e8f1d092e13648a0c7` with
-2,516 tickets and 510 articles, of which 458 were published. The environment was Docker Desktop
-29.9.2 on an ARM64 Snapdragon X Plus host, with 8 CPUs and 7.55 GiB visible to Docker. The
-containers ran Node.js 22.23.5, PostgreSQL 16.15, and OpenSearch 3.10.0 with Lucene 10.6.0.
+2,516 tickets and 510 articles, of which 458 were published. The environment used Docker Engine
+29.9.2 via Docker Desktop on an ARM64 Snapdragon X Plus host. Docker had 8 CPUs and 7.55 GiB of
+memory. The containers ran Node.js 22.23.5, PostgreSQL 16.15, and OpenSearch 3.10.0 with Lucene 10.6.0.
 The run used 20 measured rounds per query and engine.
 
 | Collection | Engine              | Requests | p50 (ms) | p95 (ms) | Precision@3 | MRR@3 |
