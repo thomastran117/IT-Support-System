@@ -27,7 +27,15 @@ const stop = () => {
 process.once('SIGINT', stop);
 process.once('SIGTERM', stop);
 await app.listen({ host: config.host, port: config.port });
-consumer = consumeNotificationEvents(prisma, config.pollMs, shutdown.signal, (message) =>
-  app.log.warn(message),
+consumer = consumeNotificationEvents(
+  prisma,
+  config.pollMs,
+  shutdown.signal,
+  (message) => app.log.warn(message),
+  (delivery) =>
+    app.log[delivery.state === 'COMPLETED' ? 'info' : 'warn']({
+      event: 'outbox_delivery',
+      ...delivery,
+    }),
 );
 mailer?.start();

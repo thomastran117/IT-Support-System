@@ -6,6 +6,7 @@ import {
   retrieveKnowledge,
 } from '@smartdesk/ai-analysis';
 import { KNOWLEDGE_RETRIEVAL, knowledgeRetrievalSchema } from '@smartdesk/contracts';
+import { hashCorrelationId } from '@smartdesk/service-runtime';
 import { createSystemServiceClient } from '@smartdesk/service-runtime/service-tokens';
 import { buildAiService } from './app.js';
 import { loadServiceConfig } from './config.js';
@@ -55,14 +56,23 @@ const runner =
     complete: jobs.complete,
     fail: jobs.fail,
     classifyError: classifyTicketJobError,
-    log: (entry) => app.log[entry.errorKind ? 'warn' : 'info'](entry),
+    log: ({ requestId, ...entry }) =>
+      app.log[entry.errorKind ? 'warn' : 'info']({
+        event: 'analysis_job',
+        ...entry,
+        ...(requestId && { analysisCorrelationId: hashCorrelationId(requestId) }),
+        ...((entry.msg === 'queue error' ||
+          entry.msg === 'analysis failure could not be recorded') && {
+          dependency: 'ticket',
+        }),
+      }),
   });
 app.addHook('onClose', async () => {
   await runner?.stop();
 });
 const stop = () => {
-  void app.close().catch((err: unknown) => {
-    app.log.error({ err }, 'AI service shutdown failed');
+  void app.close().catch(() => {
+    app.log.error('AI service shutdown failed');
     process.exitCode = 1;
   });
 };

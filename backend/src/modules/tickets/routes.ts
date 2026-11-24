@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { PrismaClient } from '@smartdesk/db';
+import { hashCorrelationId } from '@smartdesk/service-runtime';
 import type { ReviewResultDto, TicketCommentDto, TicketStatus } from '@smartdesk/contracts';
 import {
   IDEMPOTENCY_KEY_HEADER,
@@ -89,6 +90,11 @@ export const ticketRoutes =
         ...body,
         idempotencyKey,
         ...(analysis ? { enqueueAnalysis: analysis } : {}),
+      });
+      req.log.info({
+        event: created ? 'ticket_created' : 'ticket_replayed',
+        correlationId: hashCorrelationId(req.id),
+        ticketId: ticket.id,
       });
 
       reply.header('cache-control', 'no-store');
@@ -254,6 +260,12 @@ export const ticketRoutes =
         recommendationId: result.recommendationId,
         decision: result.decision,
       };
+      req.log.info({
+        event: 'recommendation_reviewed',
+        correlationId: hashCorrelationId(req.id),
+        ticketId: result.ticket.id,
+        recommendationId: result.recommendationId,
+      });
       reply.header('cache-control', 'no-store');
       return envelope('Recommendation reviewed', dto);
     });

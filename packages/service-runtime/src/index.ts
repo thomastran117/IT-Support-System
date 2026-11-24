@@ -1,3 +1,10 @@
+export {
+  hashCorrelationId,
+  logHttpResponse,
+  requestIdOptions,
+  serviceLogger,
+} from './observability.js';
+
 export function parseHttpOrigin(name: string, value: string): URL {
   const message = `${name} must be an HTTP(S) origin without credentials`;
   let url: URL;

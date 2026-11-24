@@ -5,6 +5,7 @@ unset COMPOSE_PROFILES
 export BACKEND_PORT=127.0.0.1:0
 export POSTGRES_USER=smartdesk POSTGRES_PASSWORD=smartdesk POSTGRES_DB=smartdesk
 export AI_PROVIDER=fake AI_EXECUTION_MODE=service WORKER_POLL_INTERVAL_MS=200
+export LOG_LEVEL=info AI_SERVICE_API_KEY=SD099_FIXTURE_PROVIDER_KEY
 export OPENSEARCH_ENABLED=false EMAIL_TRANSPORT=none REDIS_URL=
 export JWT_SECRET=ticket-ci-shared-session-key-for-test-fixtures
 export TICKET_SEARCH_CURSOR_SECRET=ticket-ci-search-key-for-test-fixtures-only
@@ -208,9 +209,11 @@ if (phase === 'manual') {
   process.stdout.write(ticket.id);
 }
 if (phase === 'assisted') {
-  const { body: { data: ticket } } = await post(root, token, {
-    title: 'VPN disconnects repeatedly', description: 'VPN client drops every hour.',
-  }, 201);
+  const created = await post(root, token, {
+    title: 'VPN disconnects repeatedly', description: 'VPN client drops every hour. SD099_PRIVATE_TICKET_DETAIL',
+  }, 201, { 'x-request-id': 'sd099-create' });
+  assert.equal(created.headers.get('x-request-id'), 'sd099-create');
+  const ticket = created.body.data;
   const path = root + '/' + ticket.id;
   const deadline = Date.now() + 45_000;
   const retryUntil = async (getValue, description) => {
@@ -226,7 +229,11 @@ if (phase === 'assisted') {
   const reviewPath = path + '/recommendations/' + proposal.id + '/review';
   await post(reviewPath, adminToken, { decision: 'ACCEPTED', expectedVersion: ticket.version + 1 }, 409);
   assert.equal((await get(path + '/recommendations', adminToken))[0].review.status, 'PENDING');
-  const review = (await post(reviewPath, adminToken, { decision: 'ACCEPTED', expectedVersion: ticket.version })).body.data;
+  const reviewed = await post(reviewPath, adminToken, { decision: 'ACCEPTED', expectedVersion: ticket.version }, 200, {
+    'x-request-id': 'sd099-review',
+  });
+  assert.equal(reviewed.headers.get('x-request-id'), 'sd099-review');
+  const review = reviewed.body.data;
   assert.equal(review.recommendationId, proposal.id);
   assert.equal(review.ticket.version, ticket.version + 1);
   assert.equal(review.ticket.categoryId, proposal.proposed.category.id);
@@ -239,6 +246,19 @@ if (phase === 'assisted') {
     ({ ticketId, type }) => ticketId === process.env.MANUAL_TICKET_ID && type === 'TICKET_RESOLVED',
   ), 'Notifications did not recover its queued resolution');
   await api('/api/notifications/' + notice.id + '/read', { method: 'PATCH', token });
+  await retryUntil(async () => (await get('/api/notifications?limit=50', token)).items.find(
+    ({ ticketId, type }) => ticketId === ticket.id && type === 'TICKET_ASSIGNED',
+  ), 'Notifications did not deliver the accepted recommendation routing');
+  await api('/api/auth/me?trace=SD099_PRIVATE_QUERY', {
+    expected: 401,
+    headers: { authorization: 'Bearer SD099_PRIVATE_BEARER', cookie: 'session=SD099_PRIVATE_COOKIE' },
+  });
+  const aiReady = await fetch('http://ai-service:4010/health/ready', {
+    signal: AbortSignal.timeout(5000),
+    headers: { 'x-request-id': 'sd099-ai-ready' },
+  });
+  assert.equal(aiReady.status, 200);
+  await aiReady.body?.cancel();
   const saved = {
     assistedId: ticket.id,
     manual: await get(manualPath, staffToken),
@@ -275,6 +295,7 @@ NODE
 
 compose up -d --wait gateway identity-service knowledge-service analytics-service
 wait_for_gateway compose
+window_start=$(node -p 'Date.now()')
 manual_id=$(journey compose manual ticket-service)
 echo 'Scoped Ticket completed the manual workflow with AI and Notifications stopped.'
 
@@ -284,9 +305,20 @@ echo 'AI completed and Ticket reviewed a recommendation. Notifications delivered
 compose stop ticket-service
 compose exec -T gateway node --input-type=module - <<'NODE'
 import assert from 'node:assert/strict';
-const response = await fetch('http://127.0.0.1:4000/api/tickets', { signal: AbortSignal.timeout(15_000) });
+const response = await fetch('http://127.0.0.1:4000/api/tickets', {
+  signal: AbortSignal.timeout(15_000),
+  headers: { 'x-request-id': 'sd099-ticket-outage' },
+});
 assert.equal(response.status, 503);
+assert.equal(response.headers.get('x-request-id'), 'sd099-ticket-outage');
 await response.body?.cancel();
+const aiReady = await fetch('http://ai-service:4010/health/ready', {
+  signal: AbortSignal.timeout(5000),
+  headers: { 'x-request-id': 'sd099-ai-outage' },
+});
+assert.equal(aiReady.status, 503);
+assert.equal(aiReady.headers.get('x-request-id'), 'sd099-ai-outage');
+await aiReady.body?.cancel();
 const login = await fetch('http://127.0.0.1:4000/api/auth/login', {
   method: 'POST', signal: AbortSignal.timeout(5000),
   headers: { 'content-type': 'application/json' },
@@ -295,6 +327,10 @@ const login = await fetch('http://127.0.0.1:4000/api/auth/login', {
 assert.equal(login.status, 200);
 await login.body?.cancel();
 NODE
+window_end=$(node -p 'Date.now()')
+compose logs --no-color --no-log-prefix \
+  gateway ticket-service identity-service ai-service knowledge-service analytics-service notifications-service \
+  | node docker/check-service-observability.mjs "$window_start" "$window_end"
 
 compose down
 export AI_EXECUTION_MODE=local

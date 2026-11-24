@@ -1,7 +1,7 @@
 import { analysisLeaseMs, analysisTimeoutMs } from '@smartdesk/ai-analysis';
 import { createPrisma } from '@smartdesk/db';
 import { KNOWLEDGE_RETRIEVAL, knowledgeRetrievalSchema } from '@smartdesk/contracts';
-import { parseHttpOrigin } from '@smartdesk/service-runtime';
+import { hashCorrelationId, parseHttpOrigin } from '@smartdesk/service-runtime';
 import { createSystemServiceClient } from '@smartdesk/service-runtime/service-tokens';
 import { loadEnv } from './config/env.js';
 import { createAnalysisService } from './modules/ai/analysisService.js';
@@ -54,8 +54,13 @@ if (remoteKnowledge) {
     call({ terms }, knowledgeRetrievalSchema.parse, requestId);
 }
 
-const write = (level: 'info' | 'error', entry: JobLogEntry) =>
-  console[level === 'error' ? 'error' : 'log'](JSON.stringify({ level, ...entry }));
+const write = (
+  level: 'info' | 'error',
+  entry: JobLogEntry & { event?: 'analysis_job'; analysisCorrelationId?: string },
+) =>
+  console[level === 'error' ? 'error' : 'log'](
+    JSON.stringify({ level, time: Date.now(), service: 'backend-worker', ...entry }),
+  );
 
 const handlerTimeoutMs = analysisTimeoutMs(ai);
 const runner =
@@ -76,8 +81,12 @@ const runner =
           handlerTimeoutMs,
           leaseMs: analysisLeaseMs(ai),
         },
-        log: (entry) =>
-          write(entry.errorKind && entry.state !== 'COMPLETED' ? 'error' : 'info', entry),
+        log: ({ requestId, ...entry }) =>
+          write(entry.errorKind ? 'error' : 'info', {
+            event: 'analysis_job',
+            ...entry,
+            ...(requestId && { analysisCorrelationId: hashCorrelationId(requestId) }),
+          }),
       })
     : null;
 

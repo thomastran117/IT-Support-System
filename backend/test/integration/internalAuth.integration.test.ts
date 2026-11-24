@@ -1,7 +1,7 @@
 import { Writable } from 'node:stream';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { buildApp, REDACT_PATHS } from '../../src/app.js';
+import { buildApp } from '../../src/app.js';
 import { createInternalGuard, DELEGATED_USER_TOKEN_HEADER } from '../../src/auth/internalGuard.js';
 import { createServiceTokenVerifier } from '../../src/auth/serviceTokens.js';
 import { TokenService } from '../../src/auth/tokens.js';
@@ -46,7 +46,6 @@ describe.skipIf(!testDatabaseUrl)('internal service authentication', () => {
       checkCache,
       logger: {
         level: 'info',
-        redact: REDACT_PATHS,
         stream: new Writable({
           write(chunk, _encoding, done) {
             logs.push(String(chunk));

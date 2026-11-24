@@ -1,8 +1,8 @@
-import { randomUUID } from 'node:crypto';
 import cors from '@fastify/cors';
 import type { PrismaClient } from '@smartdesk/db';
 import { createInboxRoutes } from '@smartdesk/notifications';
-import Fastify from 'fastify';
+import { logHttpResponse, requestIdOptions, serviceLogger } from '@smartdesk/service-runtime';
+import Fastify, { LogController } from 'fastify';
 import { InboxRequestError } from './identity.js';
 
 export async function buildNotificationsApp(options: {
@@ -12,13 +12,11 @@ export async function buildNotificationsApp(options: {
   logLevel: string;
 }) {
   const app = Fastify({
-    logger: {
-      level: options.logLevel,
-      redact: ['req.headers.authorization', 'req.headers.cookie'],
-    },
-    requestIdHeader: 'x-request-id',
-    genReqId: () => randomUUID(),
+    ...requestIdOptions,
+    logController: new LogController({ disableRequestLogging: true }),
+    logger: serviceLogger('notifications', options.logLevel),
   });
+  app.addHook('onResponse', logHttpResponse);
   await app.register(cors, {
     origin: options.frontendOrigin,
     credentials: true,

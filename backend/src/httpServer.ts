@@ -6,7 +6,10 @@ import { createRedisConnection } from './cache/redisCache.js';
 import { closePrisma, initPrisma } from './db/client.js';
 import { createFallbackRateLimitStore } from './rateLimit/fallbackStore.js';
 
-export async function startHttpServer(env: Env): Promise<void> {
+export async function startHttpServer(
+  env: Env,
+  service: 'ticket' | 'backend' = 'backend',
+): Promise<void> {
   const prisma = initPrisma(env.databaseUrl);
   const cache = initCache(env.redisUrl);
   // A connection of its own, independent of the cache client above: an issue with one must never
@@ -14,6 +17,7 @@ export async function startHttpServer(env: Env): Promise<void> {
   const rateLimitRedis = env.redisUrl ? createRedisConnection({ url: env.redisUrl }) : undefined;
   const app = await buildApp({
     env,
+    service,
     prisma,
     checkDb: prismaCheck(prisma),
     checkCache: () => cache.ping(),
@@ -33,8 +37,8 @@ export async function startHttpServer(env: Env): Promise<void> {
       await closeCache();
       rateLimitRedis?.disconnect();
       process.exit(0);
-    } catch (err) {
-      app.log.error({ err }, 'error during shutdown');
+    } catch {
+      app.log.error('error during shutdown');
       process.exit(1);
     }
   }

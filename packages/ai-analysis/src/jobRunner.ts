@@ -5,6 +5,7 @@ interface Job {
   id: string;
   ticketId: string;
   requestId: string;
+  correlationId?: string | null;
   attempts: number;
 }
 
@@ -22,10 +23,12 @@ export interface JobLogEntry {
   jobId?: string;
   ticketId?: string;
   requestId?: string;
+  originCorrelationId?: string;
   attempt?: number;
   state?: string;
   errorKind?: string;
   retrieval?: AnalysisRetrieval;
+  durationMs?: number;
 }
 
 export interface AnalysisRunnerDeps<T extends Job> {
@@ -64,39 +67,42 @@ export function createAnalysisRunner<T extends Job>(deps: AnalysisRunnerDeps<T>)
     jobId: job.id,
     ticketId: job.ticketId,
     requestId: job.requestId,
+    ...(job.correlationId && { originCorrelationId: job.correlationId }),
     attempt: job.attempts,
   });
 
   async function process(job: T): Promise<void> {
+    const started = performance.now();
     log({ msg: 'analysis started', ...ids(job) });
-    let draft: AnalysisDraft;
     try {
-      draft = await withTimeout(deps.analyse(job), config.handlerTimeoutMs);
-    } catch (err) {
-      const failure = classifyError(err);
-      const state = await deps.fail(job, failure);
-      log({
-        msg: state ? 'analysis failed' : 'analysis failed (lease lost)',
-        ...ids(job),
-        state: state ?? 'LOST',
-        errorKind: failure.kind,
-      });
-      return;
-    }
-
-    try {
+      const draft = await withTimeout(deps.analyse(job), config.handlerTimeoutMs);
       const done = await deps.complete(job, draft);
       log({
         msg: done ? 'analysis completed' : 'analysis result discarded (lease lost)',
         ...ids(job),
         state: done ? 'COMPLETED' : 'LOST',
         retrieval: draft.retrieval,
+        durationMs: performance.now() - started,
       });
     } catch (err) {
       // The queue rejects failure reports after completion, including when its response was lost.
       const failure = classifyError(err);
-      await deps.fail(job, failure);
-      log({ msg: 'analysis failed', ...ids(job), errorKind: failure.kind });
+      const state = await deps.fail(job, failure).catch((updateError: unknown) => {
+        log({
+          msg: 'analysis failure could not be recorded',
+          ...ids(job),
+          errorKind: classifyError(updateError).kind,
+          durationMs: performance.now() - started,
+        });
+        throw updateError;
+      });
+      log({
+        msg: state ? 'analysis failed' : 'analysis failed (lease lost)',
+        ...ids(job),
+        state: state ?? 'LOST',
+        errorKind: failure.kind,
+        durationMs: performance.now() - started,
+      });
     }
   }
 

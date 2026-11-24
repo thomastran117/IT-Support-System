@@ -14,6 +14,7 @@ import {
   type AnalysisJobIdentityV1,
 } from '@smartdesk/contracts';
 import { importPKCS8, SignJWT } from 'jose';
+import { randomUUID } from 'node:crypto';
 
 type Operation = keyof typeof AI_JOB_SCOPES;
 type Lease = {
@@ -71,7 +72,8 @@ export async function createTicketJobs(opts: {
         method: 'POST',
         headers: {
           authorization: `Bearer ${token}`,
-          ...(body ? { 'content-type': 'application/json', 'x-request-id': body.requestId } : {}),
+          'x-request-id': body?.requestId ?? randomUUID(),
+          ...(body ? { 'content-type': 'application/json' } : {}),
         },
         ...(body ? { body: JSON.stringify(body) } : {}),
         redirect: 'error',
