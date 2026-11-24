@@ -1,4 +1,4 @@
-import { Prisma, type PrismaClient } from '@smartdesk/db';
+import { Prisma, type PrismaClient, type TransactionClient } from '@smartdesk/db';
 import type { Db } from '../transaction.js';
 import { searchClaimsPaused } from './searchRebuilds.js';
 import type { SearchIndexEntityType } from '@smartdesk/db';
