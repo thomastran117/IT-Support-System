@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:22-alpine AS dependencies
+ARG NODE_IMAGE=node:22-alpine
+FROM ${NODE_IMAGE} AS dependencies
 WORKDIR /app
 
 # Each package owns its lockfile. Local file dependencies only need the shared
@@ -42,6 +43,16 @@ CMD ["./backend/node_modules/.bin/prettier", "--check", ".", "--config", ".prett
 FROM source AS backend-ci
 WORKDIR /app
 CMD ["sh", "/app/docker/verify-backend.sh"]
+
+# Opt-in offline evaluation uses glibc for the local ONNX runtime.
+FROM source AS hybrid-knowledge-experiment
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl \
+  && rm -rf /var/lib/apt/lists/* \
+  && npm rebuild --prefix backend @prisma/engines \
+  && npm ci --prefix backend/experiments/hybrid-knowledge
+WORKDIR /app/backend
+CMD ["./node_modules/.bin/tsx", "experiments/hybrid-knowledge/evaluate.ts"]
 
 # Playwright's supported Ubuntu image supplies Chromium and its system libraries.
 # Reinstall the frontend packages here so native dependencies match glibc rather

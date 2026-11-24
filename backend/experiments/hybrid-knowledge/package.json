@@ -1,0 +1,9 @@
+{
+  "name": "@smartdesk/hybrid-knowledge-experiment",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@huggingface/transformers": "4.3.2"
+  }
+}
