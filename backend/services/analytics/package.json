@@ -1,0 +1,24 @@
+{
+  "name": "@smartdesk/analytics-service",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.4.3",
+    "@smartdesk/analytics": "file:../../../packages/analytics",
+    "@smartdesk/contracts": "file:../../../packages/contracts",
+    "@smartdesk/db": "file:../../../packages/db",
+    "@smartdesk/service-runtime": "file:../../../packages/service-runtime",
+    "fastify": "^5.12.8"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3"
+  }
+}

@@ -80,6 +80,7 @@ const unavailableCodes = new Set([
 export interface GatewayOptions {
   upstream: URL;
   notificationsUpstream?: URL;
+  analyticsUpstream?: URL;
   timeoutMs: number;
   frontendOrigin: string;
   trustProxy?: boolean | string[];
@@ -158,11 +159,13 @@ export function buildGateway(opts: GatewayOptions) {
   }
 
   for (const path of ['/api', '/api/*', '/health/live', '/health/ready']) app.all(path, proxy);
-  const notifications = opts.notificationsUpstream;
-  if (notifications) {
-    for (const path of ['/api/notifications', '/api/notifications/*']) {
-      app.all(path, (req, reply) => proxy(req, reply, notifications));
-    }
+  for (const { prefix, upstream } of [
+    { prefix: '/api/notifications', upstream: opts.notificationsUpstream },
+    { prefix: '/api/admin/reports', upstream: opts.analyticsUpstream },
+  ]) {
+    if (!upstream) continue;
+    app.all(prefix, (req, reply) => proxy(req, reply, upstream));
+    app.all(`${prefix}/*`, (req, reply) => proxy(req, reply, upstream));
   }
   return app;
 }

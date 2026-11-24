@@ -286,7 +286,7 @@ be strictly before `end` and the window may not exceed 366 days (`400` otherwise
 Averages and percentages are `null` when the denominator is zero (never `0`). Counts are numbers.
 Units are in `units`: routing and first response in minutes, resolution in hours, rates in percent.
 AI processing latency is not measured as API time. The queries are the version-controlled
-`backend/sql/reports/Q05`-`Q11` files.
+`packages/analytics/sql/Q05`–`Q11` files.
 
 The administrator UI for this endpoint is `/admin/reports`. It takes inclusive UTC calendar days
 (`?from=YYYY-MM-DD&to=YYYY-MM-DD`) and requests the half-open window ending at the start of the day

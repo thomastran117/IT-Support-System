@@ -6,6 +6,7 @@ import Fastify, { type FastifyContextConfig, type FastifyInstance } from 'fastif
 import {
   AI_JOB_PATH,
   AI_JOB_SCOPES,
+  ANALYTICS_IDENTITY,
   API_PREFIX,
   NOTIFICATION_IDENTITY,
 } from '@smartdesk/contracts';
@@ -139,30 +140,36 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
           { prefix: AI_JOB_PATH },
         );
       }
-      if (opts.env.notificationsExecutionMode === 'service') {
-        const identity = NOTIFICATION_IDENTITY;
+      const identityRoutes = [
+        { mode: opts.env.notificationsExecutionMode, identity: NOTIFICATION_IDENTITY },
+        { mode: opts.env.analyticsExecutionMode, identity: ANALYTICS_IDENTITY },
+      ].filter(({ mode }) => mode === 'service');
+      if (identityRoutes.length > 0) {
         const identityVerifier = await createServiceTokenVerifier(
-          identity.audience,
+          ANALYTICS_IDENTITY.audience,
           opts.env.internalServiceKeys,
         );
         const identityGuard = createInternalGuard(opts.prisma, tokens, identityVerifier);
-        app.get(
-          identity.path,
-          {
-            config: privateIdentityRoute,
-            exposeHeadRoute: false,
-            preHandler: identityGuard(identity.scope, 'user'),
-          },
-          async (req, reply) => {
-            const actor = req.internalActor;
-            if (actor?.kind !== 'user') throw new HttpError(403, 'Delegated user required');
-            reply.header('cache-control', 'no-store');
-            return { recipientId: actor.principal.id };
-          },
-        );
-        app.options(identity.path, { config: privateIdentityRoute }, (_req, reply) =>
-          reply.callNotFound(),
-        );
+        for (const { identity } of identityRoutes) {
+          app.get(
+            identity.path,
+            {
+              config: privateIdentityRoute,
+              exposeHeadRoute: false,
+              preHandler: identityGuard(identity.scope, 'user'),
+            },
+            async (req, reply) => {
+              const actor = req.internalActor;
+              if (actor?.kind !== 'user') throw new HttpError(403, 'Delegated user required');
+              reply.header('cache-control', 'no-store');
+              const { id, role } = actor.principal;
+              return identity === NOTIFICATION_IDENTITY ? { recipientId: id } : { id, role };
+            },
+          );
+          app.options(identity.path, { config: privateIdentityRoute }, (_req, reply) =>
+            reply.callNotFound(),
+          );
+        }
       }
     }
     await app.register(
@@ -175,7 +182,11 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
       { prefix: `${API_PREFIX}/auth` },
     );
     await app.register(adminRoutes(opts.prisma), { prefix: `${API_PREFIX}/admin` });
-    await app.register(reportRoutes(opts.prisma, cache), { prefix: `${API_PREFIX}/admin/reports` });
+    if (opts.env.analyticsExecutionMode === 'local') {
+      await app.register(reportRoutes(opts.prisma, cache), {
+        prefix: `${API_PREFIX}/admin/reports`,
+      });
+    }
     await app.register(ticketLabelRoutes(opts.prisma), { prefix: `${API_PREFIX}/admin/tickets` });
     await app.register(labelListRoutes(opts.prisma), {
       prefix: `${API_PREFIX}/admin/classification-labels`,

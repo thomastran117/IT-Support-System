@@ -24,6 +24,13 @@ const app = buildGateway({
           process.env.GATEWAY_NOTIFICATIONS_ORIGIN ?? 'http://localhost:4020',
         )
       : undefined,
+  analyticsUpstream:
+    process.env.ANALYTICS_EXECUTION_MODE === 'service'
+      ? parseHttpOrigin(
+          'GATEWAY_ANALYTICS_ORIGIN',
+          process.env.GATEWAY_ANALYTICS_ORIGIN ?? 'http://localhost:4030',
+        )
+      : undefined,
   timeoutMs,
   trustProxy,
   frontendOrigin: process.env.FRONTEND_ORIGIN ?? 'http://localhost:3000',

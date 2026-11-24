@@ -87,7 +87,7 @@ comments, events, recommendations, articles, and labels used by the UI and repor
 shared credential is documented in [Authentication and authorization](authentication.md).
 
 Operational SQL lives in `backend/sql/queries`; reporting and AI-evaluation SQL lives in
-`backend/sql/reports`. Repository methods add authorization scope before returning operational data.
+`packages/analytics/sql`. Repository methods add authorization scope before returning operational data.
 
 The [service access migration](database/service-access.md) documents the E14 ownership matrix,
 optional PostgreSQL grants, and rollback steps.

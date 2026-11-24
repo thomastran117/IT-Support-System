@@ -117,6 +117,7 @@ services:
       JWT_ISSUER: ${JWT_ISSUER:-smartdesk-api}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-smartdesk-web}
       INTERNAL_SERVICE_KEYS: ${INTERNAL_SERVICE_KEYS:-}
+      ANALYTICS_EXECUTION_MODE: ${ANALYTICS_EXECUTION_MODE:-local}
       NOTIFICATIONS_EXECUTION_MODE: ${NOTIFICATIONS_EXECUTION_MODE:-local}
       ACCESS_TOKEN_TTL_SECONDS: ${ACCESS_TOKEN_TTL_SECONDS:-900}
       REFRESH_TOKEN_TTL_SECONDS: ${REFRESH_TOKEN_TTL_SECONDS:-604800}
@@ -156,6 +157,8 @@ services:
           path: ./packages/db
         - action: rebuild
           path: ./packages/ai-analysis
+        - action: rebuild
+          path: ./packages/analytics
 
   gateway:
     build:
@@ -166,6 +169,8 @@ services:
       GATEWAY_UPSTREAM_URL: http://backend-api:4000
       NOTIFICATIONS_EXECUTION_MODE: ${NOTIFICATIONS_EXECUTION_MODE:-local}
       GATEWAY_NOTIFICATIONS_ORIGIN: http://notifications-api:4020
+      ANALYTICS_EXECUTION_MODE: ${ANALYTICS_EXECUTION_MODE:-local}
+      GATEWAY_ANALYTICS_ORIGIN: http://analytics-api:4030
       GATEWAY_UPSTREAM_TIMEOUT_MS: ${GATEWAY_UPSTREAM_TIMEOUT_MS:-10000}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
       LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -293,6 +298,42 @@ services:
       api:
         aliases: [notifications-api]
       notifications-egress:
+
+  analytics-service:
+    profiles: [analytics]
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: analytics-service
+    environment:
+      HOST: analytics-api
+      ANALYTICS_DATABASE_URL: ${ANALYTICS_DATABASE_URL:-}
+      ANALYTICS_IDENTITY_ORIGIN: ${ANALYTICS_IDENTITY_ORIGIN:-http://backend-api:4000}
+      ANALYTICS_KEY_ID: ${ANALYTICS_KEY_ID:-}
+      ANALYTICS_PRIVATE_KEY: ${ANALYTICS_PRIVATE_KEY:-}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://analytics-api:4030/health/ready', { signal: AbortSignal.timeout(5000) })
+          .then(response => process.exit(response.ok ? 0 : 1), () => process.exit(1))
+      interval: 5s
+      timeout: 6s
+      start_period: 10s
+      retries: 6
+    depends_on:
+      backend:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    networks:
+      internal:
+      api:
+        aliases: [analytics-api]
 
   worker:
     build:

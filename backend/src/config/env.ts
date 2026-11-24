@@ -30,6 +30,7 @@ export interface Env {
   ai: AiConfig;
   aiExecutionMode: ReturnType<typeof loadAiExecutionMode>;
   notificationsExecutionMode: 'local' | 'service';
+  analyticsExecutionMode: 'local' | 'service';
   /** Optional email channel for notifications (SD-043). Off unless EMAIL_TRANSPORT=smtp. */
   email: EmailConfig;
 }
@@ -102,6 +103,10 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   if (notificationsExecutionMode !== 'local' && notificationsExecutionMode !== 'service') {
     throw new Error('NOTIFICATIONS_EXECUTION_MODE must be local or service');
   }
+  const analyticsExecutionMode = source.ANALYTICS_EXECUTION_MODE || 'local';
+  if (analyticsExecutionMode !== 'local' && analyticsExecutionMode !== 'service') {
+    throw new Error('ANALYTICS_EXECUTION_MODE must be local or service');
+  }
 
   let jwtSecret = source.JWT_SECRET;
   if (production) {
@@ -133,6 +138,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     ai: loadAiConfig(source, aiExecutionMode === 'local'),
     aiExecutionMode,
     notificationsExecutionMode,
+    analyticsExecutionMode,
     email: loadEmailConfig(
       notificationsExecutionMode === 'local' ? source : { ...source, EMAIL_TRANSPORT: 'none' },
     ),

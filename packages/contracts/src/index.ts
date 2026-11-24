@@ -945,6 +945,13 @@ export const NOTIFICATION_IDENTITY = {
 } as const;
 export const notificationRecipientSchema = z.strictObject({ recipientId: z.guid() });
 
+export const ANALYTICS_IDENTITY = {
+  audience: 'smartdesk-identity',
+  scope: 'identity:analytics-principal',
+  path: '/internal/identity/analytics-principal',
+} as const;
+export const analyticsPrincipalSchema = z.strictObject({ id: z.guid(), role: roleSchema });
+
 // Command for the authenticated AI-to-Ticket completion path. The draft belongs in the request,
 // while recommendation.ready carries only the identifiers of the result after commit.
 export const analysisJobIdentityV1Schema = z.strictObject({
