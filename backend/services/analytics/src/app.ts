@@ -1,10 +1,10 @@
-import { randomUUID } from 'node:crypto';
 import cors from '@fastify/cors';
 import { createReportQueries, createReportRoutes } from '@smartdesk/analytics';
 import { API_PREFIX, type Role } from '@smartdesk/contracts';
 import type { PrismaClient } from '@smartdesk/db';
 import { ServiceRequestError } from '@smartdesk/service-runtime/delegated-identity';
-import Fastify from 'fastify';
+import { logHttpResponse, requestIdOptions, serviceLogger } from '@smartdesk/service-runtime';
+import Fastify, { LogController } from 'fastify';
 
 const queries = createReportQueries({
   forbidden: () =>
@@ -24,13 +24,11 @@ export async function buildAnalyticsApp(options: {
   logLevel: string;
 }) {
   const app = Fastify({
-    logger: {
-      level: options.logLevel,
-      redact: ['req.headers.authorization', 'req.headers.cookie'],
-    },
-    requestIdHeader: 'x-request-id',
-    genReqId: () => randomUUID(),
+    ...requestIdOptions,
+    logController: new LogController({ disableRequestLogging: true }),
+    logger: serviceLogger('analytics', options.logLevel),
   });
+  app.addHook('onResponse', logHttpResponse);
   await app.register(cors, {
     origin: options.frontendOrigin,
     credentials: true,

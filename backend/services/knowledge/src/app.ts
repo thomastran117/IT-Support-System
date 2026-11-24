@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import cors from '@fastify/cors';
 import {
   API_PREFIX,
@@ -16,7 +15,12 @@ import {
 } from '@smartdesk/knowledge';
 import { ServiceRequestError } from '@smartdesk/service-runtime/delegated-identity';
 import type { VerifyServiceToken } from '@smartdesk/service-runtime/service-tokens';
-import Fastify, { type FastifyContextConfig, type preHandlerAsyncHookHandler } from 'fastify';
+import { logHttpResponse, requestIdOptions, serviceLogger } from '@smartdesk/service-runtime';
+import Fastify, {
+  LogController,
+  type FastifyContextConfig,
+  type preHandlerAsyncHookHandler,
+} from 'fastify';
 
 const privateRoute: FastifyContextConfig & { cors: false } = { cors: false };
 const statusNames: Record<number, string> = {
@@ -48,13 +52,11 @@ export async function buildKnowledgeApp(options: {
 }) {
   const { prisma, resolvePrincipal, verifyRetrievalToken } = options;
   const app = Fastify({
-    logger: {
-      level: options.logLevel,
-      redact: ['req.headers.authorization', 'req.headers.cookie', 'req.body.body'],
-    },
-    requestIdHeader: 'x-request-id',
-    genReqId: () => randomUUID(),
+    ...requestIdOptions,
+    logController: new LogController({ disableRequestLogging: true }),
+    logger: serviceLogger('knowledge', options.logLevel),
   });
+  app.addHook('onResponse', logHttpResponse);
   await app.register(cors, {
     origin: options.frontendOrigin,
     credentials: true,

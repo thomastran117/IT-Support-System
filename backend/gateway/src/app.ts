@@ -1,7 +1,17 @@
-import { randomUUID } from 'node:crypto';
 import { request as httpRequest, type IncomingMessage } from 'node:http';
 import { request as httpsRequest } from 'node:https';
-import Fastify, { type FastifyError, type FastifyReply, type FastifyRequest } from 'fastify';
+import {
+  hashCorrelationId,
+  logHttpResponse,
+  requestIdOptions,
+  serviceLogger,
+} from '@smartdesk/service-runtime';
+import Fastify, {
+  LogController,
+  type FastifyError,
+  type FastifyReply,
+  type FastifyRequest,
+} from 'fastify';
 import { resolvePublicRoutes } from './routing.js';
 
 const hopByHop = [
@@ -104,11 +114,12 @@ export function buildGateway(opts: GatewayOptions) {
     legacy,
   );
   const app = Fastify({
-    logger: opts.logLevel ? { level: opts.logLevel } : false,
+    ...requestIdOptions,
+    logController: new LogController({ disableRequestLogging: true }),
+    logger: opts.logLevel ? serviceLogger('gateway', opts.logLevel) : false,
     trustProxy: opts.trustProxy ?? false,
-    requestIdHeader: 'x-request-id',
-    genReqId: () => randomUUID(),
   });
+  app.addHook('onResponse', logHttpResponse);
 
   // The backend owns CORS on proxied responses. Match its fixed origin and credential headers
   // on gateway-generated errors so callers from the configured frontend can read the envelope.
@@ -149,7 +160,21 @@ export function buildGateway(opts: GatewayOptions) {
     (_req, body, done) => done(null, body),
   );
 
-  async function proxy(req: FastifyRequest, reply: FastifyReply, upstream: URL) {
+  async function proxy(
+    req: FastifyRequest,
+    reply: FastifyReply,
+    upstream: URL,
+    dependency: string,
+  ) {
+    const reportFailure = (status: number, errorKind: string) =>
+      req.log.warn({
+        event: 'dependency_failure',
+        correlationId: hashCorrelationId(req.id),
+        dependency,
+        status,
+        errorKind,
+        durationMs: reply.elapsedTime,
+      });
     const timeout = AbortSignal.timeout(opts.timeoutMs);
     const disconnect = new AbortController();
     reply.raw.once('close', () => {
@@ -165,19 +190,26 @@ export function buildGateway(opts: GatewayOptions) {
       const unavailable = timeout.aborted || unavailableCodes.has(code ?? '');
       const status = unavailable ? 503 : 502;
       const message = unavailable ? 'API temporarily unavailable' : 'Invalid upstream response';
-      req.log.warn({ status, code }, message);
+      reportFailure(
+        status,
+        timeout.aborted ? 'timeout' : unavailable ? 'unreachable' : 'invalid_response',
+      );
       return sendError(reply, status, message);
     }
 
-    reply.code(response.statusCode ?? 502).headers(endToEndHeaders(response.headers));
+    const status = response.statusCode ?? 502;
+    if (status >= 500) reportFailure(status, 'upstream_error');
+    reply.code(status).headers(endToEndHeaders(response.headers));
     return reply.send(response);
   }
 
   if (legacy) {
-    for (const path of ['/api', '/api/*']) app.all(path, (req, reply) => proxy(req, reply, legacy));
+    for (const path of ['/api', '/api/*']) {
+      app.all(path, (req, reply) => proxy(req, reply, legacy, 'backend'));
+    }
   }
-  for (const { path, origin } of routes) {
-    app.all(path, (req, reply) => proxy(req, reply, origin));
+  for (const { path, origin, service } of routes) {
+    app.all(path, (req, reply) => proxy(req, reply, origin, service));
   }
   return app;
 }

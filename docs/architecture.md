@@ -69,6 +69,9 @@ supplies its own current team memberships. [Identity service](architecture/ident
 The isolated Ticket overlay runs the ticket, triage, and catalog handlers over the scoped
 Ticket login. The gateway uses a registry for public routes. [Ticket service](architecture/ticket-service.md)
 
+The gateway, services, and workers use request, job, and event IDs to trace ticket workflows
+and diagnose outages. [Cross-service observability](architecture/service-observability.md)
+
 ## AI service container
 
 `backend/services/ai` is the first package under `backend/services/`. Its Compose profile

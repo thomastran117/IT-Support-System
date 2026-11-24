@@ -8,6 +8,7 @@ export interface AnalysisJob {
   id: string;
   ticketId: string;
   requestId: string;
+  correlationId: string | null;
   state: AnalysisJobState;
   attempts: number;
   maxAttempts: number;
@@ -26,6 +27,7 @@ interface JobRow {
   job_id: string;
   ticket_id: string;
   request_id: string;
+  correlation_id: string | null;
   state: AnalysisJobState;
   attempts: number;
   max_attempts: number;
@@ -42,6 +44,7 @@ const toJob = (r: JobRow): AnalysisJob => ({
   id: r.job_id,
   ticketId: r.ticket_id,
   requestId: r.request_id,
+  correlationId: r.correlation_id,
   state: r.state,
   attempts: r.attempts,
   maxAttempts: r.max_attempts,

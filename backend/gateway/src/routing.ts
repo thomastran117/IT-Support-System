@@ -22,12 +22,9 @@ type Owner = keyof typeof publicRoutes;
 type Route = { path: string; subtree: boolean; owner: Owner };
 
 /** One owner per public route, including future overlaps between path groups. */
-export function resolvePublicRoutes(
-  origins: Record<Owner, URL | undefined>,
-  legacy?: URL,
-): { path: string; origin: URL }[] {
+export function resolvePublicRoutes(origins: Record<Owner, URL | undefined>, legacy?: URL) {
   const registry: Route[] = [];
-  const routes: { path: string; origin: URL }[] = [];
+  const routes: { path: string; origin: URL; service: Owner | 'backend' }[] = [];
   for (const owner of Object.keys(publicRoutes) as Owner[]) {
     const origin = origins[owner] ?? legacy;
     if (!origin) throw new Error(`Missing gateway origin for ${owner}`);
@@ -44,8 +41,9 @@ export function resolvePublicRoutes(
       );
       if (overlap) throw new Error(`Overlapping gateway paths for ${overlap.owner} and ${owner}`);
       registry.push(route);
-      routes.push({ path: route.path, origin });
-      if (route.subtree) routes.push({ path: `${route.path}/*`, origin });
+      const service = origins[owner] ? owner : 'backend';
+      routes.push({ path: route.path, origin, service });
+      if (route.subtree) routes.push({ path: `${route.path}/*`, origin, service });
     }
   }
   return routes;

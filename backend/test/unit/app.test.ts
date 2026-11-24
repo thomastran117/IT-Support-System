@@ -1,7 +1,8 @@
 import { Writable } from 'node:stream';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
-import { buildApp, REDACT_PATHS } from '../../src/app.js';
+import { hashCorrelationId } from '@smartdesk/service-runtime';
+import { buildApp } from '../../src/app.js';
 import { loadEnv } from '../../src/config/env.js';
 
 const env = loadEnv({ FRONTEND_ORIGIN: 'http://app.test' });
@@ -108,16 +109,49 @@ describe('api', () => {
       env,
       checkDb: up,
       checkCache: async () => 'disabled' as const,
-      logger: { level: 'info', redact: { paths: REDACT_PATHS, censor: '[Redacted]' }, stream },
+      logger: { level: 'info', stream },
+      extraRoutes: (scope) => {
+        scope.post('/secret/:id', async () => {
+          throw new Error('secret-provider-key');
+        });
+      },
     });
-    await app.inject({
-      url: '/api/ping',
-      headers: { authorization: 'Bearer secret-token', cookie: 'sid=secret-cookie' },
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/secret/secret-parameter?text=secret-query',
+      headers: {
+        authorization: 'Bearer secret-token',
+        cookie: 'sid=secret-cookie',
+        'x-request-id': 'secret-client-id',
+      },
+      payload: { description: 'secret-ticket-body' },
     });
+    expect(res.statusCode).toBe(500);
+    expect(res.headers['x-request-id']).toBe('secret-client-id');
+    const records = lines.map((line) => JSON.parse(line) as object);
+    expect(records).toContainEqual(
+      expect.objectContaining({
+        service: 'backend',
+        event: 'http_request',
+        route: '/api/secret/:id',
+        correlationId: hashCorrelationId('secret-client-id'),
+        outcome: 'server_error',
+        status: 500,
+        durationMs: expect.any(Number),
+      }),
+    );
     const out = lines.join('');
-    expect(out).toContain('"req"');
-    expect(out).not.toContain('secret-token');
-    expect(out).not.toContain('secret-cookie');
+    for (const secret of [
+      'secret-token',
+      'secret-cookie',
+      'secret-client-id',
+      'secret-parameter',
+      'secret-query',
+      'secret-ticket-body',
+      'secret-provider-key',
+    ]) {
+      expect(out).not.toContain(secret);
+    }
   });
 });
 

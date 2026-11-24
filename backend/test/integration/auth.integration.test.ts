@@ -329,7 +329,6 @@ describe.skipIf(!testDatabaseUrl)('auth endpoints (integration)', () => {
         logger: {
           level: 'trace',
           stream,
-          redact: { paths: (await import('../../src/app.js')).REDACT_PATHS, censor: '[Redacted]' },
         },
       });
       const ok = await login('erin@smartdesk.test');

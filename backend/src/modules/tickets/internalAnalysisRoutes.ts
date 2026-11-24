@@ -6,6 +6,7 @@ import {
   type AnalysisJobIdentityV1,
 } from '@smartdesk/contracts';
 import type { PrismaClient } from '@smartdesk/db';
+import { hashCorrelationId } from '@smartdesk/service-runtime';
 import type { FastifyContextConfig, FastifyPluginAsync, onRequestAsyncHookHandler } from 'fastify';
 import { z } from 'zod';
 import {
@@ -63,10 +64,19 @@ export const internalAnalysisRoutes =
       app.options(path, { config: privateRoute }, (_req, reply) => reply.callNotFound());
     }
 
-    app.post('/claim', route('claim'), async (_req, reply) => {
+    app.post('/claim', route('claim'), async (req, reply) => {
       if (config.provider === 'none') return reply.code(204).send();
       const job = await claimNext(prisma, { leaseMs: analysisLeaseMs(config) });
       if (!job) return reply.code(204).send();
+      req.log.info({
+        event: 'analysis_claimed',
+        correlationId: hashCorrelationId(req.id),
+        originCorrelationId: job.correlationId ?? hashCorrelationId(job.requestId),
+        analysisCorrelationId: hashCorrelationId(job.requestId),
+        jobId: job.id,
+        ticketId: job.ticketId,
+        attempt: job.attempts,
+      });
       return {
         schemaVersion: 1,
         jobId: job.id,

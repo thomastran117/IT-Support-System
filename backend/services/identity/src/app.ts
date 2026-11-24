@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
@@ -15,13 +14,13 @@ import {
   authRoutes,
   createAccountAuthenticator,
   createAuthGuards,
-  DELEGATED_USER_TOKEN_HEADER,
   identityLookupRoutes,
   registerErrorHandling,
   TokenService,
 } from '@smartdesk/identity';
 import type { createFallbackRateLimitStore } from '@smartdesk/identity/rate-limit';
-import Fastify from 'fastify';
+import { logHttpResponse, requestIdOptions, serviceLogger } from '@smartdesk/service-runtime';
+import Fastify, { LogController } from 'fastify';
 import type { loadServiceConfig } from './config.js';
 
 export async function buildIdentityApp(options: {
@@ -35,22 +34,11 @@ export async function buildIdentityApp(options: {
   const app = Fastify({
     // The private listener sits one hop behind the gateway, which replaces client XFF.
     trustProxy: (_address, hop) => hop === 0,
-    logger: {
-      level: logLevel,
-      redact: [
-        'req.headers.authorization',
-        `req.headers["${DELEGATED_USER_TOKEN_HEADER}"]`,
-        'req.headers.cookie',
-        'req.cookies',
-        'req.body.password',
-        'res.headers["set-cookie"]',
-        '*.accessToken',
-        '*.temporaryPassword',
-      ],
-    },
-    requestIdHeader: 'x-request-id',
-    genReqId: () => randomUUID(),
+    ...requestIdOptions,
+    logController: new LogController({ disableRequestLogging: true }),
+    logger: serviceLogger('identity', logLevel),
   });
+  app.addHook('onResponse', logHttpResponse);
   await app.register(cors, {
     origin: session.frontendOrigin,
     credentials: true,

@@ -1,8 +1,7 @@
-import { randomUUID } from 'node:crypto';
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { LogController, type FastifyInstance } from 'fastify';
 import {
   AI_JOB_PATH,
   AI_JOB_SCOPES,
@@ -16,10 +15,10 @@ import type { DbCheck, PrismaClient } from '@smartdesk/db';
 import {
   createAuthGuards,
   createInternalGuard,
-  DELEGATED_USER_TOKEN_HEADER,
   identityLookupRoutes,
   TokenService,
 } from '@smartdesk/identity';
+import { logHttpResponse, requestIdOptions, serviceLogger } from '@smartdesk/service-runtime';
 import type { CacheCheck } from './cache/client.js';
 import { createNoopCache, type CacheClient } from './cache/redisCache.js';
 import type { createFallbackRateLimitStore } from './rateLimit/fallbackStore.js';
@@ -50,6 +49,7 @@ import { ticketRoutes } from './modules/tickets/routes.js';
 
 export interface AppOptions {
   env: Env;
+  service?: 'ticket' | 'backend';
   checkDb: DbCheck;
   checkCache: CacheCheck;
   /** Cache-aside reads (reference data, reports). Defaults to a no-op cache, so every test that
@@ -74,31 +74,25 @@ export interface AppOptions {
   extraRoutes?: (app: FastifyInstance) => void | Promise<void>;
 }
 
-export const REDACT_PATHS = [
-  'req.headers.authorization',
-  `req.headers["${DELEGATED_USER_TOKEN_HEADER}"]`,
-  'req.headers.cookie',
-  'res.headers["set-cookie"]',
-  'req.body.password',
-  'req.body.content',
-  '*.password',
-  '*.accessToken',
-  'req.cookies',
-];
-
 export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   const cache = opts.cache ?? createNoopCache();
+  const logger = serviceLogger(opts.service ?? 'backend', opts.env.logLevel);
   const app = Fastify({
-    logger: opts.logger ?? {
-      level: opts.env.logLevel,
-      redact: { paths: REDACT_PATHS, censor: '[Redacted]' },
-    },
-    genReqId: (req) => (req.headers['x-request-id'] as string | undefined) ?? randomUUID(),
-    requestIdHeader: 'x-request-id',
+    ...requestIdOptions,
+    logController: new LogController({ disableRequestLogging: true }),
+    logger:
+      opts.logger === false
+        ? false
+        : {
+            ...logger,
+            ...(typeof opts.logger === 'object' ? opts.logger : {}),
+            redact: logger.redact,
+          },
     // false (default) never trusts a forwarded-for header, so request.ip cannot be spoofed by a
     // client; only set for a deployment that genuinely sits behind a known reverse proxy.
     trustProxy: opts.env.trustProxy,
   });
+  app.addHook('onResponse', logHttpResponse);
 
   await app.register(cors, {
     origin: opts.env.frontendOrigin,
@@ -113,7 +107,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     // node_modules/@fastify/rate-limit/index.js's `mergeParams`); this cast bridges that gap.
     ...(opts.rateLimitStore ? { store: opts.rateLimitStore as unknown as never } : {}),
   });
-  registerErrorHandling(app);
+  registerErrorHandling(app, false);
 
   app.addHook('onSend', async (req, reply) => {
     reply.header('x-request-id', req.id);

@@ -25,12 +25,41 @@ export async function applyNotificationEvent(tx: TransactionClient, event: Servi
   );
 }
 
-export async function drainNotificationEvents(db: PrismaClient, signal?: AbortSignal) {
+interface DeliveryObservation {
+  eventId: string;
+  ticketId?: string;
+  correlationId?: string;
+  eventType?: ServiceEventV1['type'];
+  state: 'COMPLETED' | 'QUEUED' | 'FAILED' | 'LOST';
+  attempt: number;
+  durationMs: number;
+}
+
+export async function drainNotificationEvents(
+  db: PrismaClient,
+  signal?: AbortSignal,
+  observe?: (delivery: DeliveryObservation) => void,
+) {
   const results = { COMPLETED: 0, QUEUED: 0, FAILED: 0, LOST: 0 };
   for (let index = 0; index < 100 && !signal?.aborted; index++) {
     const claim = await claimServiceEvent(db, notificationSubscription);
     if (!claim) break;
-    results[await deliverServiceEvent(db, claim, applyNotificationEvent)]++;
+    const started = performance.now();
+    const context: Pick<DeliveryObservation, 'ticketId' | 'correlationId' | 'eventType'> = {};
+    const state = await deliverServiceEvent(db, claim, async (tx, event) => {
+      context.ticketId = event.aggregateId;
+      context.correlationId = event.correlationId;
+      context.eventType = event.type;
+      await applyNotificationEvent(tx, event);
+    });
+    results[state]++;
+    observe?.({
+      eventId: claim.eventId,
+      ...context,
+      state,
+      attempt: claim.attempts,
+      durationMs: performance.now() - started,
+    });
   }
   return results;
 }
@@ -41,10 +70,11 @@ export async function consumeNotificationEvents(
   pollMs: number,
   signal: AbortSignal,
   warn: (message: string) => void,
+  observe?: (delivery: DeliveryObservation) => void,
 ) {
   while (!signal.aborted) {
     try {
-      const counts = await drainNotificationEvents(db, signal);
+      const counts = await drainNotificationEvents(db, signal, observe);
       if (counts.FAILED) warn('Notification events moved to the dead-letter queue');
       if (Object.values(counts).reduce((total, count) => total + count, 0) === 100) continue;
     } catch {
