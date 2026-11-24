@@ -56,6 +56,58 @@ test('routes the inbox to its active owner and isolates its upstream timeout', a
   }
 });
 
+test('routes isolated API groups to one owner and rejects unregistered paths', async (t) => {
+  const owner = (name: string) => startUpstream(t, (_req, res) => res.end(name));
+  const [ticket, identity, knowledge, analytics, notifications] = await Promise.all([
+    owner('ticket'),
+    owner('identity'),
+    owner('knowledge'),
+    owner('analytics'),
+    owner('notifications'),
+  ]);
+  const options = { ticketUpstream: ticket, timeoutMs: 500, frontendOrigin };
+  assert.throws(() => buildGateway(options), /Missing gateway origin for identity/);
+  const app = buildGateway({
+    ...options,
+    identityUpstream: identity,
+    knowledgeUpstream: knowledge,
+    analyticsUpstream: analytics,
+    notificationsUpstream: notifications,
+  });
+  t.after(() => app.close());
+  for (const [path, expected] of [
+    ['/health/live', 'ticket'],
+    ['/api/ping', 'ticket'],
+    ['/api/tickets/id/events', 'ticket'],
+    ['/api/admin/tickets/id/classification-label', 'ticket'],
+    ['/api/admin/classification-labels', 'ticket'],
+    ['/api/teams', 'ticket'],
+    ['/api/admin/teams/id/members', 'ticket'],
+    ['/api/categories', 'ticket'],
+    ['/api/admin/categories', 'ticket'],
+    ['/api/technician/queue?teamId=id', 'ticket'],
+    ['/api/auth/me', 'identity'],
+    ['/api/admin/users/id', 'identity'],
+    ['/api/admin/audit-log', 'identity'],
+    ['/api/knowledge/search?q=vpn', 'knowledge'],
+    ['/api/admin/knowledge/id', 'knowledge'],
+    ['/api/admin/reports/summary', 'analytics'],
+    ['/api/notifications/read-all', 'notifications'],
+  ]) {
+    const result = await app.inject(path!);
+    assert.equal(result.statusCode, 200);
+    assert.equal(result.body, expected, path);
+  }
+  for (const path of [
+    '/api',
+    '/api/tickets-other',
+    '/api/admin',
+    '/internal/identity/ticket-principal',
+  ]) {
+    assert.equal((await app.inject(path)).statusCode, 404, path);
+  }
+});
+
 test('preserves the method, original path, body, session headers and conflict response', async (t) => {
   const path = '/api/tickets/ticket-id/routing?tag=a%2Bb&tag=c';
   const body = '{ "expectedVersion": 2 }';

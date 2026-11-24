@@ -87,6 +87,18 @@ WORKDIR /app/backend
 EXPOSE 4000
 CMD ["npm", "run", "dev"]
 
+FROM source AS ticket-runtime
+WORKDIR /app/backend
+RUN npm run build
+USER node
+
+FROM ticket-runtime AS ticket-service
+EXPOSE 4060
+CMD ["node", "dist/ticketServer.js"]
+
+FROM ticket-runtime AS search-indexer
+CMD ["node", "dist/searchWorker.js"]
+
 # The AI analysis worker is a second entrypoint of the backend package (same code, separate process).
 FROM source AS worker
 WORKDIR /app/backend

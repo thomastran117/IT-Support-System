@@ -42,6 +42,10 @@ import {
   submitTicket,
 } from '../../src/db/services/ticketService.js';
 import { loadSql } from '../../src/db/sql.js';
+import {
+  loadScopedKnowledgeSources,
+  loadSearchChanges,
+} from '../../src/modules/search/loadSearchChanges.js';
 import { createTestPrisma, resetDatabase, testDatabaseUrl } from './helpers/db.js';
 
 const serviceNames = [
@@ -334,6 +338,26 @@ describe.skipIf(!testDatabaseUrl)('service-owned PostgreSQL privileges', () => {
       SELECT is_published, body, search_revision FROM smartdesk_search_article_sources
       WHERE article_id = ${ARTICLES.draft}::uuid`;
     expect(projection).toEqual([{ is_published: false, body: null, search_revision: 1 }]);
+    const { batch, mismatches } = await loadSearchChanges(
+      service.search,
+      [
+        { entityType: 'KNOWLEDGE_ARTICLE', entityId: ARTICLES.vpn, revision: 1 },
+        { entityType: 'KNOWLEDGE_ARTICLE', entityId: ARTICLES.draft, revision: 1 },
+        { entityType: 'TICKET', entityId: TICKETS.vpn, revision: 1 },
+      ],
+      loadScopedKnowledgeSources,
+    );
+    expect(mismatches).toEqual([]);
+    expect(batch.map(({ write }) => write)).toMatchObject([
+      {
+        collection: 'knowledge',
+        id: ARTICLES.vpn,
+        document: { isPublished: true, body: expect.any(String) },
+      },
+      { collection: 'knowledge', id: ARTICLES.draft, document: { isPublished: false } },
+      { collection: 'tickets', id: TICKETS.vpn, document: { title: expect.any(String) } },
+    ]);
+    expect(batch[1]?.write.document).not.toHaveProperty('body');
   });
 
   it('rolls back access without changing source rows, report results or queue state', async () => {

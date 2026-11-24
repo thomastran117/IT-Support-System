@@ -93,6 +93,13 @@ versions, and account audit. Ticket owns membership and uses a scoped Identity l
 before enforcing its own resource policies. Protected reads and writes require current
 authorization across an Identity outage. [Identity cutover and rollback](identity-service.md)
 
+### Ticket isolation
+
+The isolated Ticket entrypoint serves the remaining Ticket-owned routes with a
+scoped PostgreSQL login. The gateway registry assigns each public route group
+to its service. The standard Compose deployment supports rollback over the same
+data. [Ticket cutover and rollback](ticket-service.md)
+
 ### AI handoff
 
 Keep `ai_analysis_jobs` rows, `(ticket_id, request_id)` uniqueness, existing lease tokens and

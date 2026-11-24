@@ -41,7 +41,10 @@ export type OpenSearchConfig =
   | { enabled: false }
   | { enabled: true; url: string; auth?: { username: string; password: string } };
 
-function loadOpenSearchConfig(source: NodeJS.ProcessEnv, production: boolean): OpenSearchConfig {
+export function loadOpenSearchConfig(
+  source: NodeJS.ProcessEnv,
+  production: boolean,
+): OpenSearchConfig {
   const enabled = source.OPENSEARCH_ENABLED || 'false';
   if (enabled === 'false') return { enabled: false };
   if (enabled !== 'true') throw new Error('OPENSEARCH_ENABLED must be true or false');

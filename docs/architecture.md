@@ -66,6 +66,9 @@ In Identity service mode, the gateway sends sessions, user administration, and a
 audit requests to Identity. Ticket verifies access tokens through scoped delegation and
 supplies its own current team memberships. [Identity service](architecture/identity-service.md)
 
+The isolated Ticket overlay runs the ticket, triage, and catalog handlers over the scoped
+Ticket login. The gateway uses a registry for public routes. [Ticket service](architecture/ticket-service.md)
+
 ## AI service container
 
 `backend/services/ai` is the first package under `backend/services/`. Its Compose profile
