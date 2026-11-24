@@ -79,6 +79,13 @@ The Analytics service reads committed Ticket facts using the `smartdesk_analytic
 grants. Both deployment modes use the same Q05–Q14 queries and report contracts.
 [Analytics cutover and rollback](analytics-service.md)
 
+### Knowledge access
+
+Knowledge serves article authoring, reader search, and published AI retrieval. It uses
+PostgreSQL full-text search and enqueues revisioned article index intent in the source
+transaction. Existing recommendation links remain auditable across unpublication.
+[Knowledge cutover and rollback](knowledge-service.md)
+
 ### AI handoff
 
 Keep `ai_analysis_jobs` rows, `(ticket_id, request_id)` uniqueness, existing lease tokens and

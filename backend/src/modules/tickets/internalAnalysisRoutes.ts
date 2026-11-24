@@ -42,10 +42,15 @@ export const internalAnalysisRoutes =
     prisma: PrismaClient,
     config: AiConfig,
     searchClient: SearchClient | undefined,
+    remoteKnowledge: boolean,
     guard: Record<'claim' | 'inputs' | 'complete' | 'fail', onRequestAsyncHookHandler>,
   ): FastifyPluginAsync =>
   async (app) => {
-    const readInputs = createAnalysisInputReader(prisma, searchClient);
+    const readInputs = createAnalysisInputReader(
+      prisma,
+      searchClient,
+      remoteKnowledge ? async () => undefined : undefined,
+    );
     const route = (key: keyof typeof guard) => ({
       config: privateRoute,
       onRequest: guard[key],

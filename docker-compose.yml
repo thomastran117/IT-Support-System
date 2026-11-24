@@ -118,6 +118,7 @@ services:
       JWT_AUDIENCE: ${JWT_AUDIENCE:-smartdesk-web}
       INTERNAL_SERVICE_KEYS: ${INTERNAL_SERVICE_KEYS:-}
       ANALYTICS_EXECUTION_MODE: ${ANALYTICS_EXECUTION_MODE:-local}
+      KNOWLEDGE_EXECUTION_MODE: ${KNOWLEDGE_EXECUTION_MODE:-local}
       NOTIFICATIONS_EXECUTION_MODE: ${NOTIFICATIONS_EXECUTION_MODE:-local}
       ACCESS_TOKEN_TTL_SECONDS: ${ACCESS_TOKEN_TTL_SECONDS:-900}
       REFRESH_TOKEN_TTL_SECONDS: ${REFRESH_TOKEN_TTL_SECONDS:-604800}
@@ -159,6 +160,10 @@ services:
           path: ./packages/ai-analysis
         - action: rebuild
           path: ./packages/analytics
+        - action: rebuild
+          path: ./packages/knowledge
+        - action: rebuild
+          path: ./packages/service-runtime
 
   gateway:
     build:
@@ -171,6 +176,8 @@ services:
       GATEWAY_NOTIFICATIONS_ORIGIN: http://notifications-api:4020
       ANALYTICS_EXECUTION_MODE: ${ANALYTICS_EXECUTION_MODE:-local}
       GATEWAY_ANALYTICS_ORIGIN: http://analytics-api:4030
+      KNOWLEDGE_EXECUTION_MODE: ${KNOWLEDGE_EXECUTION_MODE:-local}
+      GATEWAY_KNOWLEDGE_ORIGIN: http://knowledge-api:4040
       GATEWAY_UPSTREAM_TIMEOUT_MS: ${GATEWAY_UPSTREAM_TIMEOUT_MS:-10000}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
       LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -209,6 +216,8 @@ services:
       AI_SERVICE_READY_TIMEOUT_MS: ${AI_SERVICE_READY_TIMEOUT_MS:-1500}
       AI_SERVICE_KEY_ID: ${AI_SERVICE_KEY_ID:-}
       AI_SERVICE_PRIVATE_KEY: ${AI_SERVICE_PRIVATE_KEY:-}
+      KNOWLEDGE_EXECUTION_MODE: ${KNOWLEDGE_EXECUTION_MODE:-local}
+      KNOWLEDGE_RETRIEVAL_ORIGIN: ${KNOWLEDGE_RETRIEVAL_ORIGIN:-http://knowledge-api:4040}
       AI_EXECUTION_MODE: ${AI_EXECUTION_MODE:-local}
       AI_PROVIDER: ${AI_PROVIDER:-none}
       AI_API_KEY: ${AI_SERVICE_API_KEY:-}
@@ -335,6 +344,44 @@ services:
       api:
         aliases: [analytics-api]
 
+  knowledge-service:
+    profiles: [knowledge]
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: knowledge-service
+    environment:
+      HOST: 0.0.0.0
+      KNOWLEDGE_DATABASE_URL: ${KNOWLEDGE_DATABASE_URL:-}
+      KNOWLEDGE_IDENTITY_ORIGIN: ${KNOWLEDGE_IDENTITY_ORIGIN:-http://backend-api:4000}
+      KNOWLEDGE_KEY_ID: ${KNOWLEDGE_KEY_ID:-}
+      KNOWLEDGE_PRIVATE_KEY: ${KNOWLEDGE_PRIVATE_KEY:-}
+      KNOWLEDGE_RETRIEVAL_KEYS: ${KNOWLEDGE_RETRIEVAL_KEYS:-}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://127.0.0.1:4040/health/ready', { signal: AbortSignal.timeout(5000) })
+          .then(response => process.exit(response.ok ? 0 : 1), () => process.exit(1))
+      interval: 5s
+      timeout: 6s
+      start_period: 10s
+      retries: 6
+    depends_on:
+      backend:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    networks:
+      internal:
+        aliases: [knowledge-api]
+      api:
+        aliases: [knowledge-api]
+
   worker:
     build:
       context: .
@@ -348,6 +395,10 @@ services:
       OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD:-}
       WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-5000}
       NOTIFICATIONS_EXECUTION_MODE: ${NOTIFICATIONS_EXECUTION_MODE:-local}
+      KNOWLEDGE_EXECUTION_MODE: ${KNOWLEDGE_EXECUTION_MODE:-local}
+      KNOWLEDGE_RETRIEVAL_ORIGIN: ${KNOWLEDGE_RETRIEVAL_ORIGIN:-http://knowledge-api:4040}
+      KNOWLEDGE_WORKER_KEY_ID: ${KNOWLEDGE_WORKER_KEY_ID:-}
+      KNOWLEDGE_WORKER_PRIVATE_KEY: ${KNOWLEDGE_WORKER_PRIVATE_KEY:-}
       AI_EXECUTION_MODE: ${AI_EXECUTION_MODE:-local}
       AI_PROVIDER: ${AI_PROVIDER:-none}
       AI_API_KEY: ${AI_API_KEY:-}
@@ -393,6 +444,10 @@ services:
           path: ./packages/db
         - action: rebuild
           path: ./packages/ai-analysis
+        - action: rebuild
+          path: ./packages/knowledge
+        - action: rebuild
+          path: ./packages/service-runtime
 
   frontend:
     build:

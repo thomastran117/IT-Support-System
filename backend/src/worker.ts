@@ -1,5 +1,8 @@
 import { analysisLeaseMs, analysisTimeoutMs } from '@smartdesk/ai-analysis';
 import { createPrisma } from '@smartdesk/db';
+import { KNOWLEDGE_RETRIEVAL, knowledgeRetrievalSchema } from '@smartdesk/contracts';
+import { parseHttpOrigin } from '@smartdesk/service-runtime';
+import { createSystemServiceClient } from '@smartdesk/service-runtime/service-tokens';
 import { loadEnv } from './config/env.js';
 import { createAnalysisService } from './modules/ai/analysisService.js';
 import { createProvider } from './modules/ai/index.js';
@@ -20,6 +23,37 @@ const env = loadEnv();
 const prisma = createPrisma(env.databaseUrl);
 const { ai } = env;
 
+const remoteKnowledge =
+  env.knowledgeExecutionMode === 'service' &&
+  env.aiExecutionMode === 'local' &&
+  ai.provider !== 'none';
+let readKnowledge;
+if (remoteKnowledge) {
+  const origin = parseHttpOrigin(
+    'KNOWLEDGE_RETRIEVAL_ORIGIN',
+    process.env.KNOWLEDGE_RETRIEVAL_ORIGIN ?? 'http://localhost:4040',
+  );
+  if (env.production && origin.protocol !== 'https:') {
+    throw new Error('KNOWLEDGE_RETRIEVAL_ORIGIN must use HTTPS in production');
+  }
+  const kid = process.env.KNOWLEDGE_WORKER_KEY_ID ?? '';
+  const privateKey = process.env.KNOWLEDGE_WORKER_PRIVATE_KEY?.replace(/\\n/g, '\n') ?? '';
+  if (!/^[a-zA-Z0-9_-]{1,64}$/.test(kid) || !privateKey.trim()) {
+    throw new Error('KNOWLEDGE_WORKER_KEY_ID and KNOWLEDGE_WORKER_PRIVATE_KEY are required');
+  }
+  const call = await createSystemServiceClient({
+    origin,
+    kid,
+    privateKey,
+    service: 'ai-local',
+    keySetting: 'KNOWLEDGE_WORKER_PRIVATE_KEY',
+    route: KNOWLEDGE_RETRIEVAL,
+    timeoutMs: 1500,
+  });
+  readKnowledge = (terms: string[], requestId?: string) =>
+    call({ terms }, knowledgeRetrievalSchema.parse, requestId);
+}
+
 const write = (level: 'info' | 'error', entry: JobLogEntry) =>
   console[level === 'error' ? 'error' : 'log'](JSON.stringify({ level, ...entry }));
 
@@ -32,6 +66,7 @@ const runner =
           prisma,
           provider: createProvider(env),
           searchClient: ai.provider === 'none' ? undefined : createSearchClient(env.openSearch),
+          readKnowledge,
         }),
         persist: persistDraft,
         config: {

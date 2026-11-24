@@ -58,6 +58,10 @@ In Analytics service mode, the gateway sends admin report requests to the privat
 listener. Analytics reads the committed Ticket facts using scoped PostgreSQL grants.
 [Analytics service](architecture/analytics-service.md)
 
+In Knowledge service mode, the gateway sends both article route groups to the Knowledge
+listener. AI retrieves published excerpts over a private scoped system endpoint.
+[Knowledge service](architecture/knowledge-service.md)
+
 ## AI service container
 
 `backend/services/ai` is the first package under `backend/services/`. Its Compose profile

@@ -11,6 +11,7 @@ export * from './provider.js';
 export * from './schema.js';
 export * from './prompt.js';
 export * from './redact.js';
+export * from './retrieval.js';
 export { createFakeProvider, createOpenAiProvider };
 
 export function createProvider(config: AiConfig): AIProvider {

@@ -31,3 +31,9 @@ export function parseInteger(
   }
   return number;
 }
+
+export function parseExecutionMode(name: string, value: string | undefined) {
+  const mode = value || 'local';
+  if (mode !== 'local' && mode !== 'service') throw new Error(`${name} must be local or service`);
+  return mode;
+}

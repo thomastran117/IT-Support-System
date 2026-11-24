@@ -94,7 +94,7 @@ BEGIN
   ALTER TABLE public.service_outbox_deliveries ENABLE ROW LEVEL SECURITY;
 
   GRANT SELECT, INSERT, UPDATE ON public.knowledge_articles TO smartdesk_knowledge;
-  GRANT SELECT (category_id, name, is_active) ON public.ticket_categories TO smartdesk_knowledge;
+  GRANT SELECT (category_id, name, description, is_active) ON public.ticket_categories TO smartdesk_knowledge;
 
   GRANT SELECT, INSERT ON public.users, public.admin_audit_log TO smartdesk_identity;
   GRANT UPDATE (role, is_active, password_hash, token_version) ON public.users TO smartdesk_identity;

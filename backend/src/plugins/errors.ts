@@ -1,15 +1,8 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
 import type { ApiEnvelope } from '@smartdesk/contracts';
+import { HttpError } from '@smartdesk/db/errors';
 
-export class HttpError extends Error {
-  constructor(
-    public readonly statusCode: number,
-    message: string,
-    public readonly details: unknown = null,
-  ) {
-    super(message);
-  }
-}
+export { HttpError };
 
 const NAMES: Record<number, string> = {
   400: 'Bad Request',

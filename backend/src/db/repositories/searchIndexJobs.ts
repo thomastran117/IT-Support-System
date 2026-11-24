@@ -1,9 +1,14 @@
-import { Prisma, type PrismaClient, type TransactionClient } from '@smartdesk/db';
+import { Prisma, type PrismaClient } from '@smartdesk/db';
 import type { Db } from '../transaction.js';
 import { searchClaimsPaused } from './searchRebuilds.js';
+import type { SearchIndexEntityType } from '@smartdesk/db';
 
-export type SearchIndexEntityType = 'TICKET' | 'KNOWLEDGE_ARTICLE';
-export type SearchIndexEventKind = 'UPSERT' | 'DELETE';
+export {
+  enqueueSearchIndexJob,
+  type SearchIndexEntityType,
+  type SearchIndexEventKind,
+} from '@smartdesk/db';
+
 export type SearchIndexErrorKind =
   | 'authorization'
   | 'circuit_open'
@@ -33,22 +38,6 @@ const clock = (now?: Date) =>
 const holdsLease = (job: SearchLease, now?: Date) => Prisma.sql`
   job_id = ${job.id}::uuid AND lease_token = ${job.leaseToken}::uuid
   AND state = 'RUNNING' AND locked_until > ${clock(now)}`;
-
-/** Write only indexing intent. The indexer will load the current source row from PostgreSQL. */
-export function enqueueSearchIndexJob(
-  tx: TransactionClient,
-  job: {
-    entityType: SearchIndexEntityType;
-    entityId: string;
-    revision: number;
-    eventKind: SearchIndexEventKind;
-  },
-): Promise<number> {
-  return tx.$executeRaw`
-    INSERT INTO search_index_jobs (entity_type, entity_id, revision, event_kind)
-    VALUES (${job.entityType}, ${job.entityId}::uuid, ${job.revision}, ${job.eventKind})
-    ON CONFLICT (entity_type, entity_id, revision) DO NOTHING`;
-}
 
 /** Claim due and abandoned jobs with the same leased SKIP LOCKED pattern as AI analysis. */
 export async function claimSearchIndexJobs(

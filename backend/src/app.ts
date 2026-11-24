@@ -8,6 +8,7 @@ import {
   AI_JOB_SCOPES,
   ANALYTICS_IDENTITY,
   API_PREFIX,
+  KNOWLEDGE_IDENTITY,
   NOTIFICATION_IDENTITY,
 } from '@smartdesk/contracts';
 import type { Env } from './config/env.js';
@@ -131,18 +132,25 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
       });
       if (opts.env.aiExecutionMode === 'service') {
         await app.register(
-          internalAnalysisRoutes(opts.prisma, opts.env.ai, searchClient, {
-            claim: guard(AI_JOB_SCOPES.claim, 'system'),
-            inputs: guard(AI_JOB_SCOPES.inputs, 'system'),
-            complete: guard(AI_JOB_SCOPES.complete, 'system'),
-            fail: guard(AI_JOB_SCOPES.fail, 'system'),
-          }),
+          internalAnalysisRoutes(
+            opts.prisma,
+            opts.env.ai,
+            searchClient,
+            opts.env.knowledgeExecutionMode === 'service',
+            {
+              claim: guard(AI_JOB_SCOPES.claim, 'system'),
+              inputs: guard(AI_JOB_SCOPES.inputs, 'system'),
+              complete: guard(AI_JOB_SCOPES.complete, 'system'),
+              fail: guard(AI_JOB_SCOPES.fail, 'system'),
+            },
+          ),
           { prefix: AI_JOB_PATH },
         );
       }
       const identityRoutes = [
         { mode: opts.env.notificationsExecutionMode, identity: NOTIFICATION_IDENTITY },
         { mode: opts.env.analyticsExecutionMode, identity: ANALYTICS_IDENTITY },
+        { mode: opts.env.knowledgeExecutionMode, identity: KNOWLEDGE_IDENTITY },
       ].filter(({ mode }) => mode === 'service');
       if (identityRoutes.length > 0) {
         const identityVerifier = await createServiceTokenVerifier(
@@ -191,12 +199,14 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     await app.register(labelListRoutes(opts.prisma), {
       prefix: `${API_PREFIX}/admin/classification-labels`,
     });
-    await app.register(adminKnowledgeRoutes(opts.prisma), {
-      prefix: `${API_PREFIX}/admin/knowledge`,
-    });
-    await app.register(knowledgeRoutes(opts.prisma, searchClient), {
-      prefix: `${API_PREFIX}/knowledge`,
-    });
+    if (opts.env.knowledgeExecutionMode === 'local') {
+      await app.register(adminKnowledgeRoutes(opts.prisma), {
+        prefix: `${API_PREFIX}/admin/knowledge`,
+      });
+      await app.register(knowledgeRoutes(opts.prisma, searchClient), {
+        prefix: `${API_PREFIX}/knowledge`,
+      });
+    }
     await app.register(adminTeamRoutes(opts.prisma, cache), {
       prefix: `${API_PREFIX}/admin/teams`,
     });

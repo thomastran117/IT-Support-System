@@ -3,7 +3,10 @@ import {
   analysisTimeoutMs,
   createAnalysisRunner,
   createProvider,
+  retrieveKnowledge,
 } from '@smartdesk/ai-analysis';
+import { KNOWLEDGE_RETRIEVAL, knowledgeRetrievalSchema } from '@smartdesk/contracts';
+import { createSystemServiceClient } from '@smartdesk/service-runtime/service-tokens';
 import { buildAiService } from './app.js';
 import { loadServiceConfig } from './config.js';
 import { classifyTicketJobError, createTicketJobs } from './ticketJobs.js';
@@ -18,6 +21,17 @@ const jobs =
     timeoutMs: 5000,
   }));
 const provider = createProvider(config.ai);
+const lookup =
+  config.signing &&
+  config.knowledgeOrigin &&
+  (await createSystemServiceClient({
+    origin: config.knowledgeOrigin,
+    ...config.signing,
+    service: 'ai',
+    keySetting: 'AI_SERVICE_PRIVATE_KEY',
+    route: KNOWLEDGE_RETRIEVAL,
+    timeoutMs: 1500,
+  }));
 const runner =
   jobs &&
   createAnalysisRunner({
@@ -27,7 +41,17 @@ const runner =
       handlerTimeoutMs: analysisTimeoutMs(config.ai),
     },
     claim: jobs.claim,
-    analyse: async (job) => analyseInputs(provider, await jobs.inputs(job)),
+    analyse: async (job) => {
+      const inputs = await jobs.inputs(job);
+      const knowledge =
+        lookup &&
+        (await retrieveKnowledge(
+          (terms, requestId) => lookup({ terms }, knowledgeRetrievalSchema.parse, requestId),
+          inputs.ticket,
+          job.requestId,
+        ));
+      return analyseInputs(provider, { ...inputs, ...knowledge });
+    },
     complete: jobs.complete,
     fail: jobs.fail,
     classifyError: classifyTicketJobError,
