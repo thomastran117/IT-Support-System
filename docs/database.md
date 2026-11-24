@@ -16,7 +16,7 @@ docker compose up --build --watch
 # Apply committed migrations
 docker compose exec backend npm run migrate
 
-# Seed deterministic demo data
+# Load the live-demo dataset
 docker compose exec backend npm run db:seed
 
 # Inspect data directly
@@ -83,9 +83,25 @@ and requeueing.
 
 ## Seed and query assets
 
-The default seed is deterministic and safe to rerun. It supplies demo identities, teams, tickets,
-comments, events, recommendations, articles, and labels used by the UI and reporting queries. The
-shared credential is documented in [Authentication and authorization](authentication.md).
+The default profile loads 300 tickets, 40 users, seven teams, nine categories, and 31 knowledge
+articles into an empty database. It also seeds ticket conversations and timelines, AI recommendations
+and evaluation labels, and read and unread inbox items. The first run adds 192 tickets to the
+default 30-day reporting window and spreads the rest across the preceding month. Rerunning adds
+missing fixtures and keeps the original dates and existing edits. For an older demo database, pick
+a report range ending on the creation date of the Toronto VPN example below. Use a fresh database
+when you want a new reporting window. The `--profile test` option loads the small fixture set used
+by integration tests.
+
+Use the documented demo accounts and shared password for the walkthrough.
+[Authentication and authorization](authentication.md)
+
+- Sign in as Erin to page through ticket history, open notifications, and browse published knowledge.
+- Sign in as Tara to page through the unassigned, team, and personal queues. Search for
+  “VPN disconnects after waking the laptop (Toronto hybrid desk)” to review a pending recommendation
+  with a linked knowledge article.
+- Sign in as Alex to search across support teams, inspect knowledge drafts, and explore Reports and
+  AI Evaluation. With OpenSearch enabled, rebuild the index after seeding to include the bulk-loaded
+  tickets and published articles. [Search backfill and reindex](architecture.md#search-backfill-and-reindex)
 
 Operational SQL lives in `backend/sql/queries`; reporting and AI-evaluation SQL lives in
 `packages/analytics/sql`. Repository methods add authorization scope before returning operational data.

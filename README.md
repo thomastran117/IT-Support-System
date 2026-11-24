@@ -113,7 +113,7 @@ The run records scan and benchmark evidence in `test-results/sd100/`.
 # Follow one service
 docker compose logs -f backend
 
-# Seed or refresh the deterministic demo records
+# Load the 300-ticket demo dataset (safe to rerun)
 docker compose exec backend npm run db:seed
 
 # Open PostgreSQL directly

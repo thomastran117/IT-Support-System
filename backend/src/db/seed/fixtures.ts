@@ -16,6 +16,7 @@ const KINDS = {
   event: 6,
   recommendation: 7,
   article: 8,
+  notification: 9,
 } as const;
 
 /** Stable, readable UUID: `0000000K-0000-4000-8000-<n>`. */
@@ -644,8 +645,8 @@ export interface FixtureSet {
 }
 
 /**
- * `test` is the minimal set whose report results are asserted exactly. `demo` is the same data plus
- * two extra open tickets and two extra published articles for a livelier class demonstration.
+ * Build the fixed fixtures shared by both profiles, including the original demo-only rows.
+ * The seed runner loads the dated demo expansion separately.
  */
 export function buildFixtures(profile: Profile): FixtureSet {
   const demo = profile === 'demo';

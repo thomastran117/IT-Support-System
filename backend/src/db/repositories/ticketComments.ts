@@ -31,9 +31,9 @@ export async function recordFirstResponse(db: Db, commentId: string): Promise<nu
 
 /**
  * Derive `first_response_at` for tickets that have none, from their comments (same rule as
- * `domain/firstResponse.ts` and migration 0006). Used after bulk-loading comments (seed data).
+ * `domain/firstResponse.ts` and migration 0006). Used after bulk-loading fixture comments.
  */
-export async function backfillFirstResponse(db: Db): Promise<number> {
+export async function backfillFirstResponse(db: Db, ticketIds: string[]): Promise<number> {
   return db.$executeRaw(Prisma.sql`
     UPDATE tickets t
     SET first_response_at = fr.first_at
@@ -42,7 +42,8 @@ export async function backfillFirstResponse(db: Db): Promise<number> {
       FROM ticket_comments c
       JOIN users u ON u.user_id = c.author_id
       JOIN tickets tk ON tk.ticket_id = c.ticket_id
-      WHERE NOT c.is_internal
+      WHERE c.ticket_id IN (${Prisma.join(ticketIds.map((id) => Prisma.sql`${id}::uuid`))})
+        AND NOT c.is_internal
         AND u.role IN ('TECHNICIAN', 'ADMIN')
         AND c.author_id <> tk.requester_id
         AND c.created_at >= tk.created_at
