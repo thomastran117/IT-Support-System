@@ -1,9 +1,10 @@
 import { Prisma } from '@smartdesk/db';
 import type { TicketEventType } from '@smartdesk/contracts';
+import { insertInboxNotification } from '@smartdesk/notifications';
 import { sanitizeEventDetails } from '../../domain/ticketEvents.js';
 import { notificationTypeFor } from '../../domain/notifications.js';
 import type { Db } from '../transaction.js';
-import { recordNotification } from './notifications.js';
+import { findNotificationRecipient } from './notifications.js';
 import { hashCorrelationId, insertServiceEvent } from './serviceEvents.js';
 
 export type { TicketEventType };
@@ -44,8 +45,8 @@ function serviceFact(type: TicketEventType, details: Record<string, unknown>) {
  * reduced to the allow-listed keys for the type (ids, statuses, flags), so secrets and private text
  * cannot be stored whatever the caller passes.
  *
- * A meaningful event also records the requester's in-app notification (SD-040) in the same
- * transaction, as well as the service event for supported ticket facts. Returns the audit event id.
+ * Eligible service events carry the recipient decision in the Ticket transaction. Local mode also
+ * writes the inbox row in that transaction. Returns the audit event ID.
  */
 export async function appendEvent(
   db: Db,
@@ -54,12 +55,11 @@ export async function appendEvent(
     actorId: string | null;
     type: TicketEventType;
     details?: Record<string, unknown>;
-    correlationId?: string;
-  },
+  } & TicketEventContext,
 ): Promise<string> {
   const details = sanitizeEventDetails(event.type, event.details);
   const [audit] = await db.$queryRaw<
-    { id: string; occurredAt: Date; version: number; requesterId: string }[]
+    { id: string; occurredAt: Date; version: number }[]
   >(Prisma.sql`
     WITH appended AS (
       INSERT INTO ticket_events (ticket_id, actor_id, event_type, details, occurred_at)
@@ -67,19 +67,15 @@ export async function appendEvent(
               ${JSON.stringify(details)}::jsonb, clock_timestamp())
       RETURNING event_id, ticket_id, occurred_at
     )
-    SELECT a.event_id AS id, a.occurred_at AS "occurredAt",
-           t.version, t.requester_id AS "requesterId"
+    SELECT a.event_id AS id, a.occurred_at AS "occurredAt", t.version
     FROM appended a JOIN tickets t ON t.ticket_id = a.ticket_id`);
   const eventId = audit!.id;
   const type = notificationTypeFor(event.type, details);
-  const notified =
-    type &&
-    (await recordNotification(db, {
-      eventId,
-      ticketId: event.ticketId,
-      actorId: event.actorId,
-      type,
-    }));
+  const recipientId = type && (await findNotificationRecipient(db, event.ticketId, event.actorId));
+  const notification = type && recipientId ? { recipientId, type } : null;
+  if (notification && !event.outboxNotifications) {
+    await insertInboxNotification(db, { ...notification, eventId, ticketId: event.ticketId });
+  }
   const fact = serviceFact(event.type, details);
   if (fact) {
     await insertServiceEvent(db, {
@@ -92,11 +88,16 @@ export async function appendEvent(
       correlationId: event.correlationId ? hashCorrelationId(event.correlationId) : eventId,
       payload: {
         ...fact.payload,
-        ...(notified ? { notification: { recipientId: audit!.requesterId, type } } : {}),
+        ...(notification ? { notification } : {}),
       },
     });
   }
   return eventId;
+}
+
+export interface TicketEventContext {
+  correlationId?: string;
+  outboxNotifications?: boolean;
 }
 
 export const listEvents = (db: Db, ticketId: string) =>

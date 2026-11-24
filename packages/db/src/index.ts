@@ -6,6 +6,14 @@ export { Prisma, PrismaClient };
 /** The client handed to `$transaction` callbacks. */
 export type TransactionClient = Prisma.TransactionClient;
 
+export {
+  isRetryable,
+  runTransaction,
+  sqlState,
+  type Db,
+  type TransactionOptions,
+} from './transaction.js';
+
 export const DEFAULT_DATABASE_URL = 'postgresql://smartdesk:smartdesk@localhost:5432/smartdesk';
 
 /** Create a Prisma client backed by the pg driver adapter. Call `$disconnect()` on shutdown. */

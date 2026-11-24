@@ -5,8 +5,8 @@ import { createAnalysisService } from './modules/ai/analysisService.js';
 import { createProvider } from './modules/ai/index.js';
 import { createJobRunner, type JobLogEntry } from './modules/ai/jobRunner.js';
 import { persistDraft } from './modules/ai/recommendationService.js';
-import { createEmailDispatcher } from './modules/notifications/email/dispatcher.js';
-import { createEmailTransport } from './modules/notifications/email/transport.js';
+import { configuredEmailDispatcher } from '@smartdesk/notifications';
+
 import { createSearchBulkClient } from './modules/search/bulk.js';
 import { createSearchClient } from './modules/search/client.js';
 import { createSearchIndexWorker } from './modules/search/indexWorker.js';
@@ -49,24 +49,12 @@ const runner =
 // Optional email channel (SD-043). Off by default: with EMAIL_TRANSPORT=none no loop starts and
 // nothing is ever sent, and the in-app notification centre works exactly the same.
 const { email } = env;
-const transport = createEmailTransport(email);
-const sendTimeoutMs = 30_000;
-const mailer = transport
-  ? createEmailDispatcher({
-      prisma,
-      transport,
-      config: {
-        appBaseUrl: email.appBaseUrl,
-        maxAttempts: email.maxAttempts,
-        backoffBaseMs: email.backoffBaseMs,
-        maxAgeMs: email.maxAgeMs,
-        pollIntervalMs: ai.worker.pollIntervalMs,
-        sendTimeoutMs,
-        leaseMs: sendTimeoutMs + 30_000,
-      },
-      log: (entry) => write(entry.errorKind && entry.state !== 'SENT' ? 'error' : 'info', entry),
-    })
-  : null;
+const mailer =
+  env.notificationsExecutionMode === 'local'
+    ? configuredEmailDispatcher(prisma, email, ai.worker.pollIntervalMs, (entry) =>
+        write(entry.errorKind && entry.state !== 'SENT' ? 'error' : 'info', entry),
+      )
+    : null;
 
 const searchBulk = createSearchBulkClient(env.openSearch);
 const searchWorker =
@@ -101,7 +89,9 @@ process.on('SIGTERM', () => void shutdown('SIGTERM'));
 write('info', { msg: runner ? `ai provider: ${ai.provider}` : 'ai execution: service' });
 runner?.start();
 // Only the transport kind is logged. Host, user and password never are.
-write('info', { msg: `email transport: ${email.transport}` });
+write('info', {
+  msg: `email transport: ${env.notificationsExecutionMode === 'service' ? 'service' : email.transport}`,
+});
 mailer?.start();
 write('info', { msg: `search indexing: ${searchWorker ? 'enabled' : 'disabled'}` });
 searchWorker?.start();

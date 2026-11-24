@@ -17,6 +17,13 @@ const proxy = process.env.TRUST_PROXY || 'false';
 const trustProxy = proxy === 'true' || (proxy !== 'false' && proxy.split(',').map((s) => s.trim()));
 const app = buildGateway({
   upstream,
+  notificationsUpstream:
+    process.env.NOTIFICATIONS_EXECUTION_MODE === 'service'
+      ? parseHttpOrigin(
+          'GATEWAY_NOTIFICATIONS_ORIGIN',
+          process.env.GATEWAY_NOTIFICATIONS_ORIGIN ?? 'http://localhost:4020',
+        )
+      : undefined,
   timeoutMs,
   trustProxy,
   frontendOrigin: process.env.FRONTEND_ORIGIN ?? 'http://localhost:3000',

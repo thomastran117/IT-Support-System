@@ -117,6 +117,7 @@ services:
       JWT_ISSUER: ${JWT_ISSUER:-smartdesk-api}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-smartdesk-web}
       INTERNAL_SERVICE_KEYS: ${INTERNAL_SERVICE_KEYS:-}
+      NOTIFICATIONS_EXECUTION_MODE: ${NOTIFICATIONS_EXECUTION_MODE:-local}
       ACCESS_TOKEN_TTL_SECONDS: ${ACCESS_TOKEN_TTL_SECONDS:-900}
       REFRESH_TOKEN_TTL_SECONDS: ${REFRESH_TOKEN_TTL_SECONDS:-604800}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
@@ -163,6 +164,8 @@ services:
       target: gateway
     environment:
       GATEWAY_UPSTREAM_URL: http://backend-api:4000
+      NOTIFICATIONS_EXECUTION_MODE: ${NOTIFICATIONS_EXECUTION_MODE:-local}
+      GATEWAY_NOTIFICATIONS_ORIGIN: http://notifications-api:4020
       GATEWAY_UPSTREAM_TIMEOUT_MS: ${GATEWAY_UPSTREAM_TIMEOUT_MS:-10000}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
       LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -241,6 +244,56 @@ services:
         - action: rebuild
           path: ./tsconfig.base.json
 
+  notifications-service:
+    profiles: [notifications]
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: notifications-service
+    environment:
+      HOST: notifications-api
+      NOTIFICATIONS_DATABASE_URL: ${NOTIFICATIONS_DATABASE_URL:-}
+      NOTIFICATIONS_IDENTITY_ORIGIN: ${NOTIFICATIONS_IDENTITY_ORIGIN:-http://backend-api:4000}
+      NOTIFICATIONS_KEY_ID: ${NOTIFICATIONS_KEY_ID:-}
+      NOTIFICATIONS_PRIVATE_KEY: ${NOTIFICATIONS_PRIVATE_KEY:-}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-5000}
+      EMAIL_TRANSPORT: ${EMAIL_TRANSPORT:-none}
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-}
+      SMTP_USER: ${NOTIFICATIONS_SMTP_USER:-}
+      SMTP_PASSWORD: ${NOTIFICATIONS_SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
+      EMAIL_JOB_MAX_ATTEMPTS: ${EMAIL_JOB_MAX_ATTEMPTS:-5}
+      EMAIL_JOB_BACKOFF_MS: ${EMAIL_JOB_BACKOFF_MS:-30000}
+      EMAIL_MAX_AGE_HOURS: ${EMAIL_MAX_AGE_HOURS:-24}
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://notifications-api:4020/health/ready', { signal: AbortSignal.timeout(5000) })
+          .then(response => process.exit(response.ok ? 0 : 1), () => process.exit(1))
+      interval: 5s
+      timeout: 6s
+      start_period: 10s
+      retries: 6
+    stop_grace_period: 75s
+    depends_on:
+      backend:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    networks:
+      internal:
+      api:
+        aliases: [notifications-api]
+      notifications-egress:
+
   worker:
     build:
       context: .
@@ -253,6 +306,7 @@ services:
       OPENSEARCH_USERNAME: ${OPENSEARCH_USERNAME:-}
       OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD:-}
       WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-5000}
+      NOTIFICATIONS_EXECUTION_MODE: ${NOTIFICATIONS_EXECUTION_MODE:-local}
       AI_EXECUTION_MODE: ${AI_EXECUTION_MODE:-local}
       AI_PROVIDER: ${AI_PROVIDER:-none}
       AI_API_KEY: ${AI_API_KEY:-}
@@ -397,5 +451,6 @@ networks:
   api:
     internal: true
   ai-egress:
+  notifications-egress:
   search:
     internal: true

@@ -1,6 +1,6 @@
 import { Prisma } from '@smartdesk/db';
 import type { NotificationType } from '@smartdesk/contracts';
-import type { Db } from '../transaction.js';
+import type { Db } from '@smartdesk/db';
 
 export type DeliveryState = 'QUEUED' | 'RUNNING' | 'SENT' | 'FAILED' | 'SKIPPED';
 

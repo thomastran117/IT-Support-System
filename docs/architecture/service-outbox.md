@@ -1,8 +1,9 @@
 # Cross-service events
 
-SD-092 adds a PostgreSQL outbox for Ticket and an opt-in Notifications consumer. The API and
-worker still serve the usual MVP flows, including inline inbox writes and the existing optional
-email queue. A consumer outage leaves the tickets, inbox, and committed event history available.
+SD-092 adds a PostgreSQL outbox for Ticket. Local mode serves the inbox and optional email
+through the backend and its worker. SD-094 adds an independent Notifications service that
+consumes the outbox. Tickets and committed event history stay available during a consumer outage.
+[Notifications cutover and rollback](notifications-service.md)
 
 ## Version 1 contract
 
@@ -61,7 +62,7 @@ original event after deploying a compatible decoder.
   lease goes to `FAILED`. Only bounded reason codes are stored. Replaying a failed delivery resets
   its attempt budget and retains the original event. Completed receipts are retained for deduplication.
 
-After Prisma migration 0015, run the optional Notifications consumer with the existing application
+After Prisma migration 0015, run the Notifications maintenance command with the existing application
 connection from the backend workspace. Each drain processes up to 100 due deliveries. Repeat it
 to work through a backlog or to pick up retries when they become due.
 

@@ -1,3 +1,4 @@
+import { sqlState } from '@smartdesk/db';
 import { HttpError } from '../plugins/errors.js';
 
 export type DbErrorCode =
@@ -66,36 +67,7 @@ const RESTRICT = '23001';
 const SERIALIZATION = '40001';
 const DEADLOCK = '40P01';
 
-/** Pull a PostgreSQL SQLSTATE out of the various shapes Prisma / the pg adapter produce. */
-export function sqlState(err: unknown): string | undefined {
-  const e = err as {
-    code?: string;
-    meta?: { driverAdapterError?: { cause?: { originalCode?: string } } };
-    message?: string;
-  };
-  const adapterCode = e?.meta?.driverAdapterError?.cause?.originalCode;
-  if (adapterCode) return adapterCode;
-  if (typeof e?.code === 'string' && /^[0-9A-Z]{5}$/.test(e.code) && !/^P\d{4}$/.test(e.code)) {
-    return e.code;
-  }
-  switch (e?.code) {
-    case 'P2002':
-      return UNIQUE;
-    case 'P2003':
-      return FOREIGN_KEY;
-    case 'P2034':
-      return SERIALIZATION;
-    default:
-  }
-  const fromMessage = /Code: `([0-9A-Z]{5})`/.exec(e?.message ?? '');
-  return fromMessage?.[1];
-}
-
-/** True when retrying the whole transaction can succeed (serialization failure or deadlock). */
-export function isRetryable(err: unknown): boolean {
-  const state = sqlState(err);
-  return state === SERIALIZATION || state === DEADLOCK;
-}
+export { isRetryable, sqlState } from '@smartdesk/db';
 
 const CONNECTION_CODES = new Set(['P1000', 'P1001', 'P1002', 'P1008', 'P1017', 'P2024']);
 

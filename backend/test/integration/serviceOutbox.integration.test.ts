@@ -6,16 +6,13 @@ import {
   claimServiceEvent,
   deliverServiceEvent,
   replayServiceEvent,
-} from '../../src/db/repositories/serviceOutbox.js';
+} from '@smartdesk/notifications';
 import { appendEvent } from '../../src/db/repositories/ticketEvents.js';
 import { CATEGORIES, TEAMS, USERS } from '../../src/db/seed/fixtures.js';
 import { seedDatabase } from '../../src/db/seed/run.js';
 import { addComment, approveRouting, submitTicket } from '../../src/db/services/ticketService.js';
 import { withTransaction } from '../../src/db/transaction.js';
-import {
-  applyNotificationEvent,
-  notificationSubscription,
-} from '../../src/modules/notifications/outbox.js';
+import { applyNotificationEvent, notificationSubscription } from '@smartdesk/notifications';
 import { createTestPrisma, expectViolation, resetDatabase, testDatabaseUrl } from './helpers/db.js';
 
 describe.skipIf(!testDatabaseUrl)('durable service outbox (integration)', () => {

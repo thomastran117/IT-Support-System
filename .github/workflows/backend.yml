@@ -46,6 +46,9 @@ jobs:
       - name: Independent service container checks
         run: set -o pipefail; sh docker/verify-service-containers.sh 2>&1 | tee ci-service-containers.log
 
+      - name: Notifications service outage, recovery and rollback
+        run: set -o pipefail; sh docker/verify-notifications-service.sh 2>&1 | tee ci-notifications-service.log
+
       - name: Optional OpenSearch smoke check
         run: |
           default_services=$(docker compose config --services)

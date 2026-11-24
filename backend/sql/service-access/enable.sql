@@ -70,6 +70,28 @@ BEGIN
   GRANT UPDATE (state, attempts, run_after, lease_token, locked_until, error_kind, updated_at, completed_at)
     ON public.notification_deliveries TO smartdesk_notifications;
   GRANT SELECT (ticket_id, title) ON public.tickets TO smartdesk_notifications;
+  GRANT SELECT ON public.service_outbox_events, public.service_outbox_deliveries
+    TO smartdesk_notifications;
+  GRANT INSERT (consumer, event_id, state, attempts, run_after, lease_token, locked_until)
+    ON public.service_outbox_deliveries TO smartdesk_notifications;
+  GRANT UPDATE (state, attempts, run_after, lease_token, locked_until, finished_at, error_kind)
+    ON public.service_outbox_deliveries TO smartdesk_notifications;
+
+  -- Keep existing object grants effective for other outbox users and limit the subscriber's rows.
+  DROP POLICY IF EXISTS smartdesk_outbox_access ON public.service_outbox_events;
+  DROP POLICY IF EXISTS smartdesk_notification_events ON public.service_outbox_events;
+  CREATE POLICY smartdesk_outbox_access ON public.service_outbox_events USING (true) WITH CHECK (true);
+  CREATE POLICY smartdesk_notification_events ON public.service_outbox_events AS RESTRICTIVE
+    FOR SELECT TO smartdesk_notifications
+    USING (type IN ('ticket.routed', 'ticket.status-changed', 'ticket.public-reply'));
+  ALTER TABLE public.service_outbox_events ENABLE ROW LEVEL SECURITY;
+
+  DROP POLICY IF EXISTS smartdesk_outbox_access ON public.service_outbox_deliveries;
+  DROP POLICY IF EXISTS smartdesk_notification_receipts ON public.service_outbox_deliveries;
+  CREATE POLICY smartdesk_outbox_access ON public.service_outbox_deliveries USING (true) WITH CHECK (true);
+  CREATE POLICY smartdesk_notification_receipts ON public.service_outbox_deliveries AS RESTRICTIVE
+    TO smartdesk_notifications USING (consumer = 'notifications') WITH CHECK (consumer = 'notifications');
+  ALTER TABLE public.service_outbox_deliveries ENABLE ROW LEVEL SECURITY;
 
   GRANT SELECT, INSERT, UPDATE ON public.knowledge_articles TO smartdesk_knowledge;
   GRANT SELECT (category_id, name, is_active) ON public.ticket_categories TO smartdesk_knowledge;

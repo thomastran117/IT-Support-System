@@ -1,6 +1,6 @@
 import nodemailer from 'nodemailer';
 import type SMTPTransport from 'nodemailer/lib/smtp-transport/index.js';
-import type { EmailConfig } from '../../../config/env.js';
+import type { EmailConfig } from './config.js';
 import type { EmailMessage } from './template.js';
 
 export interface EmailTransport {

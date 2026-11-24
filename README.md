@@ -69,6 +69,11 @@ Targeting `ai-service` starts Ticket and PostgreSQL. Start the normal stack for 
 frontend, and background worker. The AI service reaches Ticket through the private `api`
 network using `backend-api`.
 
+## Opt-in Notifications service
+
+The `notifications` profile runs the independent inbox and email dispatcher. The cutover
+uses the existing notification and delivery tables. [Notifications setup and rollback](docs/architecture/notifications-service.md)
+
 ## Common operations
 
 ```bash

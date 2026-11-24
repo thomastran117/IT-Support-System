@@ -1,47 +1,21 @@
-import type { Prisma, PrismaClient, TransactionClient } from '@smartdesk/db';
-import { isRetryable, mapDbError } from './errors.js';
+import {
+  runTransaction,
+  type PrismaClient,
+  type TransactionClient,
+  type TransactionOptions,
+} from '@smartdesk/db';
+import { mapDbError } from './errors.js';
 
-/** Either the shared client or a transaction handle; repositories accept both. */
-export type Db = PrismaClient | TransactionClient;
+export type { Db, TransactionOptions } from '@smartdesk/db';
 
-export interface TransactionOptions {
-  /** Max time to wait for a pooled connection. Default 5 s. */
-  maxWaitMs?: number;
-  /** Max time the transaction may run before PostgreSQL rolls it back. Default 10 s. */
-  timeoutMs?: number;
-  /** Extra attempts after a serialization failure or deadlock. Default 2. */
-  retries?: number;
-  isolationLevel?: Prisma.TransactionIsolationLevel;
-}
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-/**
- * Run `work` atomically. Everything it writes commits together or not at all.
- *
- * - Duration is bounded (`timeoutMs`), so a stuck request cannot hold locks forever.
- * - Serialization failures and deadlocks are retried with a short backoff.
- * - Every failure leaves as a safe `DbError` (no SQL, no connection details).
- */
 export async function withTransaction<T>(
   prisma: PrismaClient,
   work: (tx: TransactionClient) => Promise<T>,
-  options: TransactionOptions = {},
+  options?: TransactionOptions,
 ): Promise<T> {
-  const { maxWaitMs = 5_000, timeoutMs = 10_000, retries = 2, isolationLevel } = options;
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return await prisma.$transaction(work, {
-        maxWait: maxWaitMs,
-        timeout: timeoutMs,
-        ...(isolationLevel ? { isolationLevel } : {}),
-      });
-    } catch (err) {
-      if (attempt < retries && isRetryable(err)) {
-        await sleep(25 * 2 ** attempt + Math.floor(Math.random() * 25));
-        continue;
-      }
-      throw mapDbError(err);
-    }
+  try {
+    return await runTransaction(prisma, work, options);
+  } catch (error) {
+    throw mapDbError(error);
   }
 }

@@ -2,14 +2,10 @@ import { createPrisma } from '@smartdesk/db';
 import { z } from 'zod';
 import { loadEnv } from '../src/config/env.js';
 import {
-  claimServiceEvent,
-  deliverServiceEvent,
-  replayServiceEvent,
-} from '../src/db/repositories/serviceOutbox.js';
-import {
-  applyNotificationEvent,
+  drainNotificationEvents,
   notificationSubscription,
-} from '../src/modules/notifications/outbox.js';
+  replayServiceEvent,
+} from '@smartdesk/notifications';
 
 const [mode, id, extra] = process.argv.slice(2);
 const eventId = z.uuid().safeParse(id);
@@ -27,13 +23,7 @@ if (!((mode === 'drain' && id === undefined) || (mode === 'replay' && eventId.su
         process.exitCode = 1;
       }
     } else {
-      const results = { COMPLETED: 0, QUEUED: 0, FAILED: 0, LOST: 0 };
-      for (let index = 0; index < 100; index++) {
-        const claim = await claimServiceEvent(db, notificationSubscription);
-        if (!claim) break;
-        const result = await deliverServiceEvent(db, claim, applyNotificationEvent);
-        results[result]++;
-      }
+      const results = await drainNotificationEvents(db);
       console.log(JSON.stringify(results));
       if (results.FAILED) process.exitCode = 1;
     }

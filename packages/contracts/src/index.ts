@@ -938,6 +938,13 @@ export const serviceEventV1Schema = z.discriminatedUnion('type', [
 export type ServiceEventV1 = z.infer<typeof serviceEventV1Schema>;
 export type ServiceEventType = ServiceEventV1['type'];
 
+export const NOTIFICATION_IDENTITY = {
+  audience: 'smartdesk-identity',
+  scope: 'identity:notification-recipient',
+  path: '/internal/identity/notification-recipient',
+} as const;
+export const notificationRecipientSchema = z.strictObject({ recipientId: z.guid() });
+
 // Command for the authenticated AI-to-Ticket completion path. The draft belongs in the request,
 // while recommendation.ready carries only the identifiers of the result after commit.
 export const analysisJobIdentityV1Schema = z.strictObject({

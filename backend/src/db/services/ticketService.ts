@@ -27,7 +27,7 @@ import {
 import { enqueueAnalysis } from '../repositories/aiAnalysisJobs.js';
 import { enqueueSearchIndexJob } from '../repositories/searchIndexJobs.js';
 import { insertComment, recordFirstResponse } from '../repositories/ticketComments.js';
-import { appendEvent } from '../repositories/ticketEvents.js';
+import { appendEvent, type TicketEventContext } from '../repositories/ticketEvents.js';
 import {
   activeTeamIds,
   findCategory,
@@ -166,7 +166,7 @@ async function applyRouting(
   actor: Actor,
   ticket: TicketRow,
   change: RoutingChange,
-  correlationId?: string,
+  eventContext: TicketEventContext,
 ): Promise<TicketRow> {
   if (!(['OPEN', 'TRIAGED', 'IN_PROGRESS'] as string[]).includes(ticket.status)) {
     throw lifecycleError('Resolved or closed tickets cannot be re-routed; reopen the ticket first');
@@ -238,7 +238,7 @@ async function applyRouting(
   const event = (
     type: Parameters<typeof appendEvent>[1]['type'],
     details: Record<string, unknown>,
-  ) => appendEvent(tx, { ticketId: ticket.id, actorId: actor.id, type, details, correlationId });
+  ) => appendEvent(tx, { ticketId: ticket.id, actorId: actor.id, type, details, ...eventContext });
 
   if (next.categoryId !== ticket.categoryId) {
     await event('CATEGORY_UPDATED', { from: ticket.categoryId, to: next.categoryId });
@@ -265,8 +265,7 @@ async function applyRouting(
 // Public operations. Each is one transaction: the mutation and its audit events commit together.
 // ---------------------------------------------------------------------------------------------
 
-export interface CreateTicketInput {
-  correlationId?: string;
+export interface CreateTicketInput extends TicketEventContext {
   requesterId: string;
   title: string;
   description: string;
@@ -335,6 +334,7 @@ export function submitTicket(
           actorId: actor.id,
           type: 'CREATED',
           correlationId: input.correlationId,
+          outboxNotifications: input.outboxNotifications,
         });
         if (input.enqueueAnalysis) {
           await enqueueAnalysis(tx, {
@@ -362,8 +362,7 @@ export function createTicket(prisma: PrismaClient, input: CreateTicketInput) {
   return submitTicket(prisma, input).then((r) => r.ticket);
 }
 
-export interface ApproveRoutingInput extends RoutingChange {
-  correlationId?: string;
+export interface ApproveRoutingInput extends RoutingChange, TicketEventContext {
   ticketId: string;
   actorId: string;
   /** `version` the caller last read; a mismatch is rejected as a 409 VERSION_CONFLICT. */
@@ -376,12 +375,14 @@ export function approveRouting(prisma: PrismaClient, input: ApproveRoutingInput)
     const actor = await loadActor(tx, input.actorId);
     const ticket = await loadTicket(tx, input.ticketId, input.expectedVersion);
     await assertCanWork(tx, actor, ticket);
-    return applyRouting(tx, actor, ticket, input, input.correlationId);
+    return applyRouting(tx, actor, ticket, input, {
+      correlationId: input.correlationId,
+      outboxNotifications: input.outboxNotifications,
+    });
   });
 }
 
-export interface TransitionInput {
-  correlationId?: string;
+export interface TransitionInput extends TicketEventContext {
   ticketId: string;
   actorId: string;
   to: TicketStatus;
@@ -450,6 +451,7 @@ export function transitionTicket(prisma: PrismaClient, input: TransitionInput) {
         type,
         details,
         correlationId: input.correlationId,
+        outboxNotifications: input.outboxNotifications,
       });
 
     switch (input.to) {
@@ -496,8 +498,7 @@ export function transitionTicket(prisma: PrismaClient, input: TransitionInput) {
   });
 }
 
-export interface AddCommentInput {
-  correlationId?: string;
+export interface AddCommentInput extends TicketEventContext {
   ticketId: string;
   authorId: string;
   body: string;
@@ -544,6 +545,7 @@ export function addComment(prisma: PrismaClient, input: AddCommentInput) {
       actorId: actor.id,
       type: 'COMMENT_ADDED',
       correlationId: input.correlationId,
+      outboxNotifications: input.outboxNotifications,
       // Ids and flags only: the comment text never enters the audit trail.
       details: { commentId: comment.id, isInternal, ...(firstResponse ? { firstResponse } : {}) },
     });
@@ -551,8 +553,7 @@ export function addComment(prisma: PrismaClient, input: AddCommentInput) {
   });
 }
 
-export interface ReviewInput {
-  correlationId?: string;
+export interface ReviewInput extends TicketEventContext {
   recommendationId: string;
   /** When given, the recommendation must belong to this ticket (404 otherwise). */
   ticketId?: string;
@@ -609,7 +610,10 @@ export function reviewRecommendation(prisma: PrismaClient, input: ReviewInput) {
     });
     if (claimed === 0) throw staleWriteError('Recommendation');
     const updated = change
-      ? await applyRouting(tx, actor, ticket, change, input.correlationId)
+      ? await applyRouting(tx, actor, ticket, change, {
+          correlationId: input.correlationId,
+          outboxNotifications: input.outboxNotifications,
+        })
       : ticket;
     await appendEvent(tx, {
       ticketId: ticket.id,

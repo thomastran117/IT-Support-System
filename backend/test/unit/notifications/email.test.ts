@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { NOTIFICATION_TYPES } from '@smartdesk/contracts';
 import { loadEnv, type EmailConfig } from '../../../src/config/env.js';
-import { buildEmail } from '../../../src/modules/notifications/email/template.js';
+import { buildEmail } from '@smartdesk/notifications';
 import {
   EmailError,
   classifySmtpError,
@@ -9,7 +9,7 @@ import {
   createSinkTransport,
   createSmtpTransport,
   smtpOptions,
-} from '../../../src/modules/notifications/email/transport.js';
+} from '@smartdesk/notifications';
 
 const smtpEnv = {
   EMAIL_TRANSPORT: 'smtp',

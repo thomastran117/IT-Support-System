@@ -39,6 +39,7 @@
     "@smartdesk/ai-analysis": "file:../packages/ai-analysis",
     "@smartdesk/contracts": "file:../packages/contracts",
     "@smartdesk/db": "file:../packages/db",
+    "@smartdesk/notifications": "file:../packages/notifications",
     "argon2": "^0.45.2",
     "fastify": "^5.12.8",
     "ioredis": "^5.4.2",
