@@ -6,12 +6,12 @@ import { cx } from './cx';
 export type BadgeTone = 'neutral' | 'info' | 'warning' | 'success' | 'danger' | 'muted';
 
 const TONE: Record<BadgeTone, string> = {
-  neutral: 'border-slate-200 bg-slate-100 text-slate-700',
-  info: 'border-blue-200 bg-blue-50 text-blue-800',
-  warning: 'border-amber-200 bg-amber-50 text-amber-800',
-  success: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-  danger: 'border-rose-200 bg-rose-50 text-rose-800',
-  muted: 'border-slate-300 bg-slate-200 text-slate-800',
+  neutral: 'border-line bg-panel-hover text-muted-strong',
+  info: 'border-accent-line bg-accent-soft text-accent',
+  warning: 'border-warning-line bg-warning-soft text-warning',
+  success: 'border-success-line bg-success-soft text-success',
+  danger: 'border-danger-line bg-danger-soft text-danger',
+  muted: 'border-line-strong bg-panel-hover text-ink',
 };
 
 const STATUS_TONE: Record<TicketStatus, BadgeTone> = {
@@ -47,7 +47,7 @@ export function Badge({
     <span
       className={cx(
         'app-badge inline-flex min-h-6 items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold',
-        dashed ? 'border-dashed border-slate-300 bg-white text-slate-600' : TONE[tone],
+        dashed ? 'border-dashed border-line-strong bg-panel text-muted' : TONE[tone],
       )}
     >
       {children}

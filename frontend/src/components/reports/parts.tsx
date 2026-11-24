@@ -16,17 +16,17 @@ export function Kpi({
 }) {
   return (
     <div className="app-card p-4" data-testid={`kpi-${id}`}>
-      <dt className="text-sm font-medium text-slate-600">{label}</dt>
+      <dt className="text-sm font-medium text-muted">{label}</dt>
       <dd className="mt-1">
         <span
           className={cx(
             'text-2xl font-bold tracking-tight',
-            value === null ? 'text-slate-500' : 'text-slate-950',
+            value === null ? 'text-muted' : 'text-ink-strong',
           )}
         >
           {value ?? 'N/A'}
         </span>
-        <span className="mt-1 block text-xs text-slate-600">{note}</span>
+        <span className="mt-1 block text-xs text-muted">{note}</span>
       </dd>
     </div>
   );
@@ -47,7 +47,7 @@ export function BarList({ items, vertical = false }: { items: Bar[]; vertical?: 
           <div
             key={i.label}
             title={`${i.label}: ${i.value}`}
-            className="min-w-0 flex-1 rounded-t bg-blue-600"
+            className="min-w-0 flex-1 rounded-t bg-chart"
             style={{
               height: `${(i.value / max) * 100}%`,
               minHeight: i.value ? 3 : 1,
@@ -63,9 +63,9 @@ export function BarList({ items, vertical = false }: { items: Bar[]; vertical?: 
       {items.map((i) => (
         <li key={i.label} className="grid grid-cols-[8rem_1fr_2rem] items-center gap-2 text-sm">
           <span className="truncate">{i.label}</span>
-          <span className="h-3 rounded bg-slate-100">
+          <span className="h-3 rounded bg-panel-hover">
             <span
-              className="block h-3 rounded bg-blue-600"
+              className="block h-3 rounded bg-chart"
               style={{ width: `${(i.value / max) * 100}%` }}
             />
           </span>
@@ -94,7 +94,7 @@ export function DataTable({
     >
       <table aria-label={caption} className="w-full text-left text-sm">
         <thead>
-          <tr className="border-b border-slate-200 text-slate-600">
+          <tr className="border-b border-line text-muted">
             {head.map((h) => (
               <th key={h} scope="col" className="py-2 pr-4 font-medium">
                 {h}
@@ -104,7 +104,7 @@ export function DataTable({
         </thead>
         <tbody>
           {rows.map((r, n) => (
-            <tr key={n} className="border-b border-slate-100">
+            <tr key={n} className="border-b border-line">
               {r.map((c, i) =>
                 i === 0 ? (
                   <th key={i} scope="row" className="py-2 pr-4 font-normal">
@@ -127,7 +127,7 @@ export function DataTable({
 /** Cohort definitions, so a figure is never read without its denominator. */
 export function Definitions() {
   return (
-    <p className="text-xs text-slate-600">
+    <p className="text-xs text-muted">
       Routing and first response cover tickets created in the period. Resolution covers tickets
       resolved in it. AI accuracy covers independently labelled tickets and counts a missing
       recommendation as not correct; acceptance is measured separately. The 90% accuracy target is

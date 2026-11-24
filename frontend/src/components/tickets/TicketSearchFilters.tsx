@@ -128,7 +128,7 @@ export function TicketSearchFilters({
     />
   );
   return (
-    <fieldset id={id} className="min-w-0 space-y-3 border-t border-slate-200 pt-3">
+    <fieldset id={id} className="min-w-0 space-y-3 border-t border-line pt-3">
       <legend className="sr-only">Search filters</legend>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {select('status', 'Status', 'All statuses', statusOptions)}
@@ -168,7 +168,7 @@ export function TicketSearchFilters({
         </div>
       </div>
       {failed && (
-        <p role="status" className="text-sm text-slate-600">
+        <p role="status" className="text-sm text-muted">
           Some filter options could not be loaded.
         </p>
       )}

@@ -93,7 +93,6 @@ export function NewTicketForm() {
   return (
     <section aria-labelledby="page-title" className="max-w-3xl space-y-6">
       <PageHeader
-        eyebrow="Support request"
         title="New ticket"
         description="Describe what is blocking you and the support team will take it from here."
       />

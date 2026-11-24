@@ -193,14 +193,14 @@ function Panel({ detailPath, browseLabel, children }: Props) {
       <form
         role="search"
         aria-label="Ticket search"
-        className="app-card space-y-3 p-4 sm:p-5"
+        className="app-card space-y-3 p-4"
         onSubmit={(event) => {
           event.preventDefault();
           submitText();
         }}
       >
         <div className="flex flex-wrap items-end gap-2">
-          <div className="min-w-0 flex-[1_1_15rem]">
+          <div className="min-w-0 flex-[1_1_14rem]">
             <label className="app-label" htmlFor={inputId}>
               Search tickets
             </label>
@@ -213,7 +213,7 @@ function Panel({ detailPath, browseLabel, children }: Props) {
               maxLength={TICKET_SEARCH_QUERY_MAX}
               value={text}
               onChange={(e) => setDraft({ q, text: e.target.value })}
-              placeholder="Title, description, or tracking ID"
+              placeholder="Title, description, or ID"
               className={inputClass}
             />
           </div>
@@ -252,7 +252,7 @@ function Panel({ detailPath, browseLabel, children }: Props) {
         )}
       </form>
 
-      <div hidden={searching} className="space-y-6">
+      <div hidden={searching} className="space-y-4">
         {children}
       </div>
       {!searching ? null : editing || (request && !current) ? (
@@ -294,7 +294,7 @@ function Panel({ detailPath, browseLabel, children }: Props) {
         />
       ) : current?.kind === 'ready' ? (
         <div className="space-y-4">
-          <p role="status" className="text-sm text-slate-600">
+          <p role="status" className="text-sm text-muted">
             {current.page.items.length} {current.page.items.length === 1 ? 'result' : 'results'} on
             this page. {searchStatus(current.page, !!cursor)}
           </p>
@@ -304,25 +304,32 @@ function Panel({ detailPath, browseLabel, children }: Props) {
               description="Try different words, a tracking ID, or fewer filters."
             />
           ) : (
-            <ul aria-label="Ticket search results" className="grid gap-3">
+            <ul aria-label="Ticket search results" className="app-card divide-y divide-line">
               {current.page.items.map((ticket) => (
-                <li key={ticket.id} className="app-card space-y-2 p-4 sm:p-5">
-                  <h2 className="break-words font-semibold text-slate-950">
-                    <Link
-                      href={ticketSearchHref(
-                        `${detailPath}/${encodeURIComponent(ticket.id)}`,
-                        params,
-                      )}
-                      className="underline-offset-4 hover:text-blue-700 hover:underline"
-                    >
-                      {ticket.title}
-                    </Link>
-                  </h2>
-                  <p className="break-all font-mono text-xs text-slate-600">{ticket.trackingId}</p>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-slate-600">
+                <li
+                  key={ticket.id}
+                  className="grid gap-2 px-4 py-3 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center"
+                >
+                  <div className="min-w-0">
+                    <h2 className="wrap-anywhere font-semibold text-ink-strong">
+                      <Link
+                        href={ticketSearchHref(
+                          `${detailPath}/${encodeURIComponent(ticket.id)}`,
+                          params,
+                        )}
+                        className="underline-offset-4 hover:text-accent hover:underline"
+                      >
+                        {ticket.title}
+                      </Link>
+                    </h2>
+                    <p className="break-all font-mono text-xs text-muted">{ticket.trackingId}</p>
+                  </div>
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2 text-sm text-muted">
                     <StatusBadge status={ticket.status} />
                     <PriorityBadge priority={ticket.priority} />
-                    <span>{ticket.team?.name ?? 'Unrouted'}</span>
+                    <span className="max-w-40 wrap-anywhere">
+                      {ticket.team?.name ?? 'Unrouted'}
+                    </span>
                     <time dateTime={ticket.createdAt}>{formatDateTime(ticket.createdAt)}</time>
                   </div>
                 </li>

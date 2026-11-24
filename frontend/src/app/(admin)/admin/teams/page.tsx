@@ -8,7 +8,6 @@ export default function AdminTeamsPage() {
   return (
     <section aria-labelledby="page-title">
       <PageHeader
-        eyebrow="Administration"
         title="Support teams"
         description="Teams that tickets are routed to, and the technicians in them. Deactivate a team instead of deleting it; existing tickets keep it."
       />

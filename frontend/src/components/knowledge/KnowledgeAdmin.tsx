@@ -67,7 +67,6 @@ export function KnowledgeAdmin() {
   return (
     <section aria-labelledby="page-title" className="space-y-6">
       <PageHeader
-        eyebrow="Administration"
         title="Knowledge articles"
         description="Write, publish and withdraw the help articles employees search."
         actions={
@@ -79,10 +78,7 @@ export function KnowledgeAdmin() {
       />
 
       <div className="app-card p-4">
-        <label
-          htmlFor="status-filter"
-          className="mb-1.5 block text-sm font-semibold text-slate-800"
-        >
+        <label htmlFor="status-filter" className="mb-1.5 block text-sm font-semibold text-ink">
           Show
         </label>
         <select
@@ -120,7 +116,7 @@ export function KnowledgeAdmin() {
         />
       ) : (
         <>
-          <p className="text-sm text-slate-600">
+          <p className="text-sm text-muted">
             {total} {total === 1 ? 'article' : 'articles'}
           </p>
           <div
@@ -131,7 +127,7 @@ export function KnowledgeAdmin() {
           >
             <table className="w-full min-w-[34rem] text-left text-sm">
               <caption className="sr-only">Knowledge articles</caption>
-              <thead className="border-b border-slate-200 text-xs tracking-wide text-slate-500 uppercase">
+              <thead className="border-b border-line text-xs tracking-wide text-muted uppercase">
                 <tr>
                   <th scope="col" className="px-4 py-3">
                     Title
@@ -147,30 +143,30 @@ export function KnowledgeAdmin() {
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-line">
                 {items.map((a) => (
                   <tr key={a.id}>
-                    <td className="px-4 py-3 font-semibold text-slate-950">
+                    <td className="px-4 py-3 font-semibold text-ink-strong">
                       <Link
                         href={`/admin/knowledge/${a.id}`}
-                        className="underline-offset-4 hover:text-blue-700 hover:underline"
+                        className="underline-offset-4 hover:text-accent hover:underline"
                       >
                         {a.title}
                       </Link>
                     </td>
-                    <td className="px-4 py-3 text-slate-700">{a.category?.name ?? '—'}</td>
+                    <td className="px-4 py-3 text-muted-strong">{a.category?.name ?? '—'}</td>
                     <td className="px-4 py-3">
                       <span
                         className={`inline-flex min-h-6 items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
                           a.isPublished
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                            : 'border-slate-200 bg-slate-100 text-slate-700'
+                            ? 'border-success-line bg-success-soft text-success'
+                            : 'border-line bg-panel-hover text-muted-strong'
                         }`}
                       >
                         {a.isPublished ? 'Published' : 'Draft'}
                       </span>
                     </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-slate-600">
+                    <td className="px-4 py-3 whitespace-nowrap text-muted">
                       {formatDateTime(a.updatedAt)}
                     </td>
                   </tr>

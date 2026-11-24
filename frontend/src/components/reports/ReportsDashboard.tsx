@@ -75,7 +75,7 @@ function Report({ data }: { data: ReportSummaryDto }) {
   const days = data.dailyIntake.length;
   return (
     <>
-      <p className="text-sm text-slate-600" data-testid="report-window">
+      <p className="text-sm text-muted" data-testid="report-window">
         {data.window.start.slice(0, 10)} to {data.window.end.slice(0, 10)} (end exclusive), {days}{' '}
         UTC {days === 1 ? 'day' : 'days'}. Averages are N/A when there is nothing to average.
       </p>
@@ -146,7 +146,7 @@ function Report({ data }: { data: ReportSummaryDto }) {
           Tickets by category
         </h2>
         {data.categories.length === 0 ? (
-          <p className="text-sm text-slate-600">No tickets in this period.</p>
+          <p className="text-sm text-muted">No tickets in this period.</p>
         ) : (
           <>
             <BarList
@@ -170,7 +170,7 @@ function Report({ data }: { data: ReportSummaryDto }) {
           items={data.dailyIntake.map((d) => ({ label: d.date, value: d.submittedTickets }))}
         />
         <details>
-          <summary className="cursor-pointer text-sm font-medium text-blue-700">
+          <summary className="cursor-pointer text-sm font-medium text-accent">
             Show the daily figures as a table
           </summary>
           <div className="mt-3">

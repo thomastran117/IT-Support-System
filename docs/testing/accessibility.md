@@ -8,7 +8,7 @@ they are deterministic and do not need the backend.
 
 | Check                | How                                                                                                                                                                                               |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| WCAG A/AA rules      | axe (`wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa`, `wcag22aa`) on all 17 screens, at the desktop and phone (Pixel 7) viewports. Any violation, whatever its impact, fails the test.                 |
+| WCAG A/AA rules      | axe (`wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa`, `wcag22aa`) on all 20 screens in light and dark themes at desktop and phone (Pixel 7) viewports. Any violation fails the test.                   |
 | Page structure       | Each screen has exactly one `<h1>`, one `main` landmark and a non-empty document title.                                                                                                           |
 | Responsive layout    | At 320, 375 and 768 px: no horizontal page scroll, and no button, link or field is pushed past the right edge (wide tables scroll inside their own labelled, focusable region).                   |
 | Keyboard only        | Sign in; skip link; submit a ticket (validation first, focus moves to the error summary); technician approves routing; admin reaches Reports through the navigation; dialog focus; visible focus. |
@@ -16,8 +16,8 @@ they are deterministic and do not need the backend.
 | Status not by colour | Status and priority are always text (`StatusBadge`, `PriorityBadge`); the visual baselines and unit tests cover the labels.                                                                       |
 
 Screens covered: login; employee tickets, new ticket, ticket detail, knowledge search and article;
-technician queue, triage and knowledge; admin users, categories, teams, reports, AI evaluation, and
-the article list, new and edit pages.
+technician queue, triage, knowledge search and article; admin users, tickets, ticket detail,
+categories, teams, reports, AI evaluation, and the article list, new and edit pages.
 
 ## Issues found and fixed in SD-052
 

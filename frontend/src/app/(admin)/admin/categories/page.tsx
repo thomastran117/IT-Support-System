@@ -8,7 +8,6 @@ export default function AdminCategoriesPage() {
   return (
     <section aria-labelledby="page-title">
       <PageHeader
-        eyebrow="Administration"
         title="Categories"
         description="The categories technicians choose when triaging tickets. Deactivate a category instead of deleting it; existing tickets keep it."
       />

@@ -84,7 +84,7 @@ function AnalysisPanel({
 }) {
   if (failed && !analysis) {
     return (
-      <div role="status" className="rounded border border-amber-300 bg-amber-50 p-3 text-sm">
+      <div role="status" className="rounded border border-warning-line bg-warning-soft p-3 text-sm">
         <p>The AI analysis status could not be loaded. {MANUAL_NOTE}</p>
         <button type="button" className={`${secondaryButton} mt-2`} onClick={onRetryLoad}>
           Check again
@@ -126,7 +126,7 @@ function AnalysisPanel({
       <div
         role="alert"
         data-testid="analysis-state"
-        className="rounded border border-amber-300 bg-amber-50 p-3"
+        className="rounded border border-warning-line bg-warning-soft p-3"
       >
         <p className="font-medium">AI analysis failed</p>
         <p>
@@ -146,7 +146,7 @@ function AnalysisPanel({
         <div
           role="note"
           data-testid="manual-cue"
-          className="rounded border border-red-300 bg-red-50 p-3 text-red-900"
+          className="rounded border border-danger-line bg-danger-soft p-3 text-danger"
         >
           <p className="font-medium">This ticket looks high risk. Consider handling it first.</p>
           <p>
@@ -167,19 +167,19 @@ function AnalysisPanel({
             {requesting ? 'Requesting�' : label}
           </button>
           {state !== 'FAILED' && hasSuggestion && (
-            <p className="text-slate-600">
+            <p className="text-muted">
               A new analysis adds a separate suggestion. It never changes the approved routing.
             </p>
           )}
           {disabledByRule && (
-            <p className="text-slate-600" data-testid="analysis-limit">
+            <p className="text-muted" data-testid="analysis-limit">
               This ticket has reached the hourly analysis limit. Try again later.
             </p>
           )}
         </div>
       )}
       {notice && (
-        <p role="alert" className="font-medium text-amber-900" data-testid="analysis-notice">
+        <p role="alert" className="font-medium text-warning" data-testid="analysis-notice">
           {notice}
         </p>
       )}
@@ -232,7 +232,7 @@ function Comparison({ rec, ticket }: { rec: RecommendationDto; ticket: TicketDet
       </thead>
       <tbody>
         {rows.map((r) => (
-          <tr key={r.label} className="border-t border-slate-200">
+          <tr key={r.label} className="border-t border-line">
             <th scope="row" className="p-2 font-medium">
               {r.label}
             </th>
@@ -242,7 +242,7 @@ function Comparison({ rec, ticket }: { rec: RecommendationDto; ticket: TicketDet
             <td className="p-2" data-testid={`approved-${r.label.toLowerCase()}`}>
               {r.approved}
               {r.suggested !== 'No suggestion' && r.suggested === r.approved && (
-                <span className="ml-2 text-xs text-slate-600">(matches)</span>
+                <span className="ml-2 text-xs text-muted">(matches)</span>
               )}
             </td>
           </tr>
@@ -274,7 +274,7 @@ function Details({ rec }: { rec: RecommendationDto }) {
           ))}
         </p>
       )}
-      <p className="text-slate-600">
+      <p className="text-muted">
         {rec.modelVersion}, {formatDateTime(rec.createdAt)}
         {rec.confidence !== null &&
           `. Model-reported confidence ${Math.round(rec.confidence * 100)}% (not a probability)`}
@@ -325,7 +325,7 @@ export function RecommendationCard({
   let body;
   if (loadFailed) {
     body = (
-      <div role="alert" className="rounded border border-amber-300 bg-amber-50 p-3 text-sm">
+      <div role="alert" className="rounded border border-warning-line bg-warning-soft p-3 text-sm">
         <p>AI suggestions could not be loaded. {manualNote}</p>
         <button type="button" className={`${secondaryButton} mt-2`} onClick={onRetry}>
           Try again
@@ -334,13 +334,13 @@ export function RecommendationCard({
     );
   } else if (recommendations === null) {
     body = (
-      <p role="status" className="text-sm text-slate-600">
+      <p role="status" className="text-sm text-muted">
         Loading AI suggestions…
       </p>
     );
   } else if (recommendations.length === 0) {
     body = (
-      <p className="text-sm text-slate-600" data-testid="ai-note">
+      <p className="text-sm text-muted" data-testid="ai-note">
         There is no AI suggestion for this ticket. {manualNote}
       </p>
     );
@@ -384,7 +384,7 @@ export function RecommendationCard({
     body = (
       <div className="space-y-4">
         <p className="flex flex-wrap items-center gap-2 text-sm">
-          <span className="rounded border border-violet-400 bg-violet-50 px-2 py-0.5 font-semibold text-violet-900">
+          <span className="rounded border border-analysis-line bg-analysis-soft px-2 py-0.5 font-semibold text-analysis">
             {pending ? 'AI suggestion — requires review' : 'Latest AI suggestion — reviewed'}
           </span>
         </p>
@@ -395,12 +395,15 @@ export function RecommendationCard({
         {pending && (
           <div className="space-y-3">
             {stale && (
-              <p role="status" className="rounded border border-amber-300 bg-amber-50 p-3 text-sm">
+              <p
+                role="status"
+                className="rounded border border-warning-line bg-warning-soft p-3 text-sm"
+              >
                 {stale} Override the value or reject the suggestion.
               </p>
             )}
             {!routable && (
-              <p role="status" className="text-sm text-slate-600">
+              <p role="status" className="text-sm text-muted">
                 This ticket is {ticket.status === 'CLOSED' ? 'closed' : 'resolved'}, so a suggestion
                 cannot change its routing. You can still reject it.
               </p>
@@ -424,7 +427,7 @@ export function RecommendationCard({
             </div>
 
             {overriding && routable && (
-              <fieldset className="grid gap-3 rounded border border-slate-200 p-3 sm:grid-cols-3">
+              <fieldset className="grid gap-3 rounded border border-line p-3 sm:grid-cols-3">
                 <legend className="px-1 text-sm font-medium">Your values</legend>
                 <div>
                   <label htmlFor="override-category" className="block text-sm">
@@ -481,7 +484,7 @@ export function RecommendationCard({
                   </select>
                 </div>
                 {overrideError && (
-                  <p role="alert" className="text-sm font-medium text-red-700 sm:col-span-3">
+                  <p role="alert" className="text-sm font-medium text-danger sm:col-span-3">
                     {overrideError}
                   </p>
                 )}
@@ -540,7 +543,7 @@ export function RecommendationCard({
         )}
 
         {earlier.length > 0 && (
-          <details className="rounded border border-slate-200 p-3">
+          <details className="rounded border border-line p-3">
             <summary className="cursor-pointer text-sm font-medium">
               Earlier suggestions ({earlier.length})
             </summary>
@@ -571,7 +574,7 @@ export function RecommendationCard({
   return (
     <section
       aria-labelledby="ai-title"
-      className="space-y-3 rounded border border-slate-200 bg-white p-4"
+      className="space-y-3 rounded border border-line bg-panel p-4"
     >
       <h3 id="ai-title" className="text-lg font-semibold">
         AI suggestions

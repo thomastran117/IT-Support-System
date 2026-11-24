@@ -151,7 +151,10 @@ export function UserAdmin() {
   return (
     <div className="mt-7 space-y-6">
       {error && (
-        <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-900">
+        <p
+          role="alert"
+          className="rounded-xl border border-danger-line bg-danger-soft p-4 text-danger"
+        >
           {error}
         </p>
       )}
@@ -159,7 +162,7 @@ export function UserAdmin() {
       {secret && (
         <section
           aria-labelledby="secret-title"
-          className="rounded-xl border border-amber-200 bg-amber-50 p-5 shadow-sm"
+          className="rounded-xl border border-warning-line bg-warning-soft p-5 shadow-sm"
         >
           <h3 id="secret-title" className="font-semibold">
             One-time password for {secret.email}
@@ -169,7 +172,7 @@ export function UserAdmin() {
             shown only once. Give it to the user securely; they sign in with it.
           </p>
           <p className="mt-2">
-            <code data-testid="temporary-password" className="rounded bg-white px-2 py-1 text-base">
+            <code data-testid="temporary-password" className="rounded bg-panel px-2 py-1 text-base">
               {secret.password}
             </code>
           </p>
@@ -180,13 +183,13 @@ export function UserAdmin() {
       )}
 
       <section aria-labelledby="create-title" className="app-card p-5 sm:p-6">
-        <h2 id="create-title" className="text-lg font-bold text-slate-950">
+        <h2 id="create-title" className="text-lg font-bold text-ink-strong">
           Add a user
         </h2>
         {createError && (
           <p
             role="alert"
-            className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-rose-900"
+            className="mt-3 rounded-xl border border-danger-line bg-danger-soft p-3 text-danger"
           >
             {createError}
           </p>
@@ -226,18 +229,18 @@ export function UserAdmin() {
       </section>
 
       <section aria-labelledby="users-title" className="space-y-3">
-        <h2 id="users-title" className="text-lg font-bold text-slate-950">
+        <h2 id="users-title" className="text-lg font-bold text-ink-strong">
           User accounts
         </h2>
         {users === null ? (
-          <p role="status" className="mt-3 text-slate-600">
+          <p role="status" className="mt-3 text-muted">
             Loading users…
           </p>
         ) : (
           <div className="app-card overflow-hidden">
             <table className="app-table responsive-table">
               <caption className="sr-only">User accounts</caption>
-              <thead className="bg-slate-50">
+              <thead className="bg-panel-muted">
                 <tr>
                   <th scope="col" className="p-2">
                     Name
@@ -260,11 +263,11 @@ export function UserAdmin() {
                 {users.map((u) => {
                   const self = u.id === me?.id;
                   return (
-                    <tr key={u.id} className="border-t border-slate-200">
-                      <td data-primary="true" className="font-semibold text-slate-950">
+                    <tr key={u.id} className="border-t border-line">
+                      <td data-primary="true" className="font-semibold text-ink-strong">
                         {u.displayName}
                       </td>
-                      <td data-secondary="true" className="text-slate-500">
+                      <td data-secondary="true" className="text-muted">
                         {u.email}
                       </td>
                       <td data-label="Role">
@@ -284,7 +287,7 @@ export function UserAdmin() {
                       </td>
                       <td data-label="Status">
                         <span
-                          className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold ${u.isActive ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-slate-100 text-slate-600'}`}
+                          className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold ${u.isActive ? 'border-success-line bg-success-soft text-success' : 'border-line bg-panel-hover text-muted'}`}
                         >
                           {u.isActive ? 'Active' : 'Inactive'}
                         </span>
@@ -352,16 +355,16 @@ export function UserAdmin() {
       </ConfirmDialog>
 
       <section aria-labelledby="audit-title" className="app-card p-5 sm:p-6">
-        <h2 id="audit-title" className="text-lg font-bold text-slate-950">
+        <h2 id="audit-title" className="text-lg font-bold text-ink-strong">
           Recent account changes
         </h2>
         {audit.length === 0 ? (
-          <p className="mt-3 text-slate-600">No changes recorded yet.</p>
+          <p className="mt-3 text-muted">No changes recorded yet.</p>
         ) : (
-          <ul className="mt-4 divide-y divide-slate-100 text-sm">
+          <ul className="mt-4 divide-y divide-line text-sm">
             {audit.map((a) => (
               <li key={a.id} className="py-3 first:pt-0 last:pb-0">
-                <time dateTime={a.createdAt} className="text-slate-500">
+                <time dateTime={a.createdAt} className="text-muted">
                   {new Date(a.createdAt).toLocaleString()}
                 </time>{' '}
                 {a.actor.email} {ACTION_TEXT[a.action]} {a.target.email}

@@ -17,10 +17,10 @@ export function HomeRedirect() {
   }, [status, user, router]);
 
   return (
-    <div className="grid min-h-screen place-items-center bg-[#0b1f3a] p-6 text-white">
+    <div className="grid min-h-dvh place-items-center p-6">
       <div className="text-center">
         <BrandMark />
-        <p role="status" className="mt-6 inline-flex items-center gap-2 text-sm text-slate-300">
+        <p role="status" className="mt-6 inline-flex items-center gap-2 text-sm text-muted">
           <LoaderCircle aria-hidden="true" size={17} className="animate-spin" />
           Opening your workspace…
         </p>

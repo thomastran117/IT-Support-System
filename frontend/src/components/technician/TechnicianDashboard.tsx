@@ -1,11 +1,10 @@
 'use client';
 
 import type { CategoryRefDto, QueuePage, TeamRefDto, TicketPriority } from '@smartdesk/contracts';
-import { Layers3, SlidersHorizontal } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/lib/auth/AuthProvider';
-import { EmptyState, PageHeader, Pagination, PriorityBadge } from '@/components/ui';
+import { EmptyState, LoadingState, PageHeader, Pagination, PriorityBadge } from '@/components/ui';
 import { ApiError } from '@/lib/auth/client';
 import { PRIORITY_LABEL } from '@/lib/tickets/format';
 import { technicianApi } from '@/lib/technician/api';
@@ -35,11 +34,10 @@ function describeQueueError(err: unknown): string {
 
 export function TechnicianDashboard() {
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
+    <section aria-labelledby="page-title" className="space-y-5">
       <PageHeader
-        eyebrow="Technician workspace"
         title="Technician dashboard"
-        description="Triage incoming requests, manage team workload, and keep service moving."
+        description="Triage incoming requests and manage team queues."
       />
       <TicketSearch detailPath="/technician/tickets" browseLabel="Back to the support queue">
         <TechnicianQueues />
@@ -128,14 +126,19 @@ function TechnicianQueues() {
   const active = TABS.find((t) => t.id === tab)!;
   const noTeams = teams !== null && teams.length === 0 && needsTeam;
 
+  function selectTab(next: Tab) {
+    setTab(next);
+    setOffset(0);
+  }
+
   return (
     <>
       <div
         role="tablist"
         aria-label="Queues"
-        className="app-card flex flex-wrap gap-1.5 p-1.5 sm:w-fit"
+        className="app-card grid grid-cols-3 gap-1 p-1 sm:w-fit sm:grid-cols-[repeat(3,auto)]"
       >
-        {TABS.map((t) => (
+        {TABS.map((t, index) => (
           <button
             key={t.id}
             role="tab"
@@ -143,14 +146,35 @@ function TechnicianQueues() {
             id={`tab-${t.id}`}
             aria-selected={tab === t.id}
             aria-controls="queue-panel"
-            onClick={() => {
-              setTab(t.id);
-              setOffset(0);
+            tabIndex={tab === t.id ? 0 : -1}
+            onClick={() => selectTab(t.id)}
+            onKeyDown={(event) => {
+              let nextIndex: number;
+              switch (event.key) {
+                case 'ArrowLeft':
+                  nextIndex = (index - 1 + TABS.length) % TABS.length;
+                  break;
+                case 'ArrowRight':
+                  nextIndex = (index + 1) % TABS.length;
+                  break;
+                case 'Home':
+                  nextIndex = 0;
+                  break;
+                case 'End':
+                  nextIndex = TABS.length - 1;
+                  break;
+                default:
+                  return;
+              }
+              event.preventDefault();
+              const next = TABS[nextIndex]!.id;
+              selectTab(next);
+              document.getElementById(`tab-${next}`)?.focus();
             }}
-            className={`min-h-10 flex-1 rounded-lg border px-4 py-2 text-sm sm:flex-none ${
+            className={`min-h-11 rounded-md border px-1.5 py-2 text-sm sm:px-4 ${
               tab === t.id
-                ? 'border-blue-200 bg-blue-50 font-semibold text-blue-800 shadow-sm'
-                : 'border-transparent bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-950'
+                ? 'border-accent-line bg-accent-soft font-semibold text-accent shadow-sm'
+                : 'border-transparent bg-panel text-muted hover:bg-panel-muted hover:text-ink-strong'
             }`}
           >
             {t.label}
@@ -158,22 +182,13 @@ function TechnicianQueues() {
         ))}
       </div>
 
-      <div id="queue-panel" role="tabpanel" aria-labelledby={`tab-${tab}`} className="space-y-5">
-        <div className="flex items-center gap-2 text-sm text-slate-600">
-          <Layers3 aria-hidden="true" size={17} className="text-blue-700" />
-          <p>{active.help}</p>
-        </div>
+      <div id="queue-panel" role="tabpanel" aria-labelledby={`tab-${tab}`} className="space-y-4">
+        <p className="text-sm text-muted">{active.help}</p>
 
-        <form
-          aria-label="Filter queue"
-          className="app-card p-4 sm:p-5"
-          onSubmit={(e) => e.preventDefault()}
-        >
-          <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-slate-900">
-            <SlidersHorizontal aria-hidden="true" size={17} className="text-blue-700" />
-            Filter queue
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2 xl:max-w-4xl xl:grid-cols-3">
+        <form aria-label="Filter queue" onSubmit={(e) => e.preventDefault()}>
+          <div
+            className={`grid gap-3 min-[360px]:grid-cols-2 ${needsTeam ? 'max-w-3xl md:grid-cols-3' : 'max-w-sm'}`}
+          >
             {needsTeam && (
               <div>
                 <label htmlFor="filter-team" className="app-label">
@@ -243,7 +258,7 @@ function TechnicianQueues() {
         </form>
 
         {noTeams && (
-          <p role="status" className="app-card p-5 text-slate-700">
+          <p role="status" className="app-card p-5 text-muted-strong">
             You are not a member of any support team yet, so there is no team queue to show. Ask an
             administrator to add you to a team.
           </p>
@@ -252,7 +267,7 @@ function TechnicianQueues() {
         {error && (
           <div
             role="alert"
-            className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-950"
+            className="rounded-xl border border-danger-line bg-danger-soft p-4 text-danger"
           >
             <p>{error}</p>
             <button type="button" onClick={() => void load()} className={`${secondaryButton} mt-3`}>
@@ -261,11 +276,7 @@ function TechnicianQueues() {
           </div>
         )}
 
-        {loading && !page && !error && !noTeams && (
-          <p role="status" className="text-slate-600">
-            Loading the queue…
-          </p>
-        )}
+        {loading && !page && !error && !noTeams && <LoadingState label="Loading the queue…" />}
 
         {page && page.items.length === 0 && !error && (
           <EmptyState
@@ -279,61 +290,61 @@ function TechnicianQueues() {
         )}
 
         {page && page.items.length > 0 && (
-          <div aria-busy={loading}>
-            <div className="app-card overflow-hidden">
-              <table className="app-table responsive-table">
-                <caption className="sr-only">{active.label}, most urgent first</caption>
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th scope="col" className="p-2">
-                      Priority
+          <div
+            aria-busy={loading}
+            className="app-card min-w-0 md:overflow-hidden max-md:border-0 max-md:bg-transparent max-md:shadow-none"
+          >
+            <table className="app-table app-table-compact responsive-table">
+              <caption className="sr-only">{active.label}, most urgent first</caption>
+              <thead className="bg-panel-muted">
+                <tr>
+                  <th scope="col" className="p-2">
+                    Priority
+                  </th>
+                  <th scope="col" className="p-2">
+                    Ticket
+                  </th>
+                  <th scope="col" className="p-2">
+                    Status
+                  </th>
+                  <th scope="col" className="p-2">
+                    Category
+                  </th>
+                  <th scope="col" className="p-2">
+                    Assignee
+                  </th>
+                  <th scope="col" className="p-2">
+                    Age
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {page.items.map((t) => (
+                  <tr key={t.id} className="border-t border-line">
+                    <td data-label="Priority" data-secondary="true">
+                      <PriorityBadge priority={t.priority} />
+                    </td>
+                    <th scope="row" data-primary="true" className="font-semibold text-ink-strong">
+                      <Link
+                        href={`/technician/tickets/${t.id}`}
+                        className="hover:text-accent hover:underline"
+                      >
+                        {t.title}
+                      </Link>
                     </th>
-                    <th scope="col" className="p-2">
-                      Ticket
-                    </th>
-                    <th scope="col" className="p-2">
-                      Status
-                    </th>
-                    <th scope="col" className="p-2">
-                      Category
-                    </th>
-                    <th scope="col" className="p-2">
-                      Assignee
-                    </th>
-                    <th scope="col" className="p-2">
-                      Age
-                    </th>
+                    <td data-label="Status">
+                      <StatusBadge status={t.status} />
+                    </td>
+                    <td data-label="Category">{t.category?.name ?? 'Not set'}</td>
+                    <td data-label="Assignee">{t.assignee?.name ?? 'Unassigned'}</td>
+                    <td data-label="Age" title={`${t.ageMinutes} minutes`}>
+                      {formatAge(t.ageMinutes)}
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {page.items.map((t) => (
-                    <tr key={t.id} className="border-t border-slate-200">
-                      <td data-label="Priority" data-secondary="true">
-                        <PriorityBadge priority={t.priority} />
-                      </td>
-                      <th scope="row" data-primary="true" className="font-semibold text-slate-950">
-                        <Link
-                          href={`/technician/tickets/${t.id}`}
-                          className="hover:text-blue-700 hover:underline"
-                        >
-                          {t.title}
-                        </Link>
-                      </th>
-                      <td data-label="Status">
-                        <StatusBadge status={t.status} />
-                      </td>
-                      <td data-label="Category">{t.category?.name ?? 'Not set'}</td>
-                      <td data-label="Assignee">{t.assignee?.name ?? 'Unassigned'}</td>
-                      <td data-label="Age" title={`${t.ageMinutes} minutes`}>
-                        {formatAge(t.ageMinutes)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="mt-4">
+                ))}
+              </tbody>
+            </table>
+            <div className="border-t border-line p-3 max-md:mt-3 max-md:rounded-lg max-md:border max-md:bg-panel">
               <Pagination
                 offset={page.offset}
                 limit={PAGE_SIZE}

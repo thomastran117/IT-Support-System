@@ -117,7 +117,7 @@ export function useNotificationCentre(enabled: boolean): NotificationCentreState
   };
 }
 
-/** The header button with the unread badge. Several can exist (desktop and mobile layouts). */
+/** The workspace header button with the unread badge. */
 export function NotificationBell({
   centre,
   className,
@@ -145,7 +145,7 @@ export function NotificationBell({
         <span
           aria-hidden="true"
           data-testid="notification-badge"
-          className="absolute -top-1 -right-1 grid min-w-5 place-items-center rounded-full bg-rose-600 px-1 text-[0.68rem] leading-5 font-bold text-white ring-2 ring-white"
+          className="absolute -top-1 -right-1 grid min-w-5 place-items-center rounded-full bg-danger-fill px-1 text-[0.68rem] leading-5 font-bold text-on-accent ring-2 ring-panel"
         >
           {badgeText(unreadCount)}
         </span>
@@ -168,28 +168,28 @@ function Item({
       data-testid="notification-item"
       data-unread={n.read ? 'false' : 'true'}
       className={cx(
-        'flex items-start gap-2 border-b border-slate-100 px-4 py-3 last:border-b-0',
-        !n.read && 'bg-blue-50/60',
+        'flex items-start gap-2 border-b border-line px-4 py-3 last:border-b-0',
+        !n.read && 'bg-accent-soft/60',
       )}
     >
       <span
         aria-hidden="true"
         className={cx(
           'mt-1.5 size-2.5 shrink-0 rounded-full',
-          n.read ? 'bg-transparent' : 'bg-blue-600',
+          n.read ? 'bg-transparent' : 'bg-accent-fill',
         )}
       />
       <div className="min-w-0 flex-1">
         <Link
           href={notificationHref(n.ticketId)}
           onClick={() => onOpen(n)}
-          className="block min-h-11 rounded-md text-sm text-slate-900 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
+          className="block min-h-11 rounded-md text-sm text-ink-strong hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         >
           <span className={cx('block', !n.read && 'font-semibold')}>
             {n.read ? null : <span className="sr-only">Unread: </span>}
             {n.message}
           </span>
-          <span className="mt-0.5 block text-xs break-words text-slate-600">
+          <span className="mt-0.5 block text-xs break-words text-muted">
             {n.ticketTitle}
             <span className="sr-only"> (ticket {n.trackingId})</span>
           </span>
@@ -197,7 +197,7 @@ function Item({
         <time
           dateTime={n.createdAt}
           title={formatDateTime(n.createdAt)}
-          className="block text-xs text-slate-600"
+          className="block text-xs text-muted"
         >
           {formatRelative(n.createdAt, Date.now(), formatDateTime)}
         </time>
@@ -208,7 +208,7 @@ function Item({
           onClick={() => onMarkRead(n.id)}
           aria-label={`Mark as read: ${n.message} ${n.ticketTitle}`}
           title="Mark as read"
-          className="grid size-10 shrink-0 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+          className="grid size-10 shrink-0 place-items-center rounded-lg text-muted hover:bg-panel-hover hover:text-ink-strong"
         >
           <Check aria-hidden="true" size={17} />
         </button>
@@ -218,9 +218,7 @@ function Item({
 }
 
 /**
- * The panel. Rendered into <body> (a portal) so the sidebar's scrolling and the header's blur
- * cannot clip or re-anchor it. Non-modal: Escape or an outside click closes it and focus returns to
- * the bell that opened it.
+ * The panel lives above the workspace header. Escape returns focus to the bell.
  */
 export function NotificationPanel({ centre }: { centre: NotificationCentreState }) {
   const { open, setOpen, trigger, items, status, errorMessage, unreadCount } = centre;
@@ -264,16 +262,16 @@ export function NotificationPanel({ centre }: { centre: NotificationCentreState 
       role="dialog"
       aria-label="Notifications"
       tabIndex={-1}
-      className="fixed inset-x-3 top-[4.5rem] z-[60] flex max-h-[min(32rem,calc(100vh-6rem))] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl outline-none sm:left-auto sm:w-[24rem] lg:inset-x-auto lg:top-4 lg:left-[16.25rem]"
+      className="fixed inset-x-3 top-[4.5rem] z-[60] flex max-h-[min(32rem,calc(100dvh-6rem))] flex-col overflow-hidden rounded-xl border border-line bg-panel shadow-lg outline-none sm:right-6 sm:left-auto sm:w-96 xl:right-8"
     >
-      <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-4 py-2">
-        <h2 className="text-sm font-bold text-slate-900">Notifications</h2>
+      <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-2">
+        <h2 className="text-sm font-bold text-ink-strong">Notifications</h2>
         <div className="flex items-center gap-1">
           {unreadCount > 0 && (
             <button
               type="button"
               onClick={() => void centre.markAllRead()}
-              className="min-h-10 rounded-lg px-2 text-xs font-semibold text-blue-800 hover:bg-blue-50"
+              className="min-h-10 rounded-lg px-2 text-xs font-semibold text-accent hover:bg-accent-soft"
             >
               Mark all as read
             </button>
@@ -282,7 +280,7 @@ export function NotificationPanel({ centre }: { centre: NotificationCentreState 
             type="button"
             aria-label="Close notifications"
             onClick={() => close(true)}
-            className="grid size-10 place-items-center rounded-lg text-slate-600 hover:bg-slate-100"
+            className="grid size-10 place-items-center rounded-lg text-muted hover:bg-panel-hover"
           >
             <X aria-hidden="true" size={18} />
           </button>
@@ -291,27 +289,27 @@ export function NotificationPanel({ centre }: { centre: NotificationCentreState 
 
       <div className="min-h-0 flex-1 overflow-y-auto" aria-live="polite">
         {status === 'error' && (
-          <div role="alert" className="border-b border-rose-200 bg-rose-50 px-4 py-3 text-sm">
-            <p className="text-rose-950">{errorMessage}</p>
+          <div
+            role="alert"
+            className="border-b border-danger-line bg-danger-soft px-4 py-3 text-sm"
+          >
+            <p className="text-danger">{errorMessage}</p>
             <button
               type="button"
               onClick={() => void centre.refresh()}
-              className="mt-2 min-h-10 rounded-lg border border-rose-300 bg-white px-3 text-xs font-semibold text-rose-900"
+              className="mt-2 min-h-10 rounded-lg border border-danger-line bg-panel px-3 text-xs font-semibold text-danger"
             >
               Try again
             </button>
           </div>
         )}
         {status === 'loading' && (
-          <p role="status" className="px-4 py-6 text-center text-sm text-slate-600">
+          <p role="status" className="px-4 py-6 text-center text-sm text-muted">
             Loading notifications…
           </p>
         )}
         {status !== 'loading' && items.length === 0 && status !== 'error' && (
-          <p
-            data-testid="notification-empty"
-            className="px-4 py-8 text-center text-sm text-slate-600"
-          >
+          <p data-testid="notification-empty" className="px-4 py-8 text-center text-sm text-muted">
             You have no notifications yet. Updates to your tickets will appear here.
           </p>
         )}
