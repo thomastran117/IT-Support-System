@@ -1,0 +1,36 @@
+rules:
+  - id: smartdesk-unsafe-raw-sql
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: Review unsafe Prisma SQL calls and use parameterized queries for runtime inputs.
+    pattern-either:
+      - pattern: $DB.$queryRawUnsafe(...)
+      - pattern: $DB.$executeRawUnsafe(...)
+    paths:
+      exclude: ['**/test/**', '**/tests/**', '**/e2e/**']
+  - id: smartdesk-raw-html
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: Review raw HTML insertion and verify that the HTML source is trusted or sanitized.
+    pattern: $NODE.innerHTML = $VALUE
+  - id: smartdesk-raw-jsx-html
+    languages: [generic]
+    severity: WARNING
+    message: Review raw JSX HTML insertion and verify that the HTML source is trusted or sanitized.
+    pattern-regex: '\bdangerouslySetInnerHTML\s*='
+    paths:
+      include: ['*.tsx', '*.jsx']
+  - id: smartdesk-dynamic-code
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: Runtime code evaluation requires an explicit trust boundary.
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: new Function(...)
+  - id: smartdesk-privileged-container
+    languages: [generic]
+    severity: ERROR
+    message: Review host privilege grants in Compose or CI.
+    pattern-regex: '(?m)^\s*privileged:\s*true\s*(?:#.*)?$'
+    paths:
+      include: ['*.yml', '*.yaml']

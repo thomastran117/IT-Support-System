@@ -1,0 +1,15 @@
+services:
+  microservice-semgrep:
+    profiles: [microservice-static]
+    image: semgrep/semgrep:1.150.0
+    network_mode: none
+    working_dir: /src
+    volumes:
+      - .:/src:ro
+
+  microservice-audit:
+    profiles: [microservice-static]
+    image: node:22-alpine
+    working_dir: /src
+    volumes:
+      - .:/src:ro

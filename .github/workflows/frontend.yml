@@ -34,11 +34,28 @@ jobs:
 
       - name: Ticket search with PostgreSQL and OpenSearch
         run: |
+          set -o pipefail
           if [ "$(sysctl -n vm.max_map_count)" -lt 262144 ]; then
             sudo sysctl -w vm.max_map_count=262144
           fi
           project=$(docker compose --profile ci config --format json | jq -r .name)
           sh docker/verify-ticket-search-browser.sh "$project-frontend-ci" 2>&1 | tee ci-ticket-search.log
+
+      - name: Isolated microservice browser, failure and rollback checks
+        run: set -o pipefail; SD100=1 SD100_PASSIVE_SCAN=1 sh docker/verify-ticket-service.sh 2>&1 | tee ci-microservices.log
+
+      - name: Upload measurement and passive scan evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: microservice-verification
+          path: |
+            ci-microservices.log
+            frontend/test-results/sd100/*.json
+            frontend/test-results/sd100/*.jsonl
+            frontend/test-results/sd100/*-revision.txt
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Upload Playwright report and logs
         if: failure()

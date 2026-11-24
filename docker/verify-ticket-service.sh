@@ -19,8 +19,21 @@ export KNOWLEDGE_KEY_ID=knowledge-ci ANALYTICS_KEY_ID=analytics-ci NOTIFICATIONS
 
 project=smartdesk-ticket-ci-$$
 legacy() { docker compose -p "$project" --env-file .env.example -f docker-compose.yml "$@"; }
-compose() { legacy -f docker/compose.ticket-service.yml --profile services "$@"; }
-trap 'compose --profile legacy down --remove-orphans -v' EXIT
+compose() {
+  if [ "${SD100:-0}" = 1 ]; then
+    legacy -f docker/compose.ticket-service.yml -f docker/compose.microservice-ci.yml --profile services "$@"
+  else
+    legacy -f docker/compose.ticket-service.yml --profile services "$@"
+  fi
+}
+trap 'compose --profile legacy --profile search --profile microservice-ci --profile microservice-scan down --remove-orphans -v' EXIT
+if [ "${SD100:-0}" = 1 ]; then
+  export FRONTEND_ORIGIN=http://app.smartdesk.test:3100
+  export GATEWAY_UPSTREAM_TIMEOUT_MS=2500
+  export OPENSEARCH_URL=http://opensearch:9200/
+  evidence=frontend/test-results/sd100
+  mkdir -p "$evidence"
+fi
 
 keys=$(node --input-type=module - <<'NODE'
 import { generateKeyPairSync } from 'node:crypto';
@@ -91,6 +104,12 @@ compose build ticket-service gateway identity-service knowledge-service analytic
 compose up -d --wait postgres
 legacy run --rm --no-deps backend sh -c 'npm run migrate && npm run db:seed -- --profile test'
 psql() { compose exec -T postgres psql -X -v ON_ERROR_STOP=1 -U smartdesk -d smartdesk; }
+if [ "${SD100:-0}" = 1 ]; then
+  compose exec -T postgres psql -X -v ON_ERROR_STOP=1 -U smartdesk -d postgres -c 'CREATE DATABASE sd100_legacy TEMPLATE smartdesk'
+  git rev-parse HEAD > "$evidence/dynamic-revision.txt"
+  docker info --format '{"architecture":"{{.Architecture}}","logicalCPUs":{{.NCPU}},"memoryBytes":{{.MemTotal}}}' > "$evidence/docker-resources.json"
+  psql -At -c "SELECT json_build_object('users', (SELECT count(*) FROM users), 'tickets', (SELECT count(*) FROM tickets), 'knowledgeArticles', (SELECT count(*) FROM knowledge_articles))" > "$evidence/seed-counts.json"
+fi
 psql < backend/sql/service-access/roles.sql
 psql < backend/sql/service-access/enable.sql
 psql <<'SQL'
@@ -105,6 +124,100 @@ GRANT smartdesk_analytics TO analytics_test WITH INHERIT TRUE, SET FALSE, ADMIN 
 CREATE ROLE notifications_test LOGIN PASSWORD 'notifications-test-only';
 GRANT smartdesk_notifications TO notifications_test WITH INHERIT TRUE, SET FALSE, ADMIN FALSE;
 SQL
+
+legacy_baseline() {
+  AI_EXECUTION_MODE=local legacy -f docker/compose.microservice-baseline.yml "$@"
+}
+
+measure() {
+  layout=$1
+  shift
+  containers=$("$@" ps -q)
+  "$@" exec -T gateway node --input-type=module - benchmark < docker/verify-microservice-http.mjs > "$evidence/$layout-latency.json" &
+  workload=$!
+  : > "$evidence/$layout-resources.jsonl"
+  while kill -0 "$workload" 2>/dev/null; do
+    # One row per container per sample. Docker's percent is relative to one logical CPU.
+    docker stats --no-stream --format '{{json .}}' $containers >> "$evidence/$layout-resources.jsonl"
+  done
+  wait "$workload"
+  test -s "$evidence/$layout-resources.jsonl"
+  echo "SD-100 $layout workload"
+  cat "$evidence/$layout-latency.json"
+}
+
+probe() {
+  compose exec -T -e SD100_SESSION="${session:-}" gateway node --input-type=module - "$@" < docker/verify-microservice-http.mjs
+}
+
+wait_for_db_value() {
+  expected=$1
+  shift
+  for attempt in $(seq 1 60); do
+    if [ "$(psql -At "$@")" = "$expected" ]; then return; fi
+    sleep 1
+  done
+  echo "Timed out waiting for database value $expected" >&2
+  return 1
+}
+
+worker_drills() {
+  wait_for_db_value 0 -c "SELECT count(*) FROM ai_analysis_jobs WHERE state IN ('QUEUED', 'RUNNING')"
+  compose stop ai-service
+  crashed_ticket=$(probe enqueue)
+  code=0
+  compose run --rm --no-deps -T --entrypoint node -e CRASHED_TICKET="$crashed_ticket" ai-service --input-type=module - <<'NODE' || code=$?
+import assert from 'node:assert/strict';
+import { loadServiceConfig } from './dist/config.js';
+import { createTicketJobs } from './dist/ticketJobs.js';
+const config = loadServiceConfig();
+const jobs = await createTicketJobs({ origin: config.ticketOrigin, ...config.signing, timeoutMs: 3000 });
+const job = await jobs.claim();
+assert.equal(job?.ticketId, process.env.CRASHED_TICKET);
+assert.equal(job.attempts, 1);
+process.exit(17);
+NODE
+  test "$code" = 17
+  # Advance this synthetic fixture past its lease instead of waiting for the real lease duration.
+  expired=$(psql -At -v ticket="$crashed_ticket" <<'SQL'
+UPDATE ai_analysis_jobs SET locked_until = clock_timestamp() - interval '1 second'
+WHERE ticket_id = :'ticket'::uuid AND state = 'RUNNING' AND attempts = 1
+RETURNING attempts;
+SQL
+)
+  printf '%s\n' "$expired" | grep -qx 1
+  compose up -d --wait ai-service
+  wait_for_db_value 'COMPLETED:2:1' -c "SELECT j.state || ':' || j.attempts || ':' || count(r.recommendation_id) FROM ai_analysis_jobs j LEFT JOIN ai_recommendations r USING (job_id) WHERE j.ticket_id = '$crashed_ticket' GROUP BY j.state, j.attempts"
+  echo 'SD-100 a replacement AI worker completed the expired claim once, on attempt two'
+
+  compose stop notifications-service
+  replay_event=$(psql -At -v ticket="$manual_id" <<'SQL'
+UPDATE service_outbox_deliveries d
+SET state = 'FAILED', finished_at = clock_timestamp(), error_kind = 'handler_failed'
+FROM service_outbox_events e
+WHERE e.event_id = d.event_id AND d.consumer = 'notifications' AND d.state = 'COMPLETED'
+  AND e.aggregate_id = :'ticket'::uuid AND e.type = 'ticket.status-changed'
+  AND e.payload->>'status' = 'RESOLVED'
+RETURNING d.event_id;
+SQL
+)
+  replay_event=$(printf '%s\n' "$replay_event" | awk '/^[0-9a-f-]+$/ && length($0)==36')
+  test "${#replay_event}" = 36
+  compose run --rm --no-deps -T --entrypoint node -e REPLAY_EVENT="$replay_event" notifications-service --input-type=module - <<'NODE'
+import assert from 'node:assert/strict';
+import { createPrisma } from '@smartdesk/db';
+import { notificationSubscription, replayServiceEvent } from '@smartdesk/notifications';
+const db = createPrisma(process.env.NOTIFICATIONS_DATABASE_URL);
+try {
+  assert.equal(await replayServiceEvent(db, notificationSubscription.name, process.env.REPLAY_EVENT), true);
+} finally {
+  await db.$disconnect();
+}
+NODE
+  compose up -d --wait notifications-service
+  wait_for_db_value 'COMPLETED:1' -c "SELECT d.state || ':' || count(n.notification_id) FROM service_outbox_deliveries d LEFT JOIN notifications n USING (event_id) WHERE d.consumer = 'notifications' AND d.event_id = '$replay_event' GROUP BY d.state"
+  echo 'SD-100 the Notifications consumer replayed a dead letter without duplicating its notice'
+}
 
 journey() {
   "$1" exec -T -e TICKET_PHASE="$2" -e MANUAL_TICKET_ID="${manual_id:-}" \
@@ -280,7 +393,7 @@ wait_for_gateway() {
   "$1" exec -T gateway node --input-type=module - <<'NODE'
 import assert from 'node:assert/strict';
 import { setTimeout } from 'node:timers/promises';
-const deadline = Date.now() + 45_000;
+const deadline = Date.now() + 90_000;
 for (;;) {
   const response = await fetch('http://127.0.0.1:4000/health/ready', {
     signal: AbortSignal.timeout(5000),
@@ -293,8 +406,22 @@ for (;;) {
 NODE
 }
 
+if [ "${SD100:-0}" = 1 ]; then
+  legacy build worker
+  legacy_baseline up -d --wait gateway worker
+  wait_for_gateway legacy_baseline
+  measure legacy legacy_baseline
+  legacy_baseline stop gateway backend worker
+fi
+
 compose up -d --wait gateway identity-service knowledge-service analytics-service
 wait_for_gateway compose
+if [ "${SD100:-0}" = 1 ]; then
+  compose up -d --wait ai-service notifications-service
+  measure isolated compose
+  session=$(probe session)
+  compose stop ai-service notifications-service
+fi
 window_start=$(node -p 'Date.now()')
 manual_id=$(journey compose manual ticket-service)
 echo 'Scoped Ticket completed the manual workflow with AI and Notifications stopped.'
@@ -302,6 +429,49 @@ echo 'Scoped Ticket completed the manual workflow with AI and Notifications stop
 compose up -d --wait ai-service notifications-service
 snapshot=$(journey compose assisted ticket-service)
 echo 'AI completed and Ticket reviewed a recommendation. Notifications delivered its backlog.'
+if [ "${SD100:-0}" = 1 ]; then
+  probe roles
+  worker_drills
+  compose --profile microservice-ci build frontend-ci
+  compose --profile microservice-ci up -d --wait --wait-timeout 180 frontend-ci
+  compose --profile microservice-ci exec -T frontend-ci node --input-type=module - <<'NODE'
+import assert from 'node:assert/strict';
+const endpoints = ['ticket-api:4060', 'identity-api:4050', 'analytics-api:4030', 'knowledge-api:4040', 'notifications-api:4020', 'ai-service:4010'];
+for (const endpoint of endpoints) {
+  await assert.rejects(fetch('http://' + endpoint + '/health/live', { signal: AbortSignal.timeout(2000) }));
+}
+assert.equal((await fetch('http://api.smartdesk.test:4000/health/live', { signal: AbortSignal.timeout(3000) })).status, 200);
+console.log('SD-100 the browser network can reach the gateway and has no private service route');
+NODE
+  compose --profile microservice-ci exec -T frontend-ci npm --prefix /app/frontend run test:e2e -- e2e/microservices.spec.ts --project=desktop --workers=1 --retries=0 --trace=off --output=/app/frontend/test-results/sd100/browser
+  if [ "${SD100_PASSIVE_SCAN:-0}" = 1 ]; then
+    compose --profile microservice-scan run --rm --no-deps zap
+    test -s "$evidence/passive-zap.json"
+  fi
+  compose --profile microservice-ci stop frontend-ci
+
+  for dependency in ai notifications knowledge; do
+    compose stop "$dependency-service"
+    probe "$dependency"
+    compose up -d --wait "$dependency-service"
+  done
+  compose pause analytics-service
+  probe analytics
+  compose unpause analytics-service
+
+  compose stop identity-service
+  probe identity
+  compose up -d --wait identity-service
+
+  export OPENSEARCH_ENABLED=true
+  compose --profile search up -d --wait --wait-timeout 180 opensearch
+  legacy run --rm --no-deps backend npm run search:backfill -- --version 1
+  compose up -d --wait ticket-service
+  probe search-ready
+  compose --profile search stop opensearch
+  probe search
+  export OPENSEARCH_ENABLED=false
+fi
 compose stop ticket-service
 compose exec -T gateway node --input-type=module - <<'NODE'
 import assert from 'node:assert/strict';
