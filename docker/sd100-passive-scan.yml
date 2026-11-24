@@ -1,7 +1,7 @@
 env:
   contexts:
     - name: smartdesk-compose
-      urls: [http://app.smartdesk.test:3100, http://api.smartdesk.test:4000]
+      urls: [http://frontend-ci:3100, http://gateway:4000]
   parameters:
     failOnError: true
     failOnWarning: false
@@ -12,13 +12,13 @@ jobs:
       scanOnlyInScope: true
   - type: requestor
     requests:
-      - url: http://app.smartdesk.test:3100/login
+      - url: http://frontend-ci:3100/login
         responseCode: 200
-      - url: http://api.smartdesk.test:4000/health/live
+      - url: http://gateway:4000/health/live
         responseCode: 200
-      - url: http://api.smartdesk.test:4000/api/auth/me
+      - url: http://gateway:4000/api/auth/me
         responseCode: 401
-      - url: http://api.smartdesk.test:4000/api/admin/reports/summary
+      - url: http://gateway:4000/api/admin/reports/summary
         responseCode: 401
   - type: passiveScan-wait
     parameters:

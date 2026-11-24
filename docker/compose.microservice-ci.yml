@@ -1,10 +1,4 @@
 services:
-  gateway:
-    networks:
-      public:
-        aliases: [api.smartdesk.test]
-      api:
-
   frontend-ci:
     profiles: [microservice-ci]
     command:
@@ -20,9 +14,7 @@ services:
       NEXT_PUBLIC_TICKET_POLL_MS: '1000'
       E2E_BASE_URL: http://127.0.0.1:3100
       E2E_MICROSERVICE: 'true'
-    networks:
-      public:
-        aliases: [app.smartdesk.test]
+    networks: [public]
     healthcheck:
       test:
         [

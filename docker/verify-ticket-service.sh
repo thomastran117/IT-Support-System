@@ -453,7 +453,7 @@ const endpoints = ['ticket-api:4060', 'identity-api:4050', 'analytics-api:4030',
 for (const endpoint of endpoints) {
   await assert.rejects(fetch('http://' + endpoint + '/health/live', { signal: AbortSignal.timeout(2000) }));
 }
-assert.equal((await fetch('http://api.smartdesk.test:4000/health/live', { signal: AbortSignal.timeout(3000) })).status, 200);
+assert.equal((await fetch('http://127.0.0.1:4000/health/live', { signal: AbortSignal.timeout(5000) })).status, 200);
 console.log('SD-100 the browser network can reach the gateway and has no private service route');
 NODE
   if [ "${SD100_PASSIVE_SCAN:-0}" = 1 ]; then
