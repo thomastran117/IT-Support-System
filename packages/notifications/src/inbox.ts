@@ -1,5 +1,22 @@
 import { Prisma } from '@smartdesk/db';
-import type { Db } from '../transaction.js';
+import type { Db } from '@smartdesk/db';
+import type { NotificationType } from '@smartdesk/contracts';
+
+export interface InboxNotice {
+  recipientId: string;
+  eventId: string;
+  ticketId: string;
+  type: NotificationType;
+}
+
+export async function insertInboxNotification(db: Db, notice: InboxNotice, occurredAt?: string) {
+  const inserted = await db.$executeRaw`
+    INSERT INTO notifications (recipient_id, ticket_id, event_id, type, created_at)
+    VALUES (${notice.recipientId}::uuid, ${notice.ticketId}::uuid, ${notice.eventId}::uuid, ${notice.type},
+            COALESCE(${occurredAt ?? null}::timestamptz, now()))
+    ON CONFLICT (recipient_id, event_id, type) DO NOTHING`;
+  return inserted > 0;
+}
 
 export interface InboxRow {
   id: string;

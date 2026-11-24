@@ -1,7 +1,7 @@
 import type { ServiceEventType, ServiceEventV1 } from '@smartdesk/contracts';
 import { serviceEventV1Schema } from '@smartdesk/contracts';
 import { Prisma, type PrismaClient, type TransactionClient } from '@smartdesk/db';
-import { withTransaction } from '../transaction.js';
+import { runTransaction } from '@smartdesk/db';
 
 const MAX_ATTEMPTS = 5;
 const BACKOFF_BASE_MS = 5000;
@@ -92,7 +92,7 @@ export async function deliverServiceEvent(
   const lease = Prisma.sql`
     consumer = ${claim.consumer} AND event_id = ${claim.eventId}::uuid
     AND state = 'RUNNING' AND lease_token = ${claim.leaseToken}::uuid AND locked_until > ${time}`;
-  const errorKind = await withTransaction(db, async (tx) => {
+  const errorKind = await runTransaction(db, async (tx) => {
     const row = await tx.serviceOutboxEvent.findUniqueOrThrow({
       where: { eventId: claim.eventId },
     });

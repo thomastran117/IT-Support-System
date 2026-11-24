@@ -26,6 +26,36 @@ async function startGateway(t: TestContext, upstream: URL, timeoutMs = 2000) {
   return gateway.listen({ host: '127.0.0.1', port: 0 });
 }
 
+test('routes the inbox to its active owner and isolates its upstream timeout', async (t) => {
+  const ticket = await startUpstream(t, (_req, res) => res.end('ticket'));
+  let available = true;
+  const notifications = await startUpstream(t, (req, res) => {
+    assert.equal(req.headers.authorization, 'Bearer notification-test');
+    assert.equal(req.headers['x-user-id'], undefined);
+    if (available) res.end(req.url);
+  });
+  const app = buildGateway({
+    upstream: ticket,
+    notificationsUpstream: notifications,
+    timeoutMs: 300,
+    frontendOrigin,
+  });
+  t.after(() => app.close());
+  const headers = { authorization: 'Bearer notification-test', 'x-user-id': 'forged' };
+  for (const url of ['/api/notifications?unreadOnly=true', '/api/notifications/read-all']) {
+    expectResponse(url, await app.inject({ url, headers }));
+  }
+  assert.equal((await app.inject('/api/notifications-other')).body, 'ticket');
+  available = false;
+  assert.equal((await app.inject({ url: '/api/notifications', headers })).statusCode, 503);
+  assert.equal((await app.inject('/api/tickets')).body, 'ticket');
+
+  function expectResponse(path: string, response: { statusCode: number; body: string }) {
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.body, path);
+  }
+});
+
 test('preserves the method, original path, body, session headers and conflict response', async (t) => {
   const path = '/api/tickets/ticket-id/routing?tag=a%2Bb&tag=c';
   const body = '{ "expectedVersion": 2 }';

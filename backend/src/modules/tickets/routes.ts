@@ -56,6 +56,7 @@ export const ticketRoutes =
     prisma: PrismaClient,
     analysis?: { maxAttempts: number },
     aiAnalysisRateLimit: { max: number; windowMs: number } = { max: 10, windowMs: 60_000 },
+    outboxNotifications = false,
   ): FastifyPluginAsync =>
   async (app) => {
     const auth = { preHandler: app.authGuards.requireAuth };
@@ -82,6 +83,7 @@ export const ticketRoutes =
       // queued in the same transaction (a durable outbox) and a worker runs it later, so the
       // provider's latency or failure never blocks or fails the submission.
       const { ticket, created } = await submitTicket(prisma, {
+        outboxNotifications,
         correlationId: req.id,
         requesterId: req.principal!.id,
         ...body,
@@ -129,6 +131,7 @@ export const ticketRoutes =
       // (403 when an employee asks for an internal note).
       await authorizeTicket(prisma, req.principal!, id, 'read');
       const comment = await addComment(prisma, {
+        outboxNotifications,
         correlationId: req.id,
         ticketId: id,
         authorId: req.principal!.id,
@@ -153,6 +156,7 @@ export const ticketRoutes =
       // scope for every edge, the requester for reopening only (403 otherwise).
       await authorizeTicket(prisma, req.principal!, id, 'read');
       const ticket = await transitionTicket(prisma, {
+        outboxNotifications,
         correlationId: req.id,
         ticketId: id,
         actorId: req.principal!.id,
@@ -171,6 +175,7 @@ export const ticketRoutes =
       // technicians outside the ticket's team). The service re-checks inside its transaction.
       await authorizeTicket(prisma, req.principal!, id, 'edit');
       const ticket = await approveRouting(prisma, {
+        outboxNotifications,
         correlationId: req.id,
         ticketId: id,
         actorId: req.principal!.id,
@@ -233,6 +238,7 @@ export const ticketRoutes =
       // 404 for tickets the caller cannot read, 403 for readers who may not edit (requesters).
       await authorizeTicket(prisma, req.principal!, params.id, 'edit');
       const result = await reviewRecommendation(prisma, {
+        outboxNotifications,
         correlationId: req.id,
         recommendationId: params.recommendationId,
         // The recommendation must belong to the ticket in the URL; the reviewer is the caller.

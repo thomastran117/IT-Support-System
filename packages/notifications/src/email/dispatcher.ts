@@ -7,8 +7,9 @@ import {
   finish,
   loadContext,
   type Delivery,
-} from '../../../db/repositories/notificationDeliveries.js';
-import { classifySmtpError, type EmailTransport } from './transport.js';
+} from '../deliveries.js';
+import { classifySmtpError, createEmailTransport, type EmailTransport } from './transport.js';
+import type { EmailConfig } from './config.js';
 import { buildEmail } from './template.js';
 
 export interface DispatcherConfig {
@@ -120,7 +121,7 @@ export function createEmailDispatcher(deps: DispatcherDeps) {
     });
     await expireStale(prisma, { maxAgeMs: config.maxAgeMs, now: now() });
     let handled = 0;
-    for (;;) {
+    while (!stopping) {
       const next = await claimNext(prisma, { leaseMs: config.leaseMs, now: now() });
       if (!next) return handled;
       handled++;
@@ -136,6 +137,7 @@ export function createEmailDispatcher(deps: DispatcherDeps) {
         });
       }
     }
+    return handled;
   }
 
   let stopping = false;
@@ -172,4 +174,31 @@ export function createEmailDispatcher(deps: DispatcherDeps) {
       await loop;
     },
   };
+}
+
+export function configuredEmailDispatcher(
+  prisma: PrismaClient,
+  email: EmailConfig,
+  pollIntervalMs: number,
+  log: (entry: DispatchLogEntry) => void,
+) {
+  const transport = createEmailTransport(email);
+  const sendTimeoutMs = 30_000;
+  return (
+    transport &&
+    createEmailDispatcher({
+      prisma,
+      transport,
+      log,
+      config: {
+        appBaseUrl: email.appBaseUrl,
+        maxAttempts: email.maxAttempts,
+        backoffBaseMs: email.backoffBaseMs,
+        maxAgeMs: email.maxAgeMs,
+        pollIntervalMs,
+        sendTimeoutMs,
+        leaseMs: sendTimeoutMs + 30_000,
+      },
+    })
+  );
 }

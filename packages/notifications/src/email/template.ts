@@ -1,5 +1,5 @@
 import type { NotificationType } from '@smartdesk/contracts';
-import { notificationMessage } from '../../../domain/notificationMessages.js';
+import { notificationMessage } from '../messages.js';
 
 export interface EmailMessage {
   to: string;

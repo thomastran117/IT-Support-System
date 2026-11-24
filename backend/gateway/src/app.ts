@@ -79,6 +79,7 @@ const unavailableCodes = new Set([
 
 export interface GatewayOptions {
   upstream: URL;
+  notificationsUpstream?: URL;
   timeoutMs: number;
   frontendOrigin: string;
   trustProxy?: boolean | string[];
@@ -132,7 +133,7 @@ export function buildGateway(opts: GatewayOptions) {
     (_req, body, done) => done(null, body),
   );
 
-  async function proxy(req: FastifyRequest, reply: FastifyReply) {
+  async function proxy(req: FastifyRequest, reply: FastifyReply, upstream = opts.upstream) {
     const timeout = AbortSignal.timeout(opts.timeoutMs);
     const disconnect = new AbortController();
     reply.raw.once('close', () => {
@@ -141,7 +142,7 @@ export function buildGateway(opts: GatewayOptions) {
     const signal = AbortSignal.any([timeout, disconnect.signal]);
     let response: IncomingMessage;
     try {
-      response = await forward(req, opts.upstream, signal);
+      response = await forward(req, upstream, signal);
     } catch (error) {
       if (disconnect.signal.aborted) return;
       const code = (error as NodeJS.ErrnoException).code;
@@ -157,5 +158,11 @@ export function buildGateway(opts: GatewayOptions) {
   }
 
   for (const path of ['/api', '/api/*', '/health/live', '/health/ready']) app.all(path, proxy);
+  const notifications = opts.notificationsUpstream;
+  if (notifications) {
+    for (const path of ['/api/notifications', '/api/notifications/*']) {
+      app.all(path, (req, reply) => proxy(req, reply, notifications));
+    }
+  }
   return app;
 }

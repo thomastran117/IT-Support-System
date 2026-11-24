@@ -2,8 +2,13 @@ import { randomUUID } from 'node:crypto';
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
-import Fastify, { type FastifyInstance } from 'fastify';
-import { AI_JOB_PATH, AI_JOB_SCOPES, API_PREFIX } from '@smartdesk/contracts';
+import Fastify, { type FastifyContextConfig, type FastifyInstance } from 'fastify';
+import {
+  AI_JOB_PATH,
+  AI_JOB_SCOPES,
+  API_PREFIX,
+  NOTIFICATION_IDENTITY,
+} from '@smartdesk/contracts';
 import type { Env } from './config/env.js';
 import type { DbCheck, PrismaClient } from '@smartdesk/db';
 import type { CacheCheck } from './cache/client.js';
@@ -15,7 +20,7 @@ import { createServiceTokenVerifier } from './auth/serviceTokens.js';
 import { TokenService } from './auth/tokens.js';
 import { adminRoutes } from './modules/admin/routes.js';
 import { authRoutes } from './modules/auth/routes.js';
-import { registerErrorHandling } from './plugins/errors.js';
+import { HttpError, registerErrorHandling } from './plugins/errors.js';
 import { adminKnowledgeRoutes, knowledgeRoutes } from './modules/knowledge/routes.js';
 import { healthRoutes } from './modules/health/routes.js';
 import { pingRoutes } from './modules/ping.js';
@@ -72,6 +77,8 @@ export const REDACT_PATHS = [
   '*.accessToken',
   'req.cookies',
 ];
+
+const privateIdentityRoute: FastifyContextConfig & { cors: false } = { cors: false };
 
 export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
   const cache = opts.cache ?? createNoopCache();
@@ -132,6 +139,31 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
           { prefix: AI_JOB_PATH },
         );
       }
+      if (opts.env.notificationsExecutionMode === 'service') {
+        const identity = NOTIFICATION_IDENTITY;
+        const identityVerifier = await createServiceTokenVerifier(
+          identity.audience,
+          opts.env.internalServiceKeys,
+        );
+        const identityGuard = createInternalGuard(opts.prisma, tokens, identityVerifier);
+        app.get(
+          identity.path,
+          {
+            config: privateIdentityRoute,
+            exposeHeadRoute: false,
+            preHandler: identityGuard(identity.scope, 'user'),
+          },
+          async (req, reply) => {
+            const actor = req.internalActor;
+            if (actor?.kind !== 'user') throw new HttpError(403, 'Delegated user required');
+            reply.header('cache-control', 'no-store');
+            return { recipientId: actor.principal.id };
+          },
+        );
+        app.options(identity.path, { config: privateIdentityRoute }, (_req, reply) =>
+          reply.callNotFound(),
+        );
+      }
     }
     await app.register(
       authRoutes({
@@ -162,9 +194,11 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     });
     await app.register(teamRoutes(opts.prisma, cache), { prefix: `${API_PREFIX}/teams` });
     await app.register(categoryRoutes(opts.prisma, cache), { prefix: `${API_PREFIX}/categories` });
-    await app.register(notificationRoutes(opts.prisma), {
-      prefix: `${API_PREFIX}/notifications`,
-    });
+    if (opts.env.notificationsExecutionMode === 'local') {
+      await app.register(notificationRoutes(opts.prisma), {
+        prefix: `${API_PREFIX}/notifications`,
+      });
+    }
     await app.register(technicianRoutes(opts.prisma), { prefix: `${API_PREFIX}/technician` });
     await app.register(
       ticketSearchRoutes({
@@ -182,6 +216,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
           ? undefined
           : { maxAttempts: opts.env.ai.worker.maxAttempts },
         opts.aiAnalysisRateLimit ?? { max: 10, windowMs: 60_000 },
+        opts.env.notificationsExecutionMode === 'service',
       ),
       { prefix: `${API_PREFIX}/tickets` },
     );

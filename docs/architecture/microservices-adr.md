@@ -71,6 +71,7 @@ up. Ticket records notification intent using the same eligibility rules as its c
 including an active requester, a different actor, and an eligible event type. The intent carries
 the recipient ID and notice type so delayed processing uses the original event decision. The inbox
 checks the caller and recipient again on every read or update.
+[Notifications cutover and rollback](notifications-service.md)
 
 ### AI handoff
 

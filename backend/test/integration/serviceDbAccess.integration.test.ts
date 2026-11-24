@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { createPrisma, type PrismaClient } from '@smartdesk/db';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { listInbox, markRead } from '../../src/db/repositories/notificationInbox.js';
+import { drainNotificationEvents, listInbox, markRead } from '@smartdesk/notifications';
 import {
   getTicketAudit,
   listEmployeeTickets,
@@ -210,21 +210,43 @@ describe.skipIf(!testDatabaseUrl)('service-owned PostgreSQL privileges', () => {
       await owner.serviceOutboxEvent.count({ where: { aggregateId: created.ticket.id } }),
     ).toBe(1);
     await permissionDenied(service.ticket.$queryRaw`SELECT event_id FROM service_outbox_events`);
-    await permissionDenied(
-      service.notifications.$queryRaw`SELECT event_id FROM service_outbox_deliveries`,
-    );
+    const first = await owner.serviceOutboxEvent.findFirstOrThrow({
+      where: { aggregateId: created.ticket.id, type: 'ticket.created' },
+    });
+    await owner.serviceOutboxDelivery.create({
+      data: { consumer: 'another-consumer', eventId: first.eventId },
+    });
+    expect(
+      await service.notifications.serviceOutboxEvent.findUnique({
+        where: { eventId: first.eventId },
+      }),
+    ).toBeNull();
+    expect(
+      await service.notifications.serviceOutboxDelivery.findMany({
+        where: { consumer: 'another-consumer' },
+      }),
+    ).toEqual([]);
+    await permissionDenied(service.notifications.$executeRaw`
+      INSERT INTO service_outbox_deliveries (consumer, event_id)
+      VALUES ('forged-consumer', ${first.eventId}::uuid)`);
     expect(await owner.aiAnalysisJob.count({ where: { ticketId: created.ticket.id } })).toBe(1);
     expect(await owner.searchIndexJob.count({ where: { entityId: created.ticket.id } })).toBe(1);
 
-    const routed = await approveRouting(owner, {
+    const routed = await approveRouting(service.ticket, {
       ticketId: created.ticket.id,
       actorId: USERS.tara,
       expectedVersion: created.ticket.version,
       categoryId: CATEGORIES.hardware,
       teamId: TEAMS.network,
       priority: 'MEDIUM',
+      outboxNotifications: true,
     });
     expect(routed.status).toBe('TRIAGED');
+    expect(await owner.notification.count({ where: { ticketId: created.ticket.id } })).toBe(0);
+    expect(await drainNotificationEvents(service.notifications)).toMatchObject({
+      COMPLETED: 2,
+      FAILED: 0,
+    });
     const inbox = await listInbox(service.notifications, USERS.erin, {
       unreadOnly: true,
       limit: 20,
@@ -235,6 +257,10 @@ describe.skipIf(!testDatabaseUrl)('service-owned PostgreSQL privileges', () => {
     );
     expect(assignment).toMatchObject({ ticketTitle: input.title, readAt: null });
     expect(await markRead(service.notifications, USERS.erin, assignment!.id)).toBe(true);
+    expect(await drainNotificationEvents(service.notifications)).toMatchObject({ COMPLETED: 0 });
+    expect(await owner.notification.findUnique({ where: { id: assignment!.id } })).toMatchObject({
+      readAt: expect.any(Date),
+    });
 
     const recommendationId = RECOMMENDATIONS.vpnReanalysis;
     const ticket = await owner.ticket.findUniqueOrThrow({ where: { id: TICKETS.vpn } });

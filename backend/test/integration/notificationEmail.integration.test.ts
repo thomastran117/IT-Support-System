@@ -5,18 +5,14 @@ import { TokenService } from '../../src/auth/tokens.js';
 import { loadEnv } from '../../src/config/env.js';
 import { CATEGORIES, TEAMS, USERS } from '../../src/db/seed/fixtures.js';
 import { seedDatabase } from '../../src/db/seed/run.js';
-import { claimNext, finish } from '../../src/db/repositories/notificationDeliveries.js';
+import { claimNext, finish } from '@smartdesk/notifications/deliveries';
 import { addComment, transitionTicket } from '../../src/db/services/ticketService.js';
 import {
   createEmailDispatcher,
   type DispatchLogEntry,
   type DispatcherConfig,
-} from '../../src/modules/notifications/email/dispatcher.js';
-import {
-  EmailError,
-  createSinkTransport,
-  type SinkTransport,
-} from '../../src/modules/notifications/email/transport.js';
+} from '@smartdesk/notifications';
+import { EmailError, createSinkTransport, type SinkTransport } from '@smartdesk/notifications';
 import { createTestPrisma, resetDatabase, testDatabaseUrl } from './helpers/db.js';
 
 const env = loadEnv({ FRONTEND_ORIGIN: 'http://app.test' });
