@@ -8,23 +8,44 @@ post-MVP migration and its cutover gates.
 ## Runtime services
 
 ```text
-Browser -> frontend (Next.js) -> backend (Fastify) -> PostgreSQL
-                                      ^                 ^
-                                      |                 |
-                                      +---- worker -----+
+Browser -> frontend (Next.js)
+Browser -> gateway (Fastify) -> backend (Fastify) -> PostgreSQL <- worker
 ```
 
 - **Frontend** renders the employee, technician, and administrator portals. The browser calls the
   API at `NEXT_PUBLIC_API_URL`; the frontend does not connect to PostgreSQL.
+- **Gateway** owns the public API listener and forwards requests to the backend.
 - **Backend** owns HTTP authentication, authorization, validation, ticket workflows, database
   migrations, and seed/documentation commands.
 - **Worker** is the host for asynchronous work: the Compose `worker` service runs the backend's
   `src/worker.ts` entrypoint (see Analysis queue and worker). It remains functional when the
   optional AI provider is disabled.
-- **PostgreSQL** is reachable only on Compose's internal network. Only the frontend and backend
+- **PostgreSQL** is reachable only on Compose's internal network. Only the frontend and gateway
   publish host ports.
 - **Redis** is an optional, internal-only cache with no persistence, disabled unless the `cache`
   (dev) or `ci` profile starts it; PostgreSQL remains the authoritative store regardless.
+
+## API gateway
+
+The gateway forwards `/api`, `/api/*`, `/health/live` and `/health/ready` over the private
+Compose `api` network. The backend listens on its `backend-api` address on that network. The
+browser continues to use the same API base URL, origin rules, refresh-cookie path and rotation,
+and response envelopes. The gateway forwards authorization, cookies, idempotency keys, and
+retry headers. It passes through backend status, body, and individual `Set-Cookie` headers.
+Requests use the caller's `X-Request-Id` or a generated one across both hops.
+
+`GATEWAY_UPSTREAM_TIMEOUT_MS` defaults to 10000. The gateway makes one upstream attempt per
+request and returns an API error envelope with 503 when the backend is unreachable or the
+deadline expires before headers are received. A broken upstream connection before headers
+returns 502. A deadline during streaming closes the interrupted response. Backend health
+responses retain their original formats. [API reference](api.md)
+
+The gateway replaces incoming forwarding headers with the client IP that Fastify resolved.
+`TRUST_PROXY` defaults to false at the public listener. If that listener sits behind a known
+reverse proxy, configure its trusted IPs or CIDRs. The backend trusts the gateway-supplied IP on
+the private listener so IP-based login and refresh limits continue to work. The direct API
+override applies `TRUST_PROXY` to the backend's public listener instead.
+[Direct API rollback](../README.md#switch-back-to-the-direct-api)
 
 ## Package boundaries
 
@@ -34,7 +55,7 @@ Every package is independently locked and installed in its container image.
   not import Node-only, Fastify, PostgreSQL, or Prisma code.
 - `packages/db` exports the generated Prisma client and PostgreSQL adapter used by the backend and
   worker. Prisma generates its client from `backend/prisma/schema.prisma` during image builds.
-- Applications depend on shared packages through local `file:` references. Docker builds contracts,
+- Applications that share packages use local `file:` references. Docker builds contracts,
   generates Prisma, and builds the database package before starting a consumer.
 
 There is intentionally no root npm workspace. Cross-package ordering belongs to the Docker build
@@ -301,9 +322,9 @@ rather than the plugin's own `skipOnError` (which would let every request throug
 is a deliberately different failure mode from caching above -- rate limiting is security-sensitive,
 so an outage degrades to a conservative local bound instead of no limit at all.
 
-`request.ip` is only as trustworthy as Fastify's `trustProxy` setting (`TRUST_PROXY`), which
-defaults to `false`: a client's `X-Forwarded-For` is never trusted unless this deployment genuinely
-sits behind a known reverse proxy, configured here with that proxy's own IPs/CIDRs.
+The public listener resolves `request.ip` using Fastify's `trustProxy` setting (`TRUST_PROXY`).
+The default `false` uses the socket peer. In gateway mode the backend receives that resolved IP
+over the private listener. See [API gateway](#api-gateway).
 
 **Outage, concurrency and performance evaluation (SD-073):** see
 [`docs/redis-evaluation.md`](redis-evaluation.md) for a reproducible benchmark (baseline vs cached

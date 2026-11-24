@@ -24,13 +24,24 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build verification images
-        run: docker compose --profile ci build format-check backend-ci
+        run: docker compose --profile ci build format-check backend-ci gateway
 
       - name: Format check
         run: set -o pipefail; docker compose --profile ci run --rm format-check 2>&1 | tee ci-format.log
 
       - name: Backend, worker and database checks
         run: set -o pipefail; docker compose --profile ci run --rm backend-ci 2>&1 | tee ci-backend.log
+
+      - name: Gateway checks
+        run: |
+          set -o pipefail
+          docker compose run --rm --no-deps gateway npm test 2>&1 | tee ci-gateway.log
+          docker compose config --format json | jq -e '
+            (.services.backend.ports // [] | length == 0) and
+            (.services.gateway.ports | length == 1) and
+            (.networks.api.internal == true) and
+            (.services | to_entries | map(select(.value.networks // {} | has("api")) | .key) | sort == ["backend", "gateway"])
+          '
 
       - name: Optional OpenSearch smoke check
         run: |

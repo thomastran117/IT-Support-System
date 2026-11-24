@@ -1,6 +1,7 @@
 # API reference
 
-The API is available at `http://localhost:4000` by default. Except for health responses, JSON uses:
+The public API is available through the Compose gateway at `http://localhost:4000` by default.
+Except for backend health responses, JSON uses:
 
 ```json
 { "message": "Human-readable summary", "error": null, "details": null, "data": {} }
@@ -518,6 +519,8 @@ internal-note text. Marking an already-read notification read again succeeds and
 - `409`: uniqueness, idempotency, version, transition, or prerequisite conflict.
 - `422`: semantically invalid workflow input.
 - `429`: authentication rate limit exceeded.
+- `502`: the gateway could not read a valid upstream response.
+- `503`: a dependency is unavailable or the gateway's upstream deadline elapsed.
 
 Canonical payload types and validation limits live in `packages/contracts/src/index.ts`.
 

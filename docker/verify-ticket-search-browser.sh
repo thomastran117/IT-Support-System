@@ -15,9 +15,9 @@ cleanup() { compose down -v; }
 trap cleanup EXIT
 
 compose up --wait --wait-timeout 180 postgres opensearch
-compose build backend
+compose build backend gateway
 compose run --rm --no-deps backend sh -c 'npm run migrate && ./node_modules/.bin/tsx test/fixtures/seedTicketSearchBrowser.ts && npm run search:backfill -- --version 1'
-compose up -d backend
+compose up -d gateway
 curl --fail --silent --show-error --retry 20 --retry-delay 1 --retry-all-errors --max-time 3 http://127.0.0.1:4400/health/ready
 
 # Readiness covers the first authenticated searches on the newly backfilled index.
