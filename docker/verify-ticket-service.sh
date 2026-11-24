@@ -26,9 +26,13 @@ compose() {
     legacy -f docker/compose.ticket-service.yml --profile services "$@"
   fi
 }
-trap 'compose --profile legacy --profile search --profile microservice-ci --profile microservice-scan down --remove-orphans -v' EXIT
+cleanup() {
+  if [ "${analytics_paused:-0}" = 1 ]; then compose unpause analytics-service || true; fi
+  compose --profile legacy --profile search --profile microservice-ci --profile microservice-scan down --remove-orphans -v
+}
+trap cleanup EXIT
 if [ "${SD100:-0}" = 1 ]; then
-  export FRONTEND_ORIGIN=http://app.smartdesk.test:3100
+  export FRONTEND_ORIGIN=http://127.0.0.1:3100
   export GATEWAY_UPSTREAM_TIMEOUT_MS=2500
   export OPENSEARCH_URL=http://opensearch:9200/
   evidence=frontend/test-results/sd100
@@ -103,7 +107,7 @@ legacy build backend
 compose build ticket-service gateway identity-service knowledge-service analytics-service notifications-service ai-service
 compose up -d --wait postgres
 legacy run --rm --no-deps backend sh -c 'npm run migrate && npm run db:seed -- --profile test'
-psql() { compose exec -T postgres psql -X -v ON_ERROR_STOP=1 -U smartdesk -d smartdesk; }
+psql() { compose exec -T postgres psql -X -v ON_ERROR_STOP=1 -U smartdesk -d smartdesk "$@"; }
 if [ "${SD100:-0}" = 1 ]; then
   compose exec -T postgres psql -X -v ON_ERROR_STOP=1 -U smartdesk -d postgres -c 'CREATE DATABASE sd100_legacy TEMPLATE smartdesk'
   git rev-parse HEAD > "$evidence/dynamic-revision.txt"
@@ -165,6 +169,7 @@ worker_drills() {
   wait_for_db_value 0 -c "SELECT count(*) FROM ai_analysis_jobs WHERE state IN ('QUEUED', 'RUNNING')"
   compose stop ai-service
   crashed_ticket=$(probe enqueue)
+  printf '%s\n' "$crashed_ticket" | grep -Eq '^[0-9a-f-]{36}$'
   code=0
   compose run --rm --no-deps -T --entrypoint node -e CRASHED_TICKET="$crashed_ticket" ai-service --input-type=module - <<'NODE' || code=$?
 import assert from 'node:assert/strict';
@@ -288,7 +293,7 @@ if (phase === 'manual') {
   assert.equal(retry.headers.get('idempotent-replay'), 'true');
   assert.deepEqual(retry.body.data, ticket);
   assert.ok((await get(root, token)).items.some(({ id }) => id === ticket.id));
-  assert.ok((await get('/api/technician/unassigned', staffToken)).items.some(({ id }) => id === ticket.id));
+  assert.ok((await get('/api/technician/unassigned?limit=100', staffToken)).items.some(({ id }) => id === ticket.id));
 
   const team = (await get('/api/teams?mine=true', staffToken))[0];
   const category = (await get('/api/categories', staffToken)).find(({ name }) => name === 'Network/VPN');
@@ -443,11 +448,11 @@ for (const endpoint of endpoints) {
 assert.equal((await fetch('http://api.smartdesk.test:4000/health/live', { signal: AbortSignal.timeout(3000) })).status, 200);
 console.log('SD-100 the browser network can reach the gateway and has no private service route');
 NODE
-  compose --profile microservice-ci exec -T frontend-ci npm --prefix /app/frontend run test:e2e -- e2e/microservices.spec.ts --project=desktop --workers=1 --retries=0 --trace=off --output=/app/frontend/test-results/sd100/browser
   if [ "${SD100_PASSIVE_SCAN:-0}" = 1 ]; then
-    compose --profile microservice-scan run --rm --no-deps zap
+    compose --profile microservice-scan run --rm --no-deps zap > "$evidence/passive-zap.json"
     test -s "$evidence/passive-zap.json"
   fi
+  compose --profile microservice-ci exec -T frontend-ci npm --prefix /app/frontend run test:e2e -- e2e/microservices.spec.ts --project=desktop --workers=1 --retries=0 --trace=off --output=/app/frontend/test-results/sd100/browser
   compose --profile microservice-ci stop frontend-ci
 
   for dependency in ai notifications knowledge; do
@@ -456,8 +461,10 @@ NODE
     compose up -d --wait "$dependency-service"
   done
   compose pause analytics-service
+  analytics_paused=1
   probe analytics
   compose unpause analytics-service
+  analytics_paused=0
 
   compose stop identity-service
   probe identity

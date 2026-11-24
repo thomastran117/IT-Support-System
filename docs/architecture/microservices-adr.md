@@ -206,3 +206,6 @@ existing search and Redis workloads where applicable and measure manual writes a
 overhead explicitly. Agree on budgets from the baseline before switching traffic. Record observed
 results, remaining gaps, and the rollback drill in SD-100/SD-101.
 [Search workloads](../search-evaluation.md#reproduction) · [Redis workloads](../redis-evaluation.md#running-it)
+
+SD-100 records the integrated gate, pre/post workload measurements, and scan findings.
+[Dynamic analysis](../testing/microservice-dynamic-analysis.md) · [Static analysis](../testing/microservice-static-analysis.md)

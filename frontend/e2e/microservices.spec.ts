@@ -20,6 +20,7 @@ test('employee, technician, and administrator use the isolated services through 
   const adminContext = await browser.newContext({ baseURL });
   try {
     await signIn(employee, 'erin', 'employee');
+    expect(await employee.evaluate(() => window.isSecureContext)).toBe(true);
     await employee.reload();
     await expect(employee.getByRole('heading', { name: 'My tickets', level: 1 })).toBeVisible();
 

@@ -44,13 +44,17 @@ jobs:
       - name: Isolated microservice browser, failure and rollback checks
         run: set -o pipefail; SD100=1 SD100_PASSIVE_SCAN=1 sh docker/verify-ticket-service.sh 2>&1 | tee ci-microservices.log
 
-      - name: Upload measurement and passive scan evidence
+      - name: Adopted microservice source and dependency scans
+        run: set -o pipefail; sh docker/verify-microservice-static.sh 2>&1 | tee ci-microservices-static.log
+
+      - name: Upload microservice verification and scan evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: microservice-verification
           path: |
             ci-microservices.log
+            ci-microservices-static.log
             frontend/test-results/sd100/*.json
             frontend/test-results/sd100/*.jsonl
             frontend/test-results/sd100/*-revision.txt

@@ -26,6 +26,6 @@ jobs:
   - type: report
     parameters:
       template: traditional-json
-      reportDir: /zap/wrk
+      reportDir: /tmp
       reportFile: passive-zap.json
       reportTitle: SmartDesk isolated Compose passive scan
