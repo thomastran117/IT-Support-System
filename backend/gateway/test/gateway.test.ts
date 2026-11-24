@@ -48,6 +48,10 @@ test('preserves the method, original path, body, session headers and conflict re
     assert.equal(req.headers['x-forwarded-host'], undefined);
     assert.equal(req.headers.forwarded, undefined);
     assert.equal(req.headers['x-connection-only'], undefined);
+    assert.equal(req.headers['x-smartdesk-internal-user-token'], undefined);
+    assert.equal(req.headers['x-actor-role'], undefined);
+    assert.equal(req.headers['x-user-id'], undefined);
+    assert.equal(req.headers['x-service-id'], undefined);
     assert.equal(await text(req), body);
     res.writeHead(409, {
       'content-type': 'application/json',
@@ -81,6 +85,10 @@ test('preserves the method, original path, body, session headers and conflict re
           'x-forwarded-for': '198.51.100.4',
           'x-forwarded-host': 'unknown.test',
           forwarded: 'for=198.51.100.4',
+          'x-smartdesk-internal-user-token': 'untrusted-user-credential',
+          'x-actor-role': 'ADMIN',
+          'x-user-id': 'untrusted-user-id',
+          'x-service-id': 'untrusted-service-id',
           connection: 'close, x-connection-only',
           'x-connection-only': 'client hop',
         },
@@ -150,7 +158,14 @@ test('forwards health, HEAD and CORS preflights and keeps other paths local', as
   assert.equal(preflight.status, 204);
   assert.equal(preflight.headers.get('access-control-allow-headers'), 'authorization,content-type');
   assert.equal(preflight.headers.get('vary'), 'Access-Control-Request-Headers');
-  assert.equal((await fetch(gateway + '/internal/test')).status, 404);
+  assert.equal(
+    (
+      await fetch(gateway + '/internal/tickets/example/work-access', {
+        headers: { authorization: 'Bearer local-test' },
+      })
+    ).status,
+    404,
+  );
   assert.deepEqual(calls, ['HEAD /health/live', 'GET /health/ready', 'OPTIONS /api/auth/refresh']);
 });
 

@@ -47,6 +47,10 @@ the private listener so IP-based login and refresh limits continue to work. The 
 override applies `TRUST_PROXY` to the backend's public listener instead.
 [Direct API rollback](../README.md#switch-back-to-the-direct-api)
 
+Internal endpoints authenticate a scoped service credential at the receiving backend. Delegated
+calls also verify the current user and resource scope.
+[Internal service authentication](authentication.md#internal-service-authentication)
+
 ## Package boundaries
 
 Every package is independently locked and installed in its container image.

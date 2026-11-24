@@ -14,6 +14,14 @@ const hopByHop = [
   'transfer-encoding',
   'upgrade',
 ];
+const untrustedPrefixes = [
+  'x-forwarded-',
+  'x-smartdesk-internal-',
+  'x-internal-',
+  'x-actor-',
+  'x-user-',
+  'x-service-',
+];
 
 function endToEndHeaders(headers: IncomingMessage['headers']) {
   const connectionHeaders = (headers.connection ?? '')
@@ -29,7 +37,9 @@ function endToEndHeaders(headers: IncomingMessage['headers']) {
 function forward(req: FastifyRequest, origin: URL, signal: AbortSignal) {
   const headers = endToEndHeaders(req.headers);
   for (const name of Object.keys(headers)) {
-    if (name === 'forwarded' || name.startsWith('x-forwarded-')) delete headers[name];
+    if (name === 'forwarded' || untrustedPrefixes.some((prefix) => name.startsWith(prefix))) {
+      delete headers[name];
+    }
   }
   delete headers.host;
   delete headers.expect;
