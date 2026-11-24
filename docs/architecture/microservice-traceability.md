@@ -1,8 +1,8 @@
 # Deliverable 1 microservice traceability
 
-The default Compose deployment runs the modular API and worker. The opt-in overlay implements
-the original gateway, Ticket, AI, Notifications, and Analytics service boundaries, plus the
-later Identity and Knowledge extractions. Both layouts run the same browser workflows.
+The default Compose deployment implements the original gateway, Ticket, AI, Notifications, and
+Analytics service boundaries, plus the later Identity and Knowledge extractions. The modular
+fallback runs the same browser workflows.
 [Isolated deployment and rollback](ticket-service.md) · [Architecture decision](microservices-adr.md)
 
 ## Implemented boundaries

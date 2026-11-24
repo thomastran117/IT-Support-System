@@ -19,7 +19,7 @@ export KNOWLEDGE_KEY_ID=knowledge-ci ANALYTICS_KEY_ID=analytics-ci NOTIFICATIONS
 
 project=smartdesk-ticket-ci-$$
 ticket_log_before_search=
-legacy() { docker compose -p "$project" --env-file .env.example -f docker-compose.yml "$@"; }
+legacy() { docker compose -p "$project" --env-file .env.example -f docker-compose.modular.yml "$@"; }
 compose() {
   if [ "${SD100:-0}" = 1 ]; then
     legacy -f docker/compose.ticket-service.yml -f docker/compose.microservice-ci.yml --profile services "$@"

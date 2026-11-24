@@ -11,22 +11,26 @@ The database is internal to Compose and persists in the `pgdata` volume.
 
 ```bash
 # Start PostgreSQL and the application
-docker compose up --build --watch
+docker compose up --build --wait
 
 # Apply committed migrations
-docker compose exec backend npm run migrate
+docker compose run --rm --build local-bootstrap
 
 # Load the live-demo dataset
-docker compose exec backend npm run db:seed
+docker compose run --rm --no-deps local-bootstrap npm run db:seed
 
 # Inspect data directly
 docker compose exec postgres psql -U smartdesk -d smartdesk
 ```
 
-The backend applies pending migrations before starting. To create a migration during development,
-open a shell in the backend container and run `npm run migrate:dev -- --name <change>`, then commit
-the generated SQL. Review generated SQL before applying it and add hand-written constraints in the
-same migration when required.
+The bootstrap applies pending migrations and service grants before the standalone services start.
+To create a migration during development, mount the Prisma directory so the generated SQL is
+written to the checkout. Review the SQL and add any hand-written constraints before committing.
+
+```bash
+docker compose run --rm -v ./backend/prisma:/app/backend/prisma local-bootstrap \
+  npm run migrate:dev -- --name <change>
+```
 
 `docker compose down` preserves data. `docker compose down -v` permanently removes the database
 volume and should only be used for an intentional reset.

@@ -11,9 +11,9 @@ export KNOWLEDGE_DATABASE_URL=postgres://knowledge_test:knowledge-test-only@post
 export KNOWLEDGE_KEY_ID=knowledge-test AI_SERVICE_KEY_ID=ai-test KNOWLEDGE_WORKER_KEY_ID=local-ai-test
 
 project=smartdesk-knowledge-ci-$$
-compose() { docker compose -p "$project" --env-file .env.example --profile knowledge --profile services "$@"; }
+compose() { docker compose -f docker-compose.modular.yml -p "$project" --env-file .env.example --profile knowledge --profile services "$@"; }
 trap 'compose down -v' EXIT
-if docker compose --env-file .env.example config --services | grep -qx knowledge-service; then
+if docker compose -f docker-compose.modular.yml --env-file .env.example config --services | grep -qx knowledge-service; then
   echo 'Knowledge must require its explicit profile.' >&2
   exit 1
 fi

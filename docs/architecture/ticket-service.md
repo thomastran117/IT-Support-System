@@ -3,7 +3,8 @@
 SD-098 adds a standalone Ticket entrypoint that runs the existing Fastify ticket, technician,
 team, category, classification label, and audit handlers. It uses the same transaction and
 query code for routing approval, human review, version checks, idempotency, and Q01–Q04.
-The standard Compose file still provides the modular API and worker.
+The default Compose stack runs the standalone Ticket service and provisions credentials locally.
+Use the manual setup below when you manage database logins and signing keys separately.
 
 The isolated Compose override gives the gateway an explicit owner for each route group.
 Ticket owns ticket resources, reference data, technician queues, and ticket audit.
@@ -50,7 +51,7 @@ The SQL commands use the example's `smartdesk` database and migration owner.
 
 ```sh
 project=smartdesk-isolated
-legacy() { docker compose -p "$project" --env-file .env.isolated -f docker-compose.yml "$@"; }
+legacy() { docker compose -p "$project" --env-file .env.isolated -f docker-compose.modular.yml "$@"; }
 isolated() { legacy -f docker/compose.ticket-service.yml --profile services "$@"; }
 db_owner() { legacy exec -T postgres psql -X -v ON_ERROR_STOP=1 -U smartdesk -d smartdesk "$@"; }
 
@@ -135,7 +136,7 @@ Include any additional profiles you enabled in the stop command.
 
 Stop the isolated deployment using the same profiles used for cutover. Keep the
 PostgreSQL volume. Restore the legacy runtime's connection and session settings,
-set its execution modes to `local`, and start the standard Compose configuration.
+set its execution modes to `local`, and start the modular Compose configuration.
 Jobs, audit events, tickets, and saved recommendations carry over in place.
 
 ```bash

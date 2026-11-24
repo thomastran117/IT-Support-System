@@ -1,10 +1,10 @@
 # Independent Notifications service
 
 SD-094 extracts the inbox API, outbox consumer, and optional SMTP dispatcher into
-`backend/services/notifications`. The default `NOTIFICATIONS_EXECUTION_MODE=local` runs inbox
-and email in the backend and its worker. Service mode routes `/api/notifications` and its
-subpaths through the gateway to Notifications. The container uses a private API listener, a
-scoped PostgreSQL login, and outbound access for SMTP.
+`backend/services/notifications`. The default Compose gateway routes `/api/notifications` and
+its subpaths to this service. In modular Compose, `NOTIFICATIONS_EXECUTION_MODE=local` runs the
+inbox and email in the backend and its worker. The standalone container uses a private API
+listener, a scoped PostgreSQL login, and outbound access for SMTP.
 
 Ticket records the notification decision in the same transaction as the source change. Internal
 notes, the requester's own actions, and actions for inactive recipients produce no inbox notice.
@@ -21,6 +21,9 @@ queries and read updates use this ID. A request to mark another recipient's noti
 
 ## Cutover
 
+The default Compose stack starts this service automatically. The steps below apply when
+cutting over from the modular API one service at a time.
+
 1. Apply the Prisma migrations and staged access scripts. Provision a login that inherits
    `smartdesk_notifications` and supply it in `NOTIFICATIONS_DATABASE_URL`. Reapply
    `enable.sql` on databases with previously staged grants. [PostgreSQL access](../database/service-access.md)
@@ -34,9 +37,9 @@ queries and read updates use this ID. A request to mark another recipient's noti
    `NOTIFICATIONS_EXECUTION_MODE=service` for the backend, gateway, and worker.
 
 ```bash
-docker compose stop -t 75 worker
-docker compose up -d --build backend gateway worker
-docker compose --profile notifications up -d --build --wait notifications-service
+docker compose -f docker-compose.modular.yml stop -t 75 worker
+docker compose -f docker-compose.modular.yml up -d --build backend gateway worker
+docker compose -f docker-compose.modular.yml --profile notifications up -d --build --wait notifications-service
 ```
 
 For optional email, set `EMAIL_TRANSPORT=smtp` and supply `NOTIFICATIONS_SMTP_USER` and
@@ -52,9 +55,9 @@ worker, then drain outstanding outbox events into the same inbox. Each drain han
 deliveries. Repeat for remaining events and due retries. Use the outbox runbook for dead letters.
 
 ```bash
-docker compose --profile notifications stop -t 75 notifications-service
-docker compose up -d --build backend gateway worker
-docker compose exec backend npm run outbox:notifications -- drain
+docker compose -f docker-compose.modular.yml --profile notifications stop -t 75 notifications-service
+docker compose -f docker-compose.modular.yml up -d --build backend gateway worker
+docker compose -f docker-compose.modular.yml exec backend npm run outbox:notifications -- drain
 ```
 
 The Compose test exercises ticket resolution during a Notifications outage, recipient

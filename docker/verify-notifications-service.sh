@@ -9,10 +9,10 @@ export NOTIFICATIONS_DATABASE_URL=postgres://notification_test:notification-test
 export NOTIFICATIONS_KEY_ID=notification-test NOTIFICATIONS_IDENTITY_ORIGIN=http://backend-api:4000
 
 project=smartdesk-notifications-ci-$$
-compose() { docker compose -p "$project" --env-file .env.example --profile notifications "$@"; }
+compose() { docker compose -f docker-compose.modular.yml -p "$project" --env-file .env.example --profile notifications "$@"; }
 trap 'compose down -v' EXIT
 
-if docker compose --env-file .env.example config --services | grep -qx notifications-service; then
+if docker compose -f docker-compose.modular.yml --env-file .env.example config --services | grep -qx notifications-service; then
   echo 'The Notifications service must require its explicit profile.' >&2
   exit 1
 fi

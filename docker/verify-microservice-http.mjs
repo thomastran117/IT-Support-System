@@ -133,6 +133,64 @@ if (mode === 'benchmark') {
     expected: 401,
   });
   console.log('SD-100 role matrix and direct-listener authorization passed');
+} else if (mode === 'compose-ready') {
+  const deadline = Date.now() + 60_000;
+  for (;;) {
+    try {
+      const response = await fetch(gateway + '/health/ready', {
+        signal: AbortSignal.timeout(2000),
+      });
+      await response.body?.cancel();
+      if (response.ok) break;
+    } catch {
+      // The modular gateway can listen before the backend has finished migrating.
+    }
+    assert.ok(Date.now() < deadline, 'Modular gateway did not become ready');
+    await setTimeout(500);
+  }
+} else if (mode === 'compose-startup' || mode === 'compose-create') {
+  const employee = (await login('erin')).accessToken;
+  const { data: ticket } = await createTicket(employee, 'Compose startup verification');
+  if (mode === 'compose-startup') {
+    const admin = (await login('admin')).accessToken;
+    const path = '/api/tickets/' + ticket.id;
+    const { data: analysis } = await request(path + '/analysis', { token: admin });
+    assert.equal(analysis.enabled, false);
+    assert.equal(analysis.state, 'NONE');
+    const { data: categories } = await request('/api/categories', { token: admin });
+    const { data: teams } = await request('/api/teams', { token: admin });
+    const { data: routed } = await request(path + '/routing', {
+      method: 'POST',
+      token: admin,
+      body: {
+        teamId: teams[0].id,
+        categoryId: categories[0].id,
+        priority: 'HIGH',
+        expectedVersion: ticket.version,
+      },
+    });
+    assert.equal(routed.status, 'TRIAGED');
+    const { data: knowledge } = await request('/api/knowledge/search?q=vpn', { token: employee });
+    assert.ok(knowledge.items.length > 0);
+    await request(reports, { token: admin });
+    const deadline = Date.now() + 20_000;
+    for (;;) {
+      const { data: inbox } = await request('/api/notifications?limit=50', { token: employee });
+      if (
+        inbox.items.some((item) => item.ticketId === ticket.id && item.type === 'TICKET_ASSIGNED')
+      )
+        break;
+      assert.ok(Date.now() < deadline, 'Notifications did not deliver the routing event');
+      await setTimeout(200);
+    }
+  }
+  process.stdout.write(ticket.id);
+} else if (mode === 'compose-persisted') {
+  const employee = (await login('erin')).accessToken;
+  const { data: ticket } = await request('/api/tickets/' + process.env.TICKET_ID, {
+    token: employee,
+  });
+  assert.equal(ticket.title, 'Compose startup verification');
 } else if (mode === 'identity') {
   await request('/api/tickets', {
     token: session.employee,

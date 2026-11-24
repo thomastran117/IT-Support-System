@@ -53,7 +53,7 @@ jobs:
       - name: Gateway checks
         run: |
           docker compose run --rm --no-deps --build gateway npm test 2>&1 | tee ci-gateway.log
-          docker compose config --format json | jq -e '
+          docker compose -f docker-compose.modular.yml config --format json | jq -e '
             (.services.backend.ports // [] | length == 0) and
             (.services.gateway.ports | length == 1) and
             (.networks.api.internal == true) and
@@ -86,6 +86,7 @@ jobs:
             knowledge-service,
             identity-service,
             ticket-service,
+            default-compose,
           ]
     steps:
       - uses: actions/checkout@v4

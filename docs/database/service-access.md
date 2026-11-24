@@ -1,6 +1,6 @@
 # Service-owned PostgreSQL access
 
-SD-091 adds an opt-in grants migration for the E14 extraction. The schema, foreign keys, and
+SD-091 adds a grants migration for the E14 extraction. The schema, foreign keys, and
 business rows stay in the existing PostgreSQL database. The Prisma migration account owns the
 SQL objects. Each extracted service gets a separate login that inherits the grants for its
 domain. See the [Prisma schema](../../backend/prisma/schema.prisma) and [ERD](erd.md).
@@ -80,13 +80,14 @@ windows, and null aggregates. Application authorization still applies to every r
    It applies grants, the search projection view, and row policies in one SQL statement.
    Resolve conflicting search policies and broad `PUBLIC` grants before applying it.
 
-For the default disposable Compose database, the DBA and migration owner are both the
-`smartdesk` development account.
+The default local stack applies these scripts and generates scoped logins during bootstrap.
+For a manual modular deployment using the example database, the DBA and migration owner are
+both the `smartdesk` development account.
 
 ```bash
-docker compose exec backend npm run migrate
-docker compose exec -T postgres psql -X -v ON_ERROR_STOP=1 -U smartdesk -d smartdesk < backend/sql/service-access/roles.sql
-docker compose exec -T postgres psql -X -v ON_ERROR_STOP=1 -U smartdesk -d smartdesk < backend/sql/service-access/enable.sql
+docker compose -f docker-compose.modular.yml exec backend npm run migrate
+docker compose -f docker-compose.modular.yml exec -T postgres psql -X -v ON_ERROR_STOP=1 -U smartdesk -d smartdesk < backend/sql/service-access/roles.sql
+docker compose -f docker-compose.modular.yml exec -T postgres psql -X -v ON_ERROR_STOP=1 -U smartdesk -d smartdesk < backend/sql/service-access/enable.sql
 ```
 
 For example, use a separate Analytics login after applying the grants. Set its password through

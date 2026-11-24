@@ -145,7 +145,11 @@ fields.
 
 ## Demo accounts
 
-Run `docker compose exec backend npm run db:seed`. Active seeded accounts include:
+Once the default Compose stack is ready, load the demo accounts and sample tickets.
+
+```bash
+docker compose run --rm --no-deps local-bootstrap npm run db:seed
+```
 
 | Role       | Email                  |
 | ---------- | ---------------------- |

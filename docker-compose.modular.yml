@@ -1,0 +1,609 @@
+# Shared service definitions and the modular fallback.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-smartdesk}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-smartdesk}
+      POSTGRES_DB: ${POSTGRES_DB:-smartdesk}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [internal]
+
+  postgres-ci:
+    profiles: [ci]
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ci
+      POSTGRES_PASSWORD: ci-only-password
+      POSTGRES_DB: smartdesk_test
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ci -d smartdesk_test']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [internal]
+
+  redis:
+    profiles: [cache]
+    image: redis:7.4-alpine
+    command: >-
+      redis-server
+      --save ''
+      --appendonly no
+      --maxmemory ${REDIS_MAXMEMORY:-256mb}
+      --maxmemory-policy ${REDIS_MAXMEMORY_POLICY:-allkeys-lru}
+      --maxclients ${REDIS_MAXCLIENTS:-100}
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [internal]
+
+  redis-ci:
+    profiles: [ci]
+    image: redis:7.4-alpine
+    command: >-
+      redis-server
+      --save ''
+      --appendonly no
+      --maxmemory 64mb
+      --maxmemory-policy allkeys-lru
+      --maxclients 50
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [internal]
+
+  opensearch:
+    profiles: [search]
+    image: opensearchproject/opensearch:3.10.0
+    environment:
+      discovery.type: single-node
+      bootstrap.memory_lock: 'true'
+      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+      # Local synthetic data and CI only. Production uses a separate secured endpoint.
+      DISABLE_INSTALL_DEMO_CONFIG: 'true'
+      DISABLE_SECURITY_PLUGIN: 'true'
+    mem_limit: 1536m
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          curl -fsS --max-time 4 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=3s'
+          | grep -Eq '"status"[[:space:]]*:[[:space:]]*"(yellow|green)"'
+      start_period: 30s
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [search]
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: backend
+    command: sh -c "npm run migrate && npm run dev"
+    environment:
+      HOST: backend-api
+      PORT: 4000
+      DATABASE_URL: postgres://${POSTGRES_USER:-smartdesk}:${POSTGRES_PASSWORD:-smartdesk}@postgres:5432/${POSTGRES_DB:-smartdesk}
+      REDIS_URL: ${REDIS_URL:-}
+      OPENSEARCH_ENABLED: ${OPENSEARCH_ENABLED:-false}
+      OPENSEARCH_URL: ${OPENSEARCH_URL:-}
+      OPENSEARCH_USERNAME: ${OPENSEARCH_USERNAME:-}
+      OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD:-}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # The API listens only on the private network used by the gateway and optional AI service.
+      TRUST_PROXY: 'true'
+      JWT_SECRET: ${JWT_SECRET:-change-me-dev-only-change-me-dev-only}
+      JWT_ISSUER: ${JWT_ISSUER:-smartdesk-api}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-smartdesk-web}
+      INTERNAL_SERVICE_KEYS: ${INTERNAL_SERVICE_KEYS:-}
+      IDENTITY_EXECUTION_MODE: ${IDENTITY_EXECUTION_MODE:-local}
+      IDENTITY_SERVICE_ORIGIN: ${IDENTITY_SERVICE_ORIGIN:-http://identity-api:4050}
+      TICKET_IDENTITY_KEY_ID: ${TICKET_IDENTITY_KEY_ID:-}
+      TICKET_IDENTITY_PRIVATE_KEY: ${TICKET_IDENTITY_PRIVATE_KEY:-}
+      TICKET_SEARCH_CURSOR_SECRET: ${TICKET_SEARCH_CURSOR_SECRET:-}
+      ANALYTICS_EXECUTION_MODE: ${ANALYTICS_EXECUTION_MODE:-local}
+      KNOWLEDGE_EXECUTION_MODE: ${KNOWLEDGE_EXECUTION_MODE:-local}
+      NOTIFICATIONS_EXECUTION_MODE: ${NOTIFICATIONS_EXECUTION_MODE:-local}
+      ACCESS_TOKEN_TTL_SECONDS: ${ACCESS_TOKEN_TTL_SECONDS:-900}
+      REFRESH_TOKEN_TTL_SECONDS: ${REFRESH_TOKEN_TTL_SECONDS:-604800}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      AI_EXECUTION_MODE: ${AI_EXECUTION_MODE:-local}
+      AI_PROVIDER: ${AI_PROVIDER:-none}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-gpt-4o-mini}
+      AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-20000}
+      AI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-1000}
+      AI_MAX_INPUT_CHARS: ${AI_MAX_INPUT_CHARS:-20000}
+      AI_JOB_MAX_ATTEMPTS: ${AI_JOB_MAX_ATTEMPTS:-3}
+      AI_JOB_BACKOFF_MS: ${AI_JOB_BACKOFF_MS:-5000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      internal:
+      public:
+      search:
+      api:
+        aliases: [backend-api]
+    develop:
+      watch:
+        - action: sync
+          path: ./backend/src
+          target: /app/backend/src
+        - action: rebuild
+          path: ./backend/package.json
+        - action: rebuild
+          path: ./backend/package-lock.json
+        - action: rebuild
+          path: ./backend/prisma
+        - action: rebuild
+          path: ./packages/contracts
+        - action: rebuild
+          path: ./packages/db
+        - action: rebuild
+          path: ./packages/ai-analysis
+        - action: rebuild
+          path: ./packages/analytics
+        - action: rebuild
+          path: ./packages/knowledge
+        - action: rebuild
+          path: ./packages/service-runtime
+        - action: rebuild
+          path: ./packages/identity
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: gateway
+    environment:
+      GATEWAY_UPSTREAM_URL: http://backend-api:4000
+      IDENTITY_EXECUTION_MODE: ${IDENTITY_EXECUTION_MODE:-local}
+      GATEWAY_IDENTITY_ORIGIN: ${IDENTITY_SERVICE_ORIGIN:-http://identity-api:4050}
+      NOTIFICATIONS_EXECUTION_MODE: ${NOTIFICATIONS_EXECUTION_MODE:-local}
+      GATEWAY_NOTIFICATIONS_ORIGIN: http://notifications-api:4020
+      ANALYTICS_EXECUTION_MODE: ${ANALYTICS_EXECUTION_MODE:-local}
+      GATEWAY_ANALYTICS_ORIGIN: http://analytics-api:4030
+      KNOWLEDGE_EXECUTION_MODE: ${KNOWLEDGE_EXECUTION_MODE:-local}
+      GATEWAY_KNOWLEDGE_ORIGIN: http://knowledge-api:4040
+      GATEWAY_UPSTREAM_TIMEOUT_MS: ${GATEWAY_UPSTREAM_TIMEOUT_MS:-10000}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+    ports:
+      - '${BACKEND_PORT:-4000}:4000'
+    depends_on:
+      backend:
+        condition: service_started
+    networks: [public, api]
+    develop:
+      watch:
+        - action: sync
+          path: ./backend/gateway/src
+          target: /app/backend/gateway/src
+        - action: rebuild
+          path: ./backend/gateway/package.json
+        - action: rebuild
+          path: ./backend/gateway/package-lock.json
+        - action: rebuild
+          path: ./backend/gateway/tsconfig.json
+        - action: rebuild
+          path: ./tsconfig.base.json
+        - action: rebuild
+          path: ./packages/service-runtime
+
+  ai-service:
+    profiles: [services]
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: ai-service
+    environment:
+      HOST: 0.0.0.0
+      AI_SERVICE_TICKET_ORIGIN: ${AI_SERVICE_TICKET_ORIGIN:-http://backend-api:4000}
+      AI_SERVICE_READY_TIMEOUT_MS: ${AI_SERVICE_READY_TIMEOUT_MS:-1500}
+      AI_SERVICE_KEY_ID: ${AI_SERVICE_KEY_ID:-}
+      AI_SERVICE_PRIVATE_KEY: ${AI_SERVICE_PRIVATE_KEY:-}
+      KNOWLEDGE_EXECUTION_MODE: ${KNOWLEDGE_EXECUTION_MODE:-local}
+      KNOWLEDGE_RETRIEVAL_ORIGIN: ${KNOWLEDGE_RETRIEVAL_ORIGIN:-http://knowledge-api:4040}
+      AI_EXECUTION_MODE: ${AI_EXECUTION_MODE:-local}
+      AI_PROVIDER: ${AI_PROVIDER:-none}
+      AI_API_KEY: ${AI_SERVICE_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-gpt-4o-mini}
+      AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-20000}
+      AI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-1000}
+      AI_MAX_INPUT_CHARS: ${AI_MAX_INPUT_CHARS:-20000}
+      AI_WORKER_CONCURRENCY: ${AI_WORKER_CONCURRENCY:-2}
+      WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-5000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://127.0.0.1:4010/health/ready', { signal: AbortSignal.timeout(6000) })
+          .then(response => process.exit(response.ok ? 0 : 1), () => process.exit(1))
+      interval: 5s
+      timeout: 7s
+      start_period: 10s
+      retries: 6
+    stop_grace_period: 90s
+    depends_on:
+      backend:
+        condition: service_started
+    networks: [api, ai-egress]
+    develop:
+      watch:
+        - action: rebuild
+          path: ./backend/services/ai
+        - action: rebuild
+          path: ./packages/contracts
+        - action: rebuild
+          path: ./packages/service-runtime
+        - action: rebuild
+          path: ./packages/ai-analysis
+        - action: rebuild
+          path: ./tsconfig.base.json
+
+  notifications-service:
+    profiles: [notifications]
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: notifications-service
+    environment:
+      HOST: notifications-api
+      NOTIFICATIONS_DATABASE_URL: ${NOTIFICATIONS_DATABASE_URL:-}
+      IDENTITY_EXECUTION_MODE: ${IDENTITY_EXECUTION_MODE:-local}
+      IDENTITY_SERVICE_ORIGIN: ${IDENTITY_SERVICE_ORIGIN:-http://identity-api:4050}
+      NOTIFICATIONS_IDENTITY_ORIGIN: ${NOTIFICATIONS_IDENTITY_ORIGIN:-http://backend-api:4000}
+      NOTIFICATIONS_KEY_ID: ${NOTIFICATIONS_KEY_ID:-}
+      NOTIFICATIONS_PRIVATE_KEY: ${NOTIFICATIONS_PRIVATE_KEY:-}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-5000}
+      EMAIL_TRANSPORT: ${EMAIL_TRANSPORT:-none}
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-}
+      SMTP_USER: ${NOTIFICATIONS_SMTP_USER:-}
+      SMTP_PASSWORD: ${NOTIFICATIONS_SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
+      EMAIL_JOB_MAX_ATTEMPTS: ${EMAIL_JOB_MAX_ATTEMPTS:-5}
+      EMAIL_JOB_BACKOFF_MS: ${EMAIL_JOB_BACKOFF_MS:-30000}
+      EMAIL_MAX_AGE_HOURS: ${EMAIL_MAX_AGE_HOURS:-24}
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://notifications-api:4020/health/ready', { signal: AbortSignal.timeout(5000) })
+          .then(response => process.exit(response.ok ? 0 : 1), () => process.exit(1))
+      interval: 5s
+      timeout: 6s
+      start_period: 10s
+      retries: 6
+    stop_grace_period: 75s
+    depends_on:
+      backend:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    networks:
+      internal:
+      api:
+        aliases: [notifications-api]
+      notifications-egress:
+
+  analytics-service:
+    profiles: [analytics]
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: analytics-service
+    environment:
+      HOST: analytics-api
+      ANALYTICS_DATABASE_URL: ${ANALYTICS_DATABASE_URL:-}
+      IDENTITY_EXECUTION_MODE: ${IDENTITY_EXECUTION_MODE:-local}
+      IDENTITY_SERVICE_ORIGIN: ${IDENTITY_SERVICE_ORIGIN:-http://identity-api:4050}
+      ANALYTICS_IDENTITY_ORIGIN: ${ANALYTICS_IDENTITY_ORIGIN:-http://backend-api:4000}
+      ANALYTICS_KEY_ID: ${ANALYTICS_KEY_ID:-}
+      ANALYTICS_PRIVATE_KEY: ${ANALYTICS_PRIVATE_KEY:-}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://analytics-api:4030/health/ready', { signal: AbortSignal.timeout(5000) })
+          .then(response => process.exit(response.ok ? 0 : 1), () => process.exit(1))
+      interval: 5s
+      timeout: 6s
+      start_period: 10s
+      retries: 6
+    depends_on:
+      backend:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    networks:
+      internal:
+      api:
+        aliases: [analytics-api]
+
+  knowledge-service:
+    profiles: [knowledge]
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: knowledge-service
+    environment:
+      HOST: 0.0.0.0
+      KNOWLEDGE_DATABASE_URL: ${KNOWLEDGE_DATABASE_URL:-}
+      IDENTITY_EXECUTION_MODE: ${IDENTITY_EXECUTION_MODE:-local}
+      IDENTITY_SERVICE_ORIGIN: ${IDENTITY_SERVICE_ORIGIN:-http://identity-api:4050}
+      KNOWLEDGE_IDENTITY_ORIGIN: ${KNOWLEDGE_IDENTITY_ORIGIN:-http://backend-api:4000}
+      KNOWLEDGE_KEY_ID: ${KNOWLEDGE_KEY_ID:-}
+      KNOWLEDGE_PRIVATE_KEY: ${KNOWLEDGE_PRIVATE_KEY:-}
+      KNOWLEDGE_RETRIEVAL_KEYS: ${KNOWLEDGE_RETRIEVAL_KEYS:-}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://127.0.0.1:4040/health/ready', { signal: AbortSignal.timeout(5000) })
+          .then(response => process.exit(response.ok ? 0 : 1), () => process.exit(1))
+      interval: 5s
+      timeout: 6s
+      start_period: 10s
+      retries: 6
+    depends_on:
+      backend:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    networks:
+      internal:
+        aliases: [knowledge-api]
+      api:
+        aliases: [knowledge-api]
+
+  identity-service:
+    profiles: [identity]
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: identity-service
+    environment:
+      HOST: identity-api
+      IDENTITY_DATABASE_URL: ${IDENTITY_DATABASE_URL:-}
+      REDIS_URL: ${REDIS_URL:-}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      JWT_SECRET: ${IDENTITY_JWT_SECRET:-${JWT_SECRET:-change-me-dev-only-change-me-dev-only}}
+      JWT_ISSUER: ${JWT_ISSUER:-smartdesk-api}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-smartdesk-web}
+      ACCESS_TOKEN_TTL_SECONDS: ${ACCESS_TOKEN_TTL_SECONDS:-900}
+      REFRESH_TOKEN_TTL_SECONDS: ${REFRESH_TOKEN_TTL_SECONDS:-604800}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      INTERNAL_SERVICE_KEYS: ${INTERNAL_SERVICE_KEYS:-}
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://identity-api:4050/health/ready', { signal: AbortSignal.timeout(5000) })
+          .then(response => process.exit(response.ok ? 0 : 1), () => process.exit(1))
+      interval: 5s
+      timeout: 6s
+      start_period: 10s
+      retries: 6
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      internal:
+      api:
+        aliases: [identity-api]
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: worker
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-smartdesk}:${POSTGRES_PASSWORD:-smartdesk}@postgres:5432/${POSTGRES_DB:-smartdesk}
+      OPENSEARCH_ENABLED: ${OPENSEARCH_ENABLED:-false}
+      OPENSEARCH_URL: ${OPENSEARCH_URL:-}
+      OPENSEARCH_USERNAME: ${OPENSEARCH_USERNAME:-}
+      OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD:-}
+      WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-5000}
+      NOTIFICATIONS_EXECUTION_MODE: ${NOTIFICATIONS_EXECUTION_MODE:-local}
+      KNOWLEDGE_EXECUTION_MODE: ${KNOWLEDGE_EXECUTION_MODE:-local}
+      KNOWLEDGE_RETRIEVAL_ORIGIN: ${KNOWLEDGE_RETRIEVAL_ORIGIN:-http://knowledge-api:4040}
+      KNOWLEDGE_WORKER_KEY_ID: ${KNOWLEDGE_WORKER_KEY_ID:-}
+      KNOWLEDGE_WORKER_PRIVATE_KEY: ${KNOWLEDGE_WORKER_PRIVATE_KEY:-}
+      AI_EXECUTION_MODE: ${AI_EXECUTION_MODE:-local}
+      AI_PROVIDER: ${AI_PROVIDER:-none}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-gpt-4o-mini}
+      AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-20000}
+      AI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-1000}
+      AI_MAX_INPUT_CHARS: ${AI_MAX_INPUT_CHARS:-20000}
+      AI_WORKER_CONCURRENCY: ${AI_WORKER_CONCURRENCY:-2}
+      AI_JOB_MAX_ATTEMPTS: ${AI_JOB_MAX_ATTEMPTS:-3}
+      AI_JOB_BACKOFF_MS: ${AI_JOB_BACKOFF_MS:-5000}
+      # Optional email channel (SD-043), off by default. See docs/architecture.md for Gmail setup.
+      EMAIL_TRANSPORT: ${EMAIL_TRANSPORT:-none}
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
+      EMAIL_JOB_MAX_ATTEMPTS: ${EMAIL_JOB_MAX_ATTEMPTS:-5}
+      EMAIL_JOB_BACKOFF_MS: ${EMAIL_JOB_BACKOFF_MS:-30000}
+      EMAIL_MAX_AGE_HOURS: ${EMAIL_MAX_AGE_HOURS:-24}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # `public` gives the worker outbound access, which email (and a hosted AI provider) needs. The
+    # database stays on the internal network.
+    networks: [internal, public, search]
+    develop:
+      watch:
+        - action: sync
+          path: ./backend/src
+          target: /app/backend/src
+        - action: rebuild
+          path: ./backend/package.json
+        - action: rebuild
+          path: ./backend/package-lock.json
+        - action: rebuild
+          path: ./backend/prisma
+        - action: rebuild
+          path: ./packages/contracts
+        - action: rebuild
+          path: ./packages/db
+        - action: rebuild
+          path: ./packages/ai-analysis
+        - action: rebuild
+          path: ./packages/knowledge
+        - action: rebuild
+          path: ./packages/service-runtime
+        - action: rebuild
+          path: ./packages/identity
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: frontend
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
+    ports:
+      - '${FRONTEND_PORT:-3000}:3000'
+    networks: [public]
+    develop:
+      watch:
+        - action: sync
+          path: ./frontend/src
+          target: /app/frontend/src
+        - action: rebuild
+          path: ./frontend/package.json
+        - action: rebuild
+          path: ./frontend/package-lock.json
+        - action: rebuild
+          path: ./frontend/next.config.ts
+        - action: rebuild
+          path: ./packages/contracts
+
+  format-check:
+    profiles: [ci]
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: format-check
+
+  backend-ci:
+    profiles: [ci]
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: backend-ci
+    environment:
+      DATABASE_URL: postgres://ci:ci-only-password@postgres-ci:5432/smartdesk_test
+      TEST_DATABASE_URL: postgres://ci:ci-only-password@postgres-ci:5432/smartdesk_test
+      REDIS_URL: redis://redis-ci:6379
+      FRONTEND_ORIGIN: http://localhost:3000
+      CI: 'true'
+    depends_on:
+      postgres-ci:
+        condition: service_healthy
+      redis-ci:
+        condition: service_healthy
+    networks: [internal, search]
+
+  frontend-ci:
+    profiles: [ci]
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: frontend-ci
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+      NEXT_TELEMETRY_DISABLED: '1'
+      CI: 'true'
+    volumes:
+      - ./frontend/playwright-report:/app/frontend/playwright-report
+      - ./frontend/test-results:/app/frontend/test-results
+
+  hybrid-knowledge-experiment:
+    profiles: [hybrid-experiment]
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: hybrid-knowledge-experiment
+      args:
+        NODE_IMAGE: node:22-bookworm-slim
+    environment:
+      DATABASE_URL: postgres://ci:ci-only-password@postgres-ci:5432/smartdesk_hybrid_knowledge_test
+      TEST_OPENSEARCH_URL: http://opensearch:9200/
+    networks: [internal, search]
+
+  docs:
+    profiles: [tools]
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: backend
+    command: npm run docs:db
+    volumes:
+      - ./docs/database:/app/docs/database
+
+volumes:
+  pgdata:
+  opensearch-data:
+
+networks:
+  internal:
+    internal: true
+  public:
+  api:
+    internal: true
+  ai-egress:
+  notifications-egress:
+  search:
+    internal: true

@@ -16,9 +16,9 @@ export TICKET_SEARCH_CURSOR_SECRET=ticket-ci-cursor-key-for-test-fixtures-only
 export REDIS_URL=redis://redis:6379 FRONTEND_ORIGIN=http://localhost:3000 COOKIE_SECURE=false
 
 project=smartdesk-identity-ci-$$
-compose() { docker compose -p "$project" --env-file .env.example --profile cache --profile identity --profile notifications "$@"; }
+compose() { docker compose -f docker-compose.modular.yml -p "$project" --env-file .env.example --profile cache --profile identity --profile notifications "$@"; }
 trap 'compose down -v' EXIT
-if docker compose --env-file .env.example config --services | grep -qx identity-service; then
+if docker compose -f docker-compose.modular.yml --env-file .env.example config --services | grep -qx identity-service; then
   echo 'Identity must require its explicit profile.' >&2
   exit 1
 fi

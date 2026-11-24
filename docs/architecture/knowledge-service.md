@@ -25,6 +25,9 @@ throughout an outage.
 
 ## Cutover
 
+The default Compose stack starts this service automatically. The steps below apply when
+cutting over from the modular API one service at a time.
+
 1. Apply the Prisma migrations and staged PostgreSQL grants. Reapply `enable.sql` on
    databases with older staged grants so Knowledge can read category descriptions. Provision
    a login that inherits only `smartdesk_knowledge` and supply its connection string in
@@ -40,7 +43,7 @@ throughout an outage.
 4. Start Knowledge while `KNOWLEDGE_EXECUTION_MODE=local`.
 
 ```bash
-docker compose --profile knowledge up -d --build --wait knowledge-service
+docker compose -f docker-compose.modular.yml --profile knowledge up -d --build --wait knowledge-service
 ```
 
 Set `KNOWLEDGE_EXECUTION_MODE=service` and recreate the backend, gateway, and worker.
@@ -48,9 +51,9 @@ Recreate the AI service if it is active. Verify a published search, a draft requ
 admin write, and an AI job against the gateway and private retrieval path.
 
 ```bash
-docker compose up -d --build backend gateway worker
+docker compose -f docker-compose.modular.yml up -d --build backend gateway worker
 # Run with independent AI enabled
-docker compose --profile services up -d --build --wait ai-service
+docker compose -f docker-compose.modular.yml --profile services up -d --build --wait ai-service
 ```
 
 ## Rollback
@@ -61,10 +64,10 @@ reader and admin routes. The previous handler reads the same article rows and re
 The index worker can continue delivering pending search intents.
 
 ```bash
-docker compose --profile knowledge stop knowledge-service
-docker compose up -d --build backend gateway worker
+docker compose -f docker-compose.modular.yml --profile knowledge stop knowledge-service
+docker compose -f docker-compose.modular.yml up -d --build backend gateway worker
 # Run with independent AI enabled
-docker compose --profile services up -d --build --wait ai-service
+docker compose -f docker-compose.modular.yml --profile services up -d --build --wait ai-service
 ```
 
 Compose verification covers publication, current content and draft denial, AI retrieval and

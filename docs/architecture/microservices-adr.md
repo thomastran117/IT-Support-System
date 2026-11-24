@@ -1,9 +1,9 @@
 # ADR — Incremental Node.js service extraction
 
-**Accepted as an opt-in deployment.** Default Compose serves the functional MVP through the
-gateway, modular API, and worker. The optional isolated overlay adopts the Deliverable 1 gateway,
-Ticket, AI, Notifications, and Analytics model. It also includes the later Identity and Knowledge
-extractions. [Epic E14](https://github.com/thomastran117/IT-Support-System/issues/118)
+**Accepted.** The isolated overlay was introduced as an opt-in deployment. It adopts the Deliverable 1
+gateway, Ticket, AI, Notifications, and Analytics model and includes the later Identity and Knowledge
+extractions. Default Compose now starts that layout, with the modular API and worker available
+for rollback. [Epic E14](https://github.com/thomastran117/IT-Support-System/issues/118)
 
 ## Current implementation and ownership
 
@@ -90,7 +90,7 @@ authorization across an Identity outage. [Identity cutover and rollback](identit
 
 The isolated Ticket entrypoint serves the remaining Ticket-owned routes with a
 scoped PostgreSQL login. The gateway registry assigns each public route group
-to its service. The standard Compose deployment supports rollback over the same
+to its service. The modular Compose deployment supports rollback over the same
 data. [Ticket cutover and rollback](ticket-service.md)
 
 ### AI handoff

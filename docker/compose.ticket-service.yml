@@ -1,4 +1,4 @@
-# Isolated deployment. Apply together with docker-compose.yml after migrations and role setup.
+# Isolated routing. For manual deployments, layer over docker-compose.modular.yml.
 services:
   backend:
     profiles: [legacy]
