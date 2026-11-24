@@ -89,6 +89,11 @@ retrieval for AI. [Knowledge setup and rollback](docs/architecture/knowledge-ser
 The `identity` profile runs sessions, account administration, and scoped account
 verification for Ticket and the extracted services. [Identity setup and rollback](docs/architecture/identity-service.md)
 
+## Opt-in isolated Ticket deployment
+
+The Ticket Compose override runs the remaining ticket and catalog routes with scoped
+database credentials and explicit gateway ownership. [Ticket cutover and rollback](docs/architecture/ticket-service.md)
+
 ## Common operations
 
 ```bash

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { request as httpRequest, type IncomingMessage } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import Fastify, { type FastifyError, type FastifyReply, type FastifyRequest } from 'fastify';
+import { resolvePublicRoutes } from './routing.js';
 
 const hopByHop = [
   'connection',
@@ -78,7 +79,8 @@ const unavailableCodes = new Set([
 ]);
 
 export interface GatewayOptions {
-  upstream: URL;
+  upstream?: URL;
+  ticketUpstream?: URL;
   notificationsUpstream?: URL;
   analyticsUpstream?: URL;
   knowledgeUpstream?: URL;
@@ -90,6 +92,17 @@ export interface GatewayOptions {
 }
 
 export function buildGateway(opts: GatewayOptions) {
+  const legacy = opts.ticketUpstream ? undefined : opts.upstream;
+  const routes = resolvePublicRoutes(
+    {
+      ticket: opts.ticketUpstream,
+      identity: opts.identityUpstream,
+      knowledge: opts.knowledgeUpstream,
+      analytics: opts.analyticsUpstream,
+      notifications: opts.notificationsUpstream,
+    },
+    legacy,
+  );
   const app = Fastify({
     logger: opts.logLevel ? { level: opts.logLevel } : false,
     trustProxy: opts.trustProxy ?? false,
@@ -136,7 +149,7 @@ export function buildGateway(opts: GatewayOptions) {
     (_req, body, done) => done(null, body),
   );
 
-  async function proxy(req: FastifyRequest, reply: FastifyReply, upstream = opts.upstream) {
+  async function proxy(req: FastifyRequest, reply: FastifyReply, upstream: URL) {
     const timeout = AbortSignal.timeout(opts.timeoutMs);
     const disconnect = new AbortController();
     reply.raw.once('close', () => {
@@ -160,19 +173,11 @@ export function buildGateway(opts: GatewayOptions) {
     return reply.send(response);
   }
 
-  for (const path of ['/api', '/api/*', '/health/live', '/health/ready']) app.all(path, proxy);
-  for (const { prefix, upstream } of [
-    { prefix: '/api/notifications', upstream: opts.notificationsUpstream },
-    { prefix: '/api/admin/reports', upstream: opts.analyticsUpstream },
-    { prefix: '/api/knowledge', upstream: opts.knowledgeUpstream },
-    { prefix: '/api/admin/knowledge', upstream: opts.knowledgeUpstream },
-    { prefix: '/api/auth', upstream: opts.identityUpstream },
-    { prefix: '/api/admin/users', upstream: opts.identityUpstream },
-    { prefix: '/api/admin/audit-log', upstream: opts.identityUpstream },
-  ]) {
-    if (!upstream) continue;
-    app.all(prefix, (req, reply) => proxy(req, reply, upstream));
-    app.all(`${prefix}/*`, (req, reply) => proxy(req, reply, upstream));
+  if (legacy) {
+    for (const path of ['/api', '/api/*']) app.all(path, (req, reply) => proxy(req, reply, legacy));
+  }
+  for (const { path, origin } of routes) {
+    app.all(path, (req, reply) => proxy(req, reply, origin));
   }
   return app;
 }

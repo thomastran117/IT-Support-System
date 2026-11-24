@@ -1,0 +1,119 @@
+# Isolated deployment. Apply together with docker-compose.yml after migrations and role setup.
+services:
+  backend:
+    profiles: [legacy]
+  worker:
+    profiles: [legacy]
+
+  gateway:
+    environment:
+      TICKET_EXECUTION_MODE: service
+      GATEWAY_TICKET_ORIGIN: http://ticket-api:4060
+      IDENTITY_EXECUTION_MODE: service
+      KNOWLEDGE_EXECUTION_MODE: service
+      ANALYTICS_EXECUTION_MODE: service
+      NOTIFICATIONS_EXECUTION_MODE: service
+    depends_on: !override
+      ticket-service:
+        condition: service_started
+
+  ticket-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: ticket-service
+    environment:
+      HOST: ticket-api
+      PORT: 4060
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      TRUST_PROXY: 'true'
+      TICKET_DATABASE_URL: ${TICKET_DATABASE_URL:-}
+      IDENTITY_SERVICE_ORIGIN: ${IDENTITY_SERVICE_ORIGIN:-http://identity-api:4050}
+      TICKET_IDENTITY_KEY_ID: ${TICKET_IDENTITY_KEY_ID:-}
+      TICKET_IDENTITY_PRIVATE_KEY: ${TICKET_IDENTITY_PRIVATE_KEY:-}
+      TICKET_SEARCH_CURSOR_SECRET: ${TICKET_SEARCH_CURSOR_SECRET:-}
+      INTERNAL_SERVICE_KEYS: ${INTERNAL_SERVICE_KEYS:-}
+      REDIS_URL: ${REDIS_URL:-}
+      OPENSEARCH_ENABLED: ${OPENSEARCH_ENABLED:-false}
+      OPENSEARCH_URL: ${OPENSEARCH_URL:-}
+      OPENSEARCH_USERNAME: ${OPENSEARCH_USERNAME:-}
+      OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD:-}
+      AI_PROVIDER: ${AI_PROVIDER:-none}
+      AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-20000}
+      AI_JOB_MAX_ATTEMPTS: ${AI_JOB_MAX_ATTEMPTS:-3}
+      AI_JOB_BACKOFF_MS: ${AI_JOB_BACKOFF_MS:-5000}
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://ticket-api:4060/health/ready', { signal: AbortSignal.timeout(5000) })
+          .then(response => process.exit(response.ok ? 0 : 1), () => process.exit(1))
+      interval: 5s
+      timeout: 6s
+      retries: 6
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      internal:
+      search:
+      api:
+        aliases: [ticket-api]
+
+  identity-service:
+    profiles: !reset []
+
+  notifications-service:
+    profiles: !reset []
+    environment:
+      IDENTITY_EXECUTION_MODE: service
+    depends_on: !override
+      postgres:
+        condition: service_healthy
+
+  analytics-service:
+    profiles: !reset []
+    environment:
+      IDENTITY_EXECUTION_MODE: service
+    depends_on: !override
+      postgres:
+        condition: service_healthy
+
+  knowledge-service:
+    profiles: !reset []
+    environment:
+      IDENTITY_EXECUTION_MODE: service
+    depends_on: !override
+      postgres:
+        condition: service_healthy
+
+  ai-service:
+    environment:
+      AI_SERVICE_TICKET_ORIGIN: http://ticket-api:4060
+      AI_EXECUTION_MODE: service
+      KNOWLEDGE_EXECUTION_MODE: service
+    depends_on: !override
+      ticket-service:
+        condition: service_started
+
+  search-indexer:
+    profiles: [search]
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: search-indexer
+    environment:
+      SEARCH_DATABASE_URL: ${SEARCH_DATABASE_URL:-}
+      OPENSEARCH_ENABLED: 'true'
+      OPENSEARCH_URL: ${OPENSEARCH_URL:-http://opensearch:9200/}
+      OPENSEARCH_USERNAME: ${OPENSEARCH_USERNAME:-}
+      OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD:-}
+      WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-5000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    stop_grace_period: 45s
+    networks: [internal, search]

@@ -7,6 +7,7 @@ import {
   projectRemoval,
   projectTicket,
   ticketSearchSelect,
+  type KnowledgeSource,
 } from './projection.js';
 
 interface SearchSourceChange {
@@ -14,6 +15,19 @@ interface SearchSourceChange {
   entityId: string;
   revision: number;
 }
+
+export type LoadKnowledgeSources = (db: Db, ids: string[]) => Promise<KnowledgeSource[]>;
+
+/** The scoped indexer receives current revision metadata and published text from the view. */
+export const loadScopedKnowledgeSources: LoadKnowledgeSources = (db, ids) =>
+  db.$queryRaw<KnowledgeSource[]>`
+    SELECT article_id AS id, category_id AS "categoryId", title, body,
+           is_published AS "isPublished", search_revision AS "searchRevision"
+    FROM smartdesk_search_article_sources
+    WHERE article_id = ANY(${ids}::uuid[])`;
+
+const loadLegacyKnowledgeSources: LoadKnowledgeSources = (db, ids) =>
+  db.knowledgeArticle.findMany({ where: { id: { in: ids } }, select: knowledgeSearchSelect });
 
 function entityIds(jobs: readonly SearchSourceChange[], type: SearchIndexEntityType): string[] {
   return [...new Set(jobs.filter((job) => job.entityType === type).map((job) => job.entityId))];
@@ -30,19 +44,18 @@ async function missingRevisions(db: Db, entityType: SearchIndexEntityType, ids: 
   return new Map(revisions.map((row) => [row.entityId, row._max.revision ?? 0]));
 }
 
-export async function loadSearchChanges<T extends SearchSourceChange>(db: Db, jobs: readonly T[]) {
+export async function loadSearchChanges<T extends SearchSourceChange>(
+  db: Db,
+  jobs: readonly T[],
+  loadKnowledgeSources: LoadKnowledgeSources = loadLegacyKnowledgeSources,
+) {
   const ticketIds = entityIds(jobs, 'TICKET');
   const articleIds = entityIds(jobs, 'KNOWLEDGE_ARTICLE');
   const [ticketRows, articleRows] = await Promise.all([
     ticketIds.length
       ? db.ticket.findMany({ where: { id: { in: ticketIds } }, select: ticketSearchSelect })
       : [],
-    articleIds.length
-      ? db.knowledgeArticle.findMany({
-          where: { id: { in: articleIds } },
-          select: knowledgeSearchSelect,
-        })
-      : [],
+    articleIds.length ? loadKnowledgeSources(db, articleIds) : [],
   ]);
   const tickets = new Map(ticketRows.map((row) => [row.id, row]));
   const articles = new Map(articleRows.map((row) => [row.id, row]));

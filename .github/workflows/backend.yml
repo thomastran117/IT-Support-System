@@ -58,6 +58,9 @@ jobs:
       - name: Identity session continuity, revocation, outage and rollback
         run: set -o pipefail; sh docker/verify-identity-service.sh 2>&1 | tee ci-identity-service.log
 
+      - name: Scoped Ticket workflows, route ownership and rollback
+        run: set -o pipefail; sh docker/verify-ticket-service.sh 2>&1 | tee ci-ticket-service.log
+
       - name: Optional OpenSearch smoke check
         run: |
           default_services=$(docker compose config --services)

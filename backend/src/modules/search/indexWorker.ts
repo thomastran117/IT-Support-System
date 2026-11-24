@@ -12,7 +12,7 @@ import {
   type SearchIndexResult,
   type SearchIndexWrite,
 } from './bulk.js';
-import { loadSearchChanges } from './loadSearchChanges.js';
+import { loadSearchChanges, type LoadKnowledgeSources } from './loadSearchChanges.js';
 import { SearchError } from './transport.js';
 
 const BATCH_SIZE = 25;
@@ -35,6 +35,7 @@ interface SearchWorkerOptions {
   log?: (entry: SearchWorkerLog) => void;
   now?: () => Date;
   random?: () => number;
+  loadKnowledgeSources?: LoadKnowledgeSources;
 }
 
 export function createSearchIndexWorker({
@@ -44,6 +45,7 @@ export function createSearchIndexWorker({
   log,
   now,
   random = Math.random,
+  loadKnowledgeSources,
 }: SearchWorkerOptions) {
   let stopSignal: AbortController | undefined;
   let running: Promise<void> | undefined;
@@ -92,7 +94,7 @@ export function createSearchIndexWorker({
     });
     if (jobs.length === 0) return false;
 
-    const { batch, mismatches } = await loadSearchChanges(prisma, jobs);
+    const { batch, mismatches } = await loadSearchChanges(prisma, jobs, loadKnowledgeSources);
     const results = await deliver(batch.map(({ write }) => write));
     const settlements = await Promise.allSettled([
       ...mismatches.map((job) =>

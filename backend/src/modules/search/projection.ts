@@ -56,10 +56,15 @@ export function projectTicket(
   };
 }
 
-export function projectKnowledge(
-  row: Prisma.KnowledgeArticleGetPayload<{ select: typeof knowledgeSearchSelect }>,
-): SearchIndexWrite {
-  if (!row.isPublished) return projectRemoval('KNOWLEDGE_ARTICLE', row.id, row.searchRevision);
+export type KnowledgeSource = Omit<
+  Prisma.KnowledgeArticleGetPayload<{ select: typeof knowledgeSearchSelect }>,
+  'title' | 'body'
+> & { title: string | null; body: string | null };
+
+export function projectKnowledge(row: KnowledgeSource): SearchIndexWrite {
+  if (!row.isPublished || row.title === null || row.body === null) {
+    return projectRemoval('KNOWLEDGE_ARTICLE', row.id, row.searchRevision);
+  }
   const document: KnowledgeSearchDocument = {
     articleId: row.id,
     categoryId: row.categoryId,

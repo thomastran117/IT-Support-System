@@ -1,10 +1,21 @@
-import { parseHttpOrigin, parseInteger } from '@smartdesk/service-runtime';
+import { parseExecutionMode, parseHttpOrigin, parseInteger } from '@smartdesk/service-runtime';
 import { buildGateway } from './app.js';
 
-const upstream = parseHttpOrigin(
-  'GATEWAY_UPSTREAM_URL',
-  process.env.GATEWAY_UPSTREAM_URL ?? 'http://localhost:4001',
-);
+const ticketMode = parseExecutionMode('TICKET_EXECUTION_MODE', process.env.TICKET_EXECUTION_MODE);
+const upstream =
+  ticketMode === 'local'
+    ? parseHttpOrigin(
+        'GATEWAY_UPSTREAM_URL',
+        process.env.GATEWAY_UPSTREAM_URL ?? 'http://localhost:4001',
+      )
+    : undefined;
+const ticketUpstream =
+  ticketMode === 'service'
+    ? parseHttpOrigin(
+        'GATEWAY_TICKET_ORIGIN',
+        process.env.GATEWAY_TICKET_ORIGIN ?? 'http://localhost:4060',
+      )
+    : undefined;
 const timeoutMs = parseInteger(
   'GATEWAY_UPSTREAM_TIMEOUT_MS',
   process.env.GATEWAY_UPSTREAM_TIMEOUT_MS ?? 10_000,
@@ -17,6 +28,7 @@ const proxy = process.env.TRUST_PROXY || 'false';
 const trustProxy = proxy === 'true' || (proxy !== 'false' && proxy.split(',').map((s) => s.trim()));
 const app = buildGateway({
   upstream,
+  ticketUpstream,
   notificationsUpstream:
     process.env.NOTIFICATIONS_EXECUTION_MODE === 'service'
       ? parseHttpOrigin(
