@@ -1,6 +1,18 @@
 # syntax=docker/dockerfile:1.7
 
 ARG NODE_IMAGE=node:22-alpine
+
+FROM ${NODE_IMAGE} AS gateway
+WORKDIR /app/backend/gateway
+COPY backend/gateway/package.json backend/gateway/package-lock.json ./
+RUN npm ci
+COPY tsconfig.base.json /app/
+COPY --chown=node:node backend/gateway/ ./
+RUN npm run build
+USER node
+EXPOSE 4000
+CMD ["npm", "run", "dev"]
+
 FROM ${NODE_IMAGE} AS dependencies
 WORKDIR /app
 

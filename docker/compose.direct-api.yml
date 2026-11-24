@@ -1,0 +1,9 @@
+services:
+  gateway:
+    profiles: [gateway]
+  backend:
+    environment:
+      HOST: 0.0.0.0
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+    ports:
+      - '${BACKEND_PORT:-4000}:4000'

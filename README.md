@@ -1,8 +1,8 @@
 # SmartDesk
 
 SmartDesk is a role-based IT support ticketing system with a Next.js web app, Fastify API,
-PostgreSQL database, and background worker. Docker Compose is the supported development and
-validation environment; no root npm installation is required.
+PostgreSQL database, and background worker. The Fastify gateway is the public API entry point in
+Docker Compose. Each package installs its own dependencies.
 
 ## Start the stack
 
@@ -15,17 +15,17 @@ docker compose up --build --watch
 The defaults work without a `.env` file. Copy `.env.example` to `.env` only when you need to
 override ports, credentials, token lifetimes, logging, or the optional AI provider.
 
-| Service    | Address or role                                                               |
-| ---------- | ----------------------------------------------------------------------------- |
-| Frontend   | <http://localhost:3000>                                                       |
-| API        | <http://localhost:4000>                                                       |
-| Liveness   | <http://localhost:4000/health/live>                                           |
-| Readiness  | <http://localhost:4000/health/ready>                                          |
-| PostgreSQL | Internal Compose network only (`postgres:5432`)                               |
-| Worker     | Internal background process; no published endpoint                            |
-| Redis      | Optional cache, off by default (`docker compose --profile cache up -d redis`) |
+| Service     | Address or role                                                               |
+| ----------- | ----------------------------------------------------------------------------- |
+| Frontend    | <http://localhost:3000>                                                       |
+| API gateway | <http://localhost:4000>                                                       |
+| Liveness    | <http://localhost:4000/health/live>                                           |
+| Readiness   | <http://localhost:4000/health/ready>                                          |
+| PostgreSQL  | Internal Compose network only (`postgres:5432`)                               |
+| Worker      | Internal background process; no published endpoint                            |
+| Redis       | Optional cache, off by default (`docker compose --profile cache up -d redis`) |
 
-Application source changes are synchronized into the running frontend, backend, and worker.
+Application source changes are synchronized into the running frontend, gateway, backend, and worker.
 Changes to manifests, lockfiles, Prisma files, or shared packages rebuild the affected images.
 
 Stop the stack while preserving database data:
@@ -33,6 +33,21 @@ Stop the stack while preserving database data:
 ```bash
 docker compose down
 ```
+
+## Switch back to the direct API
+
+The gateway uses the existing `BACKEND_PORT` and forwards to the backend on a private network. To
+restore the direct backend listener on the same port and keep the current PostgreSQL data, run
+these commands in the existing Compose project.
+
+```bash
+docker compose stop gateway
+docker compose -f docker-compose.yml -f docker/compose.direct-api.yml up -d backend
+curl --fail http://localhost:4000/health/ready
+```
+
+To restore gateway mode, run `docker compose up -d backend gateway` and check readiness again.
+The [gateway architecture](docs/architecture.md#api-gateway) documents timeouts and proxy settings.
 
 ## Common operations
 
@@ -131,6 +146,8 @@ The same container targets run locally and in GitHub Actions:
 docker compose --profile ci run --rm format-check
 docker compose --profile ci run --rm backend-ci
 docker compose --profile ci run --rm frontend-ci
+docker compose build gateway
+docker compose run --rm --no-deps gateway npm test
 ```
 
 `backend-ci` starts PostgreSQL, applies migrations, and runs package, API, worker, and database
@@ -142,6 +159,7 @@ checks. `frontend-ci` includes Chromium and runs unit plus desktop/mobile Playwr
 | --------------------- | -------------------------------------------------------------------- |
 | `frontend/`           | Next.js App Router UI                                                |
 | `backend/`            | Fastify API, AI worker, Prisma schema/migrations, seeds, SQL reports |
+| `backend/gateway/`    | Fastify public API proxy                                             |
 | `packages/contracts/` | Browser-safe API types and validation                                |
 | `packages/db/`        | Generated Prisma client adapter shared by API and worker             |
 | `docs/`               | Durable technical references and generated schema docs               |
