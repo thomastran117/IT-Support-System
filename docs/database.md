@@ -92,6 +92,9 @@ Operational SQL lives in `backend/sql/queries`; reporting and AI-evaluation SQL 
 The [service access migration](database/service-access.md) documents the E14 ownership matrix,
 optional PostgreSQL grants, and rollback steps.
 
+The [cross-service outbox](architecture/service-outbox.md) documents the ticket and recommendation
+events, consumer receipts, and replay procedure introduced by SD-092.
+
 ## Validation
 
 ```bash

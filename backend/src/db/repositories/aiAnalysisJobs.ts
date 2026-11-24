@@ -1,5 +1,6 @@
 import { Prisma } from '@smartdesk/db';
 import type { Db } from '../transaction.js';
+import { hashCorrelationId } from './serviceEvents.js';
 
 export type AnalysisJobState = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED';
 
@@ -65,12 +66,13 @@ const clock = (now?: Date) =>
  */
 export async function enqueueAnalysis(
   db: Db,
-  opts: { ticketId: string; requestId?: string; maxAttempts?: number },
+  opts: { ticketId: string; requestId?: string; maxAttempts?: number; correlationId?: string },
 ): Promise<AnalysisJob> {
   const requestId = opts.requestId ?? null;
   const rows = await db.$queryRaw<JobRow[]>`
-    INSERT INTO ai_analysis_jobs (ticket_id, request_id, max_attempts)
-    VALUES (${opts.ticketId}::uuid, COALESCE(${requestId}::uuid, gen_random_uuid()), ${opts.maxAttempts ?? 3})
+    INSERT INTO ai_analysis_jobs (ticket_id, request_id, max_attempts, correlation_id)
+    VALUES (${opts.ticketId}::uuid, COALESCE(${requestId}::uuid, gen_random_uuid()),
+            ${opts.maxAttempts ?? 3}, ${opts.correlationId ? hashCorrelationId(opts.correlationId) : null})
     ON CONFLICT (ticket_id, request_id) DO NOTHING
     RETURNING *`;
   if (rows[0]) return toJob(rows[0]);

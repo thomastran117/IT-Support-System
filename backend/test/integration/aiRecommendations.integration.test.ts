@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { enqueueAnalysis, findLatestForTicket } from '../../src/db/repositories/aiAnalysisJobs.js';
+import { hashCorrelationId } from '../../src/db/repositories/serviceEvents.js';
 import { reviewRecommendation } from '../../src/db/services/ticketService.js';
 import { withTransaction } from '../../src/db/transaction.js';
 import { ARTICLES, CATEGORIES, TEAMS, TICKETS, USERS } from '../../src/db/seed/fixtures.js';
@@ -74,6 +75,31 @@ describe.skipIf(!testDatabaseUrl)('recommendation persistence (integration)', ()
       [ARTICLES.vpn, 3],
     ]);
     expect(await counts()).toEqual({ recs: before.recs + 1, links: before.links + 3 });
+    expect(
+      await prisma.serviceOutboxEvent.findUnique({ where: { eventId: recommendationId } }),
+    ).toMatchObject({
+      type: 'recommendation.ready',
+      aggregateId: job.ticketId,
+      correlationId: job.requestId,
+      payload: { recommendationId, jobId: job.id, requestId: job.requestId },
+    });
+  });
+
+  it('publishes one recommendation-ready event with the originating request correlation', async () => {
+    const correlationId = 'request header from gateway';
+    const job = await enqueueAnalysis(prisma, { ticketId: TICKETS.printer, correlationId });
+    const { recommendationId } = await persist(job);
+    expect(await persist(job)).toEqual({ recommendationId, created: false });
+    const events = await prisma.serviceOutboxEvent.findMany({
+      where: { type: 'recommendation.ready' },
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      eventId: recommendationId,
+      schemaVersion: 1,
+      correlationId: hashCorrelationId(correlationId),
+      payload: { recommendationId, jobId: job.id, requestId: job.requestId },
+    });
   });
 
   it('accepts a recommendation with no confidence and no sources', async () => {

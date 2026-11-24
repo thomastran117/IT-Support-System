@@ -5,6 +5,7 @@ import {
   insertRecommendationForJob,
 } from '../../db/repositories/aiRecommendations.js';
 import { linkArticles } from '../../db/repositories/recommendationArticles.js';
+import { insertServiceEvent } from '../../db/repositories/serviceEvents.js';
 import type { AnalysisDraft } from './analysisService.js';
 import type { PersistDraft } from './jobRunner.js';
 import { PROMPT_VERSION } from './prompt.js';
@@ -96,6 +97,25 @@ export async function persistRecommendation(
     return { recommendationId: winner!.id, created: false };
   }
   if (articleIds.length > 0) await linkArticles(tx, id, articleIds);
+  const [event] = await tx.$queryRaw<
+    { occurredAt: Date; aggregateVersion: number; requestId: string; correlationId: string }[]
+  >`
+    SELECT r.created_at AS "occurredAt", t.version AS "aggregateVersion",
+           j.request_id AS "requestId", COALESCE(j.correlation_id, j.request_id::text) AS "correlationId"
+    FROM ai_recommendations r
+    JOIN ai_analysis_jobs j ON j.job_id = r.job_id
+    JOIN tickets t ON t.ticket_id = r.ticket_id
+    WHERE r.recommendation_id = ${id}::uuid`;
+  await insertServiceEvent(tx, {
+    schemaVersion: 1,
+    eventId: id,
+    type: 'recommendation.ready',
+    occurredAt: event!.occurredAt.toISOString(),
+    aggregateId: job.ticketId,
+    aggregateVersion: event!.aggregateVersion,
+    correlationId: event!.correlationId,
+    payload: { recommendationId: id, jobId: job.id, requestId: event!.requestId },
+  });
   return { recommendationId: id, created: true };
 }
 

@@ -64,6 +64,7 @@ result is returned. [Database and outbox](../database.md#search-outbox)
   article text, prompts, and credentials out of distributed event payloads. Consumers commit
   deduplication and local effects together, acknowledge after commit, and support bounded retries,
   dead-letter inspection, and replay. PostgreSQL remains the durable transport.
+  [Cross-service outbox](service-outbox.md)
 
 After notification cutover, the inbox reflects committed ticket events when its consumer catches
 up. Ticket records notification intent using the same eligibility rules as its current insert,

@@ -255,10 +255,12 @@ _AI and evaluation._ Durable queue for AI ticket analysis (SD-035), a transactio
 | `created_at` | `timestamp(6) with time zone` | NOT NULL | `CURRENT_TIMESTAMP` |  |  | `idx_ai_jobs_ticket` | When the job was queued. |
 | `updated_at` | `timestamp(6) with time zone` | NOT NULL | `CURRENT_TIMESTAMP` |  |  |  | Last state change. |
 | `completed_at` | `timestamp(6) with time zone` | NULL |  |  |  |  | When the job reached COMPLETED or FAILED; NULL otherwise. |
+| `correlation_id` | `character varying(64)` | NULL |  |  |  |  | SHA-256 digest of the request ID that scheduled this job, when available. |
 
 **CHECK constraints**
 
 - `ck_ai_jobs_attempts`: `((attempts >= 0) AND (max_attempts > 0))`
+- `ck_ai_jobs_correlation`: `((correlation_id)::text ~ '^[a-f0-9]{64}$'::text)`
 - `ck_ai_jobs_lease`: `(((state)::text = 'RUNNING'::text) = ((lease_token IS NOT NULL) AND (locked_until IS NOT NULL)))`
 - `ck_ai_jobs_state`: `((state)::text = ANY ((ARRAY['QUEUED'::character varying, 'RUNNING'::character varying, 'COMPLETED'::character varying, 'FAILED'::character varying])::text[]))`
 - `ck_ai_jobs_terminal`: `(((state)::text = ANY ((ARRAY['COMPLETED'::character varying, 'FAILED'::character varying])::text[])) = (completed_at IS NOT NULL))`
@@ -361,3 +363,42 @@ _Search._ Resumable backfill and reindex checkpoints for replacement OpenSearch 
 - `ck_search_rebuilds_phase`: `((phase)::text = ANY ((ARRAY['PREPARE'::character varying, 'TICKETS'::character varying, 'KNOWLEDGE'::character varying, 'REPLAY'::character varying, 'CUTOVER'::character varying, 'COMPLETED'::character varying])::text[]))`
 - `ck_search_rebuilds_version`: `((version > 0) AND ((source_version IS NULL) OR ((source_version > 0) AND (source_version < version))))`
 - `ck_search_rebuilds_watermark`: `((replayed_through >= 0) AND (replay_until >= replayed_through))`
+
+## `service_outbox_events`
+
+_Cross-service events._ Append-only versioned events emitted in the transaction that creates the ticket fact or recommendation (SD-092). Payloads contain allowlisted references and status values.
+
+| Column | Type | Null | Default | Key | Unique | Indexes | Meaning |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `event_id` | `uuid` | NOT NULL |  | PK |  | `idx_service_events_aggregate`, `idx_service_events_type_order` | Stable event identity. Reuses the ticket audit ID or recommendation ID. |
+| `schema_version` | `smallint` | NOT NULL |  |  |  |  | Envelope and payload contract version. |
+| `type` | `character varying(48)` | NOT NULL |  |  |  | `idx_service_events_type_order` | Stable event type name. |
+| `occurred_at` | `timestamp(6) with time zone` | NOT NULL |  |  |  | `idx_service_events_aggregate`, `idx_service_events_type_order` | UTC time of the source event. |
+| `aggregate_id` | `uuid` | NOT NULL |  | FK → tickets.ticket_id |  | `idx_service_events_aggregate` | Source ticket ID. |
+| `aggregate_version` | `integer` | NOT NULL |  |  |  |  | Ticket version at publication. Multiple independent facts can share a version. |
+| `correlation_id` | `character varying(64)` | NOT NULL |  |  |  |  | Digest of the originating HTTP request ID or a fallback UUID. |
+| `payload` | `jsonb` | NOT NULL |  |  |  |  | Minimal event-specific fields validated by the shared contract. |
+
+**CHECK constraints**
+
+- `ck_service_events_envelope`: `((schema_version > 0) AND (aggregate_version >= 0) AND ((correlation_id)::text ~ '^([a-f0-9]{64}\|[a-f0-9-]{36})$'::text) AND (jsonb_typeof(payload) = 'object'::text))`
+
+## `service_outbox_deliveries`
+
+_Cross-service events._ Per-consumer lease and delivery receipts for service events. Completed receipts deduplicate consumption. Failed deliveries can be replayed against the original immutable event.
+
+| Column | Type | Null | Default | Key | Unique | Indexes | Meaning |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `consumer` | `character varying(48)` | NOT NULL |  | PK (composite) |  | `idx_service_deliveries_claim`, `idx_service_deliveries_lease` | Stable subscriber name and part of the deduplication key. |
+| `event_id` | `uuid` | NOT NULL |  | PK (composite); FK → service_outbox_events.event_id |  | `idx_service_deliveries_event` | Source event and part of the deduplication key. |
+| `state` | `character varying(10)` | NOT NULL | `'QUEUED'::character varying` |  |  | `idx_service_deliveries_claim`, `idx_service_deliveries_lease` | QUEUED, RUNNING, COMPLETED, or FAILED. |
+| `attempts` | `integer` | NOT NULL | `0` |  |  |  | Number of claims since discovery or operator replay. |
+| `run_after` | `timestamp(6) with time zone` | NOT NULL | `now()` |  |  | `idx_service_deliveries_claim` | Earliest time for a queued retry. |
+| `lease_token` | `uuid` | NULL |  |  |  |  | Fences stale workers. Rotates with each claim. |
+| `locked_until` | `timestamp(6) with time zone` | NULL |  |  |  | `idx_service_deliveries_lease` | Lease expiry used to recover abandoned work. |
+| `finished_at` | `timestamp(6) with time zone` | NULL |  |  |  |  | Completion or terminal failure time. |
+| `error_kind` | `character varying(24)` | NULL |  |  |  |  | Bounded reason code for a retry or dead letter. |
+
+**CHECK constraints**
+
+- `ck_service_deliveries_state`: `((attempts >= 0) AND ((consumer)::text ~ '^[a-z][a-z0-9-]{0,47}$'::text) AND ((error_kind IS NULL) OR ((error_kind)::text = ANY ((ARRAY['handler_failed'::character varying, 'invalid_event'::character varying, 'worker_lost'::character varying])::text[]))) AND ((((state)::text = 'QUEUED'::text) AND (lease_token IS NULL) AND (locked_until IS NULL) AND (finished_at IS NULL)) OR (((state)::text = 'RUNNING'::text) AND (lease_token IS NOT NULL) AND (locked_until IS NOT NULL) AND (finished_at IS NULL)) OR (((state)::text = 'COMPLETED'::text) AND (lease_token IS NULL) AND (locked_until IS NULL) AND (finished_at IS NOT NULL) AND (error_kind IS NULL)) OR (((state)::text = 'FAILED'::text) AND (lease_token IS NULL) AND (locked_until IS NULL) AND (finished_at IS NOT NULL) AND (error_kind IS NOT NULL))))`

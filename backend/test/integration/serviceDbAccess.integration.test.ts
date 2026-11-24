@@ -206,6 +206,13 @@ describe.skipIf(!testDatabaseUrl)('service-owned PostgreSQL privileges', () => {
       ticket: { id: created.ticket.id },
     });
     expect(await owner.ticketEvent.count({ where: { ticketId: created.ticket.id } })).toBe(1);
+    expect(
+      await owner.serviceOutboxEvent.count({ where: { aggregateId: created.ticket.id } }),
+    ).toBe(1);
+    await permissionDenied(service.ticket.$queryRaw`SELECT event_id FROM service_outbox_events`);
+    await permissionDenied(
+      service.notifications.$queryRaw`SELECT event_id FROM service_outbox_deliveries`,
+    );
     expect(await owner.aiAnalysisJob.count({ where: { ticketId: created.ticket.id } })).toBe(1);
     expect(await owner.searchIndexJob.count({ where: { entityId: created.ticket.id } })).toBe(1);
 

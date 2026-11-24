@@ -24,6 +24,11 @@ leases, and deduplication keys remain in place. Search rebuild operations that l
 tables stay with the maintenance account during this phase.
 [PostgreSQL row security](https://www.postgresql.org/docs/16/ddl-rowsecurity.html)
 
+The Ticket role can append to `service_outbox_events` after migration 0015. For an environment
+with staged access already enabled, reapply `enable.sql` after migrating and before deploying
+the new Ticket code. The optional Notifications outbox drain uses the existing application
+account during this phase. [Cross-service outbox](../architecture/service-outbox.md)
+
 `packages/db` exports the generated Prisma client and a PostgreSQL adapter. Its types cover the
 whole schema, and the login selected by `DATABASE_URL` supplies the effective permissions.
 Treat nullable fields and foreign key behavior exactly as specified by the existing schema.

@@ -166,6 +166,7 @@ async function applyRouting(
   actor: Actor,
   ticket: TicketRow,
   change: RoutingChange,
+  correlationId?: string,
 ): Promise<TicketRow> {
   if (!(['OPEN', 'TRIAGED', 'IN_PROGRESS'] as string[]).includes(ticket.status)) {
     throw lifecycleError('Resolved or closed tickets cannot be re-routed; reopen the ticket first');
@@ -237,7 +238,7 @@ async function applyRouting(
   const event = (
     type: Parameters<typeof appendEvent>[1]['type'],
     details: Record<string, unknown>,
-  ) => appendEvent(tx, { ticketId: ticket.id, actorId: actor.id, type, details });
+  ) => appendEvent(tx, { ticketId: ticket.id, actorId: actor.id, type, details, correlationId });
 
   if (next.categoryId !== ticket.categoryId) {
     await event('CATEGORY_UPDATED', { from: ticket.categoryId, to: next.categoryId });
@@ -265,6 +266,7 @@ async function applyRouting(
 // ---------------------------------------------------------------------------------------------
 
 export interface CreateTicketInput {
+  correlationId?: string;
   requesterId: string;
   title: string;
   description: string;
@@ -328,11 +330,17 @@ export function submitTicket(
           idempotencyKey: key ?? null,
         });
         await enqueueTicketSearch(tx, ticket.id, ticket.version);
-        await appendEvent(tx, { ticketId: ticket.id, actorId: actor.id, type: 'CREATED' });
+        await appendEvent(tx, {
+          ticketId: ticket.id,
+          actorId: actor.id,
+          type: 'CREATED',
+          correlationId: input.correlationId,
+        });
         if (input.enqueueAnalysis) {
           await enqueueAnalysis(tx, {
             ticketId: ticket.id,
             maxAttempts: input.enqueueAnalysis.maxAttempts,
+            correlationId: input.correlationId,
           });
         }
         return { ticket, created: true };
@@ -355,6 +363,7 @@ export function createTicket(prisma: PrismaClient, input: CreateTicketInput) {
 }
 
 export interface ApproveRoutingInput extends RoutingChange {
+  correlationId?: string;
   ticketId: string;
   actorId: string;
   /** `version` the caller last read; a mismatch is rejected as a 409 VERSION_CONFLICT. */
@@ -367,11 +376,12 @@ export function approveRouting(prisma: PrismaClient, input: ApproveRoutingInput)
     const actor = await loadActor(tx, input.actorId);
     const ticket = await loadTicket(tx, input.ticketId, input.expectedVersion);
     await assertCanWork(tx, actor, ticket);
-    return applyRouting(tx, actor, ticket, input);
+    return applyRouting(tx, actor, ticket, input, input.correlationId);
   });
 }
 
 export interface TransitionInput {
+  correlationId?: string;
   ticketId: string;
   actorId: string;
   to: TicketStatus;
@@ -434,7 +444,13 @@ export function transitionTicket(prisma: PrismaClient, input: TransitionInput) {
     }
 
     const log = (type: Parameters<typeof appendEvent>[1]['type'], details = {}) =>
-      appendEvent(tx, { ticketId: ticket.id, actorId: actor.id, type, details });
+      appendEvent(tx, {
+        ticketId: ticket.id,
+        actorId: actor.id,
+        type,
+        details,
+        correlationId: input.correlationId,
+      });
 
     switch (input.to) {
       case 'RESOLVED':
@@ -481,6 +497,7 @@ export function transitionTicket(prisma: PrismaClient, input: TransitionInput) {
 }
 
 export interface AddCommentInput {
+  correlationId?: string;
   ticketId: string;
   authorId: string;
   body: string;
@@ -526,6 +543,7 @@ export function addComment(prisma: PrismaClient, input: AddCommentInput) {
       ticketId: ticket.id,
       actorId: actor.id,
       type: 'COMMENT_ADDED',
+      correlationId: input.correlationId,
       // Ids and flags only: the comment text never enters the audit trail.
       details: { commentId: comment.id, isInternal, ...(firstResponse ? { firstResponse } : {}) },
     });
@@ -534,6 +552,7 @@ export function addComment(prisma: PrismaClient, input: AddCommentInput) {
 }
 
 export interface ReviewInput {
+  correlationId?: string;
   recommendationId: string;
   /** When given, the recommendation must belong to this ticket (404 otherwise). */
   ticketId?: string;
@@ -589,7 +608,9 @@ export function reviewRecommendation(prisma: PrismaClient, input: ReviewInput) {
       notes: input.notes ?? null,
     });
     if (claimed === 0) throw staleWriteError('Recommendation');
-    const updated = change ? await applyRouting(tx, actor, ticket, change) : ticket;
+    const updated = change
+      ? await applyRouting(tx, actor, ticket, change, input.correlationId)
+      : ticket;
     await appendEvent(tx, {
       ticketId: ticket.id,
       actorId: actor.id,

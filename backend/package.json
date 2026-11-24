@@ -26,6 +26,7 @@
     "baseline:routing": "tsx scripts/routing-baseline.ts",
     "search:init": "tsx scripts/init-search.ts",
     "search:requeue": "tsx scripts/requeue-search-index-job.ts",
+    "outbox:notifications": "tsx scripts/notification-outbox.ts",
     "search:backfill": "tsx scripts/rebuild-search.ts",
     "search:reindex": "tsx scripts/rebuild-search.ts",
     "bench:cache": "tsx scripts/evaluate-cache.ts",

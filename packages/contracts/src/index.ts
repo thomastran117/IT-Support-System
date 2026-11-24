@@ -892,3 +892,68 @@ export interface AiEvaluationReportDto {
   /** Reference by first valid predicted category; a null prediction means no valid recommendation. */
   confusion: { referenceCategory: string; predictedCategory: string | null; ticketCount: number }[];
 }
+
+const eventRecipient = z.strictObject({ recipientId: z.guid() });
+const eventEnvelopeV1 = z.strictObject({
+  schemaVersion: z.literal(1),
+  eventId: z.guid(),
+  occurredAt: z.iso.datetime(),
+  aggregateId: z.guid(),
+  aggregateVersion: z.number().int().nonnegative(),
+  correlationId: z.union([z.guid(), z.string().regex(/^[a-f0-9]{64}$/)]),
+});
+
+export const serviceEventV1Schema = z.discriminatedUnion('type', [
+  eventEnvelopeV1.extend({ type: z.literal('ticket.created'), payload: z.strictObject({}) }),
+  eventEnvelopeV1.extend({
+    type: z.literal('ticket.routed'),
+    payload: z.strictObject({
+      previousTeamId: z.guid().nullable().optional(),
+      teamId: z.guid(),
+      notification: eventRecipient.extend({ type: z.literal('TICKET_ASSIGNED') }).optional(),
+    }),
+  }),
+  eventEnvelopeV1.extend({
+    type: z.literal('ticket.status-changed'),
+    payload: z.strictObject({
+      previousStatus: z.enum(TICKET_STATUSES).optional(),
+      status: z.enum(TICKET_STATUSES),
+      notification: eventRecipient
+        .extend({ type: z.enum(['TICKET_STATUS_CHANGED', 'TICKET_RESOLVED', 'TICKET_REOPENED']) })
+        .optional(),
+    }),
+  }),
+  eventEnvelopeV1.extend({
+    type: z.literal('ticket.public-reply'),
+    payload: z.strictObject({
+      commentId: z.guid(),
+      notification: eventRecipient.extend({ type: z.literal('TECHNICIAN_REPLY') }).optional(),
+    }),
+  }),
+  eventEnvelopeV1.extend({
+    type: z.literal('recommendation.ready'),
+    payload: z.strictObject({ recommendationId: z.guid(), jobId: z.guid(), requestId: z.guid() }),
+  }),
+]);
+export type ServiceEventV1 = z.infer<typeof serviceEventV1Schema>;
+export type ServiceEventType = ServiceEventV1['type'];
+
+// Command for the authenticated AI-to-Ticket completion path. The draft belongs in the request,
+// while recommendation.ready carries only the identifiers of the result after commit.
+export const recordRecommendationCommandV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  ticketId: z.guid(),
+  jobId: z.guid(),
+  requestId: z.guid(),
+  leaseToken: z.guid(),
+  draft: z.strictObject({
+    categoryId: z.guid(),
+    teamId: z.guid(),
+    priority: z.enum(TICKET_PRIORITIES).exclude(['UNSET']),
+    troubleshooting: z.string().trim().min(1).max(4000),
+    confidence: z.number().min(0).max(1).nullable(),
+    modelVersion: z.string().trim().min(1).max(100),
+    citedArticleIds: z.array(z.guid()).max(5),
+  }),
+});
+export type RecordRecommendationCommandV1 = z.infer<typeof recordRecommendationCommandV1Schema>;

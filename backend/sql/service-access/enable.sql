@@ -59,6 +59,7 @@ BEGIN
   GRANT UPDATE (review_status, reviewer_id, reviewed_at, review_notes)
     ON public.ai_recommendations TO smartdesk_ticket;
   GRANT SELECT, INSERT ON public.ai_analysis_jobs TO smartdesk_ticket;
+  GRANT INSERT ON public.service_outbox_events TO smartdesk_ticket;
   GRANT UPDATE (state, attempts, run_after, lease_token, locked_until, error_kind, updated_at, completed_at)
     ON public.ai_analysis_jobs TO smartdesk_ticket;
   GRANT SELECT (article_id, title, is_published) ON public.knowledge_articles TO smartdesk_ticket;

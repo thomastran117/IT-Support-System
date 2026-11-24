@@ -82,6 +82,7 @@ export const ticketRoutes =
       // queued in the same transaction (a durable outbox) and a worker runs it later, so the
       // provider's latency or failure never blocks or fails the submission.
       const { ticket, created } = await submitTicket(prisma, {
+        correlationId: req.id,
         requesterId: req.principal!.id,
         ...body,
         idempotencyKey,
@@ -128,6 +129,7 @@ export const ticketRoutes =
       // (403 when an employee asks for an internal note).
       await authorizeTicket(prisma, req.principal!, id, 'read');
       const comment = await addComment(prisma, {
+        correlationId: req.id,
         ticketId: id,
         authorId: req.principal!.id,
         body: body.body,
@@ -151,6 +153,7 @@ export const ticketRoutes =
       // scope for every edge, the requester for reopening only (403 otherwise).
       await authorizeTicket(prisma, req.principal!, id, 'read');
       const ticket = await transitionTicket(prisma, {
+        correlationId: req.id,
         ticketId: id,
         actorId: req.principal!.id,
         to: body.to as TicketStatus,
@@ -168,6 +171,7 @@ export const ticketRoutes =
       // technicians outside the ticket's team). The service re-checks inside its transaction.
       await authorizeTicket(prisma, req.principal!, id, 'edit');
       const ticket = await approveRouting(prisma, {
+        correlationId: req.id,
         ticketId: id,
         actorId: req.principal!.id,
         categoryId: body.categoryId,
@@ -203,6 +207,7 @@ export const ticketRoutes =
         throw new HttpError(409, 'AI analysis is not enabled', { code: 'AI_DISABLED' });
       }
       const { created } = await requestAnalysis(prisma, {
+        correlationId: req.id,
         ticketId: params.id,
         ...(body.requestId ? { requestId: body.requestId } : {}),
         maxAttempts: analysis.maxAttempts,
@@ -228,6 +233,7 @@ export const ticketRoutes =
       // 404 for tickets the caller cannot read, 403 for readers who may not edit (requesters).
       await authorizeTicket(prisma, req.principal!, params.id, 'edit');
       const result = await reviewRecommendation(prisma, {
+        correlationId: req.id,
         recommendationId: params.recommendationId,
         // The recommendation must belong to the ticket in the URL; the reviewer is the caller.
         ticketId: params.id,

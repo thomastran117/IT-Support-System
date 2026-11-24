@@ -128,6 +128,7 @@ erDiagram
     timestamptz created_at
     timestamptz updated_at
     timestamptz completed_at
+    varchar correlation_id
   }
   notifications {
     uuid notification_id PK
@@ -181,6 +182,27 @@ erDiagram
     int verified_tickets
     int verified_articles
   }
+  service_outbox_events {
+    uuid event_id PK
+    smallint schema_version
+    varchar type
+    timestamptz occurred_at
+    uuid aggregate_id FK
+    int aggregate_version
+    varchar correlation_id
+    jsonb payload
+  }
+  service_outbox_deliveries {
+    varchar consumer PK
+    uuid event_id PK,FK
+    varchar state
+    int attempts
+    timestamptz run_after
+    uuid lease_token
+    timestamptz locked_until
+    timestamptz finished_at
+    varchar error_kind
+  }
   support_teams ||--o{ team_members : "team_id"
   users ||--o{ team_members : "user_id"
   team_members |o--o{ tickets : "assigned_team_id, assignee_id"
@@ -210,6 +232,8 @@ erDiagram
   users ||--o{ notifications : "recipient_id"
   tickets ||--o{ notifications : "ticket_id"
   notifications ||--o{ notification_deliveries : "notification_id"
+  tickets ||--o{ service_outbox_events : "aggregate_id"
+  service_outbox_events ||--o{ service_outbox_deliveries : "event_id"
 ```
 
 ## Relationships
@@ -250,3 +274,5 @@ the assigned team.
 | `notifications` | `recipient_id` | `users` (`user_id`) | 1 : N | required | RESTRICT |
 | `notifications` | `ticket_id` | `tickets` (`ticket_id`) | 1 : N | required | RESTRICT |
 | `notification_deliveries` | `notification_id` | `notifications` (`notification_id`) | 1 : N | required | RESTRICT |
+| `service_outbox_events` | `aggregate_id` | `tickets` (`ticket_id`) | 1 : N | required | RESTRICT |
+| `service_outbox_deliveries` | `event_id` | `service_outbox_events` (`event_id`) | 1 : N | required | RESTRICT |
