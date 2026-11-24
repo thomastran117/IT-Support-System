@@ -21,6 +21,74 @@ stored only as Argon2id hashes; inactive or credential-less accounts cannot sign
 `JWT_SECRET` must be a random value of at least 32 characters in production. The Compose default is
 development-only. `COOKIE_SECURE` should be true behind HTTPS.
 
+## Internal service authentication
+
+The gateway forwards the browser's `Authorization` header and strips reserved identity headers
+with the `X-SmartDesk-Internal-`, `X-Internal-`, `X-Actor-`, `X-User-`, and `X-Service-`
+prefixes. Internal routes use `/internal/*` and stay outside the gateway's public route table.
+Each receiving service verifies credentials on its own listener, including requests originating
+from the private network.
+
+### Service credentials and delegated users
+
+An internal caller sends an ES256 JWT as `Authorization: Bearer <service-token>`. Each caller
+keeps its own P-256 signing key. The receiving service pins a public key, caller name, and
+grants to each configured `kid`.
+
+| JWT field        | Value                                                                                           |
+| ---------------- | ----------------------------------------------------------------------------------------------- |
+| Protected header | `alg` is `ES256`, `typ` is `smartdesk-service+jwt`, and `kid` selects the configured caller key |
+| `iss` and `sub`  | `smartdesk-internal` and the exact configured caller service name                               |
+| `aud`            | One receiving service, currently `smartdesk-ticket` for Ticket's internal endpoint              |
+| `iat` and `exp`  | Integer UTC epoch seconds. Issue for at most 60 seconds and keep service clocks synchronized.   |
+| `scope`          | One operation allowed both by the endpoint and by the caller's grant                            |
+| `actor`          | `{ "kind": "system" }` or `{ "kind": "user", "tokenHash": "<base64url SHA-256>" }`              |
+
+For a delegated call, send the user's existing access JWT in `X-SmartDesk-Internal-User-Token`.
+Hash the exact token bytes without a `Bearer` prefix and encode the digest as unpadded base64url
+for `actor.tokenHash`. The receiver verifies the binding, validates the access JWT with the same
+checks as the public API, and loads current account status, token version, role, and active teams
+from PostgreSQL. The owning service applies the relevant resource policy. System operations
+require an explicit system grant and carry only the authenticated service identity.
+
+`GET /internal/tickets/:id/work-access` requires a `ticket:work-access` user grant. It returns
+`204` when the delegated user can edit that ticket under the existing Ticket policy. Missing or
+invalid credentials return `401`, ineligible actors or scopes return `403`, and tickets outside
+the user's read scope return `404`. The decision applies to the current request. A later
+mutation must authorize again within its owning workflow.
+
+Use authenticated TLS for internal traffic in production. Carry credentials only in headers and
+correlate calls using request IDs. The backend redacts both credential headers from structured
+request logs. A service JWT remains a bearer credential during its short lifetime.
+[JWT best practices](https://www.rfc-editor.org/rfc/rfc8725.html)
+
+### Configure and rotate keys
+
+Set `INTERNAL_SERVICE_KEYS` on the receiving backend to a JSON array of entries like this one.
+Substitute the caller's P-256 public key in PEM-encoded SPKI form.
+
+```json
+[
+  {
+    "kid": "workflow-v1",
+    "service": "workflow",
+    "publicKey": "-----BEGIN PUBLIC KEY-----\n<public key>\n-----END PUBLIC KEY-----",
+    "grants": { "ticket:work-access": "user" }
+  }
+]
+```
+
+Store private signing keys with the respective caller. Rotate a caller by adding the new
+public key with a fresh `kid` and the same grants. Restart receivers with both keys, switch the
+caller to the new signing key, then remove the old entry after its last token expires and
+restart the receivers again. Remove a compromised key immediately and restart receivers to
+revoke trust.
+
+The registry defaults to empty. To disable internal routes, clear the registry and recreate
+the backend. The [direct API rollback override](../README.md#switch-back-to-the-direct-api) also
+clears the registry before exposing the backend listener. Public login, refresh, logout, and
+account revocation continue to use the existing session model.
+
 ## Roles and ticket scope
 
 | Capability                       | Employee                    | Technician                                     | Administrator |

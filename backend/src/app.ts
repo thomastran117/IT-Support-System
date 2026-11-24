@@ -10,6 +10,8 @@ import type { CacheCheck } from './cache/client.js';
 import { createNoopCache, type CacheClient } from './cache/redisCache.js';
 import type { createFallbackRateLimitStore } from './rateLimit/fallbackStore.js';
 import { createAuthGuards } from './auth/guard.js';
+import { createInternalGuard, DELEGATED_USER_TOKEN_HEADER } from './auth/internalGuard.js';
+import { createServiceTokenVerifier } from './auth/serviceTokens.js';
 import { TokenService } from './auth/tokens.js';
 import { adminRoutes } from './modules/admin/routes.js';
 import { authRoutes } from './modules/auth/routes.js';
@@ -29,6 +31,7 @@ import { reportRoutes } from './modules/reports/routes.js';
 import { createSearchClient, type SearchClient } from './modules/search/client.js';
 import { ticketSearchRoutes } from './modules/search/ticketSearchRoutes.js';
 import { technicianRoutes } from './modules/technician/routes.js';
+import { internalTicketRoutes } from './modules/tickets/internalRoutes.js';
 import { ticketRoutes } from './modules/tickets/routes.js';
 
 export interface AppOptions {
@@ -59,6 +62,7 @@ export interface AppOptions {
 
 export const REDACT_PATHS = [
   'req.headers.authorization',
+  `req.headers["${DELEGATED_USER_TOKEN_HEADER}"]`,
   'req.headers.cookie',
   'res.headers["set-cookie"]',
   'req.body.password',
@@ -107,6 +111,16 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const tokens = new TokenService(opts.env);
     const searchClient = opts.searchClient ?? createSearchClient(opts.env.openSearch);
     app.decorate('authGuards', createAuthGuards(opts.prisma, tokens));
+    if (opts.env.internalServiceKeys.length > 0) {
+      const verify = await createServiceTokenVerifier(
+        'smartdesk-ticket',
+        opts.env.internalServiceKeys,
+      );
+      const guard = createInternalGuard(opts.prisma, tokens, verify);
+      await app.register(internalTicketRoutes(opts.prisma, guard('ticket:work-access', 'user')), {
+        prefix: '/internal/tickets',
+      });
+    }
     await app.register(
       authRoutes({
         prisma: opts.prisma,

@@ -55,6 +55,9 @@ export async function loadValidUser(
 
 const UNAUTHENTICATED = () => new HttpError(401, 'Authentication required');
 
+export const readBearerToken = (header: string | undefined) =>
+  header ? /^Bearer (\S+)$/i.exec(header)?.[1] : undefined;
+
 /** Current account and team scope, shared by the request guard and deferred search hydration. */
 export async function loadActivePrincipal(prisma: Pick<PrismaClient, 'user'>, id: string) {
   const user = await prisma.user.findUnique({
@@ -77,16 +80,23 @@ export async function loadActivePrincipal(prisma: Pick<PrismaClient, 'user'>, id
   return { principal, tokenVersion: user.tokenVersion };
 }
 
+export async function authenticatePrincipal(
+  prisma: Pick<PrismaClient, 'user'>,
+  tokens: TokenService,
+  accessToken: string,
+): Promise<Principal | null> {
+  const claims = await tokens.verify('access', accessToken);
+  if (!claims) return null;
+  const current = await loadActivePrincipal(prisma, claims.sub);
+  return current && current.tokenVersion === claims.tv ? current.principal : null;
+}
+
 export function createAuthGuards(prisma: PrismaClient, tokens: TokenService): AuthGuards {
   const requireAuth: preHandlerAsyncHookHandler = async (req) => {
-    const header = req.headers.authorization;
-    const match = header ? /^Bearer (\S+)$/i.exec(header) : null;
-    if (!match) throw UNAUTHENTICATED();
-    const claims = await tokens.verify('access', match[1]!);
-    if (!claims) throw UNAUTHENTICATED();
-    const current = await loadActivePrincipal(prisma, claims.sub);
-    if (!current || current.tokenVersion !== claims.tv) throw UNAUTHENTICATED();
-    req.principal = current.principal;
+    const token = readBearerToken(req.headers.authorization);
+    const principal = token && (await authenticatePrincipal(prisma, tokens, token));
+    if (!principal) throw UNAUTHENTICATED();
+    req.principal = principal;
   };
 
   const requireRole = (...roles: Role[]): preHandlerAsyncHookHandler[] => [

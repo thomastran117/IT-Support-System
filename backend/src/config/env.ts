@@ -1,3 +1,5 @@
+import { loadServiceKeys } from '../auth/serviceTokens.js';
+
 export interface Env {
   host: string;
   port: number;
@@ -15,6 +17,7 @@ export interface Env {
   jwtSecret: string;
   jwtIssuer: string;
   jwtAudience: string;
+  internalServiceKeys: ReturnType<typeof loadServiceKeys>;
   accessTtlSeconds: number;
   refreshTtlSeconds: number;
   /** Secure flag on the refresh cookie. Defaults to on in production. */
@@ -213,6 +216,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     jwtSecret,
     jwtIssuer: source.JWT_ISSUER ?? 'smartdesk-api',
     jwtAudience: source.JWT_AUDIENCE ?? 'smartdesk-web',
+    internalServiceKeys: loadServiceKeys(source.INTERNAL_SERVICE_KEYS),
     accessTtlSeconds: positiveInt(source, 'ACCESS_TOKEN_TTL_SECONDS', 15 * 60),
     refreshTtlSeconds: positiveInt(source, 'REFRESH_TOKEN_TTL_SECONDS', 7 * 24 * 60 * 60),
     cookieSecure: source.COOKIE_SECURE ? source.COOKIE_SECURE === 'true' : production,
