@@ -1,3 +1,6 @@
+import { once } from 'node:events';
+import { createServer, type AddressInfo, type Socket } from 'node:net';
+import nodemailer from 'nodemailer';
 import { describe, expect, it, vi } from 'vitest';
 import { NOTIFICATION_TYPES } from '@smartdesk/contracts';
 import { loadEnv, type EmailConfig } from '../../../src/config/env.js';
@@ -172,5 +175,119 @@ describe('transports', () => {
     sink.failWith = new EmailError('unavailable', true);
     await expect(sink.send(buildEmail(input))).rejects.toBeInstanceOf(EmailError);
     expect(sink.sent).toHaveLength(1);
+  });
+});
+
+/**
+ * A minimal plaintext SMTP server on loopback: enough of RFC 5321 for nodemailer's real client
+ * (EHLO, AUTH PLAIN, MAIL, RCPT, DATA, QUIT). Recipients containing "blocked" are refused.
+ */
+async function startSmtpSink() {
+  type Mail = { auth: string; from: string; to: string[]; data: string };
+  const received: Mail[] = [];
+  const sockets = new Set<Socket>();
+  const server = createServer((socket) => {
+    sockets.add(socket);
+    socket.on('close', () => sockets.delete(socket));
+    let buffer = '';
+    let inData = false;
+    let mail: Mail = { auth: '', from: '', to: [], data: '' };
+    const reply = (line: string) => socket.write(`${line}\r\n`);
+    reply('220 sink.test ESMTP');
+    socket.on('data', (chunk) => {
+      buffer += chunk.toString('utf8');
+      for (;;) {
+        if (inData) {
+          const end = buffer.indexOf('\r\n.\r\n');
+          if (end < 0) return;
+          mail.data = buffer.slice(0, end);
+          buffer = buffer.slice(end + 5);
+          inData = false;
+          received.push(mail);
+          mail = { auth: mail.auth, from: '', to: [], data: '' };
+          reply('250 2.0.0 queued');
+          continue;
+        }
+        const eol = buffer.indexOf('\r\n');
+        if (eol < 0) return;
+        const line = buffer.slice(0, eol);
+        buffer = buffer.slice(eol + 2);
+        const verb = line.slice(0, 4).toUpperCase();
+        if (verb === 'EHLO') reply('250-sink.test\r\n250 AUTH PLAIN');
+        else if (verb === 'AUTH') {
+          mail.auth = Buffer.from(line.split(' ')[2] ?? '', 'base64').toString('utf8');
+          reply('235 2.7.0 accepted');
+        } else if (verb === 'MAIL') {
+          mail.from = line;
+          reply('250 2.1.0 ok');
+        } else if (verb === 'RCPT') {
+          if (line.includes('blocked')) reply('550 5.1.1 mailbox unavailable');
+          else {
+            mail.to.push(line);
+            reply('250 2.1.5 ok');
+          }
+        } else if (verb === 'DATA') {
+          inData = true;
+          reply('354 end with <CRLF>.<CRLF>');
+        } else if (verb === 'RSET') {
+          mail = { auth: mail.auth, from: '', to: [], data: '' };
+          reply('250 ok');
+        } else if (verb === 'QUIT') {
+          reply('221 bye');
+          socket.end();
+        } else reply('502 not implemented');
+      }
+    });
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  return {
+    received,
+    port: (server.address() as AddressInfo).port,
+    async close() {
+      for (const socket of sockets) socket.destroy();
+      server.close();
+      await once(server, 'close');
+    },
+  };
+}
+
+describe('smtp transport against a real SMTP conversation', () => {
+  const config = loadEnv(smtpEnv).email as EmailConfig;
+
+  it('delivers through the installed nodemailer and classifies a refused recipient', async () => {
+    const sink = await startSmtpSink();
+    try {
+      // The production options with only the endpoint and TLS swapped for the loopback sink.
+      const factory = ((options: object) =>
+        nodemailer.createTransport({
+          ...options,
+          host: '127.0.0.1',
+          port: sink.port,
+          secure: false,
+          requireTLS: false,
+          ignoreTLS: true,
+        })) as typeof nodemailer.createTransport;
+      const transport = createSmtpTransport(config, factory);
+      const message = buildEmail(input);
+
+      await transport.send(message);
+      expect(sink.received).toHaveLength(1);
+      const [mail] = sink.received;
+      expect(mail!.auth).toBe('\u0000desk@example.com\u0000app-pass');
+      expect(mail!.from).toContain('<desk@example.com>');
+      expect(mail!.to).toEqual(['RCPT TO:<erin@example.com>']);
+      expect(mail!.data).toContain(`Subject: ${message.subject}`);
+      expect(mail!.data).toContain(message.messageId.replace(/^<|>$/g, ''));
+
+      const err = await transport
+        .send({ ...message, to: 'blocked@example.com' })
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(EmailError);
+      expect(err).toMatchObject({ kind: 'rejected', retryable: false });
+      expect(sink.received).toHaveLength(1);
+    } finally {
+      await sink.close();
+    }
   });
 });
