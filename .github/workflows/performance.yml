@@ -1,0 +1,51 @@
+name: performance
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      hold:
+        description: Steady-state duration at 100 users (k6 duration, e.g. 5m)
+        default: 5m
+
+permissions:
+  contents: read
+
+concurrency:
+  group: performance-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  benchmark:
+    name: Sustained 100-user benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the isolated stack under 100 concurrent users
+        env:
+          PERF_HOLD: ${{ inputs.hold || '5m' }}
+        run: |
+          echo "runner: $(nproc) CPUs, $(free -m | awk '/Mem:/ {print $2}') MiB"
+          SD100=1 SD100_PERF=1 sh docker/verify-ticket-service.sh 2>&1 | tee ci-performance.log
+      - name: Upload performance-benchmark
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-benchmark
+          path: |
+            ci-performance.log
+            test-results/sd100/perf-*.json
+            test-results/sd100/perf-*.jsonl
+            test-results/sd100/perf-k6.log
+            test-results/sd100/*-latency.json
+            test-results/sd100/docker-resources.json
+            test-results/sd100/dynamic-revision.txt
+          if-no-files-found: ignore
+          retention-days: 30
