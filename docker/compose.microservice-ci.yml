@@ -35,3 +35,20 @@ services:
     volumes:
       - ./docker/sd100-passive-scan.yml:/zap/plan.yml:ro
     command: [sh, -ec, 'zap.sh -cmd -autorun /zap/plan.yml >&2 && cat /tmp/passive-zap.json']
+
+  # SD-057: sustained 100-user benchmark against the public gateway (SD100_PERF=1).
+  k6:
+    profiles: [microservice-perf]
+    image: grafana/k6:1.4.2
+    # Writes its summary into the bind-mounted evidence directory owned by the CI user.
+    user: '0:0'
+    networks: [public]
+    environment:
+      GATEWAY_URL: http://gateway:4000
+      TOKENS_FILE: /secrets/perf-tokens.json
+      PERF_HOLD: ${PERF_HOLD:-5m}
+    volumes:
+      - ./tests/performance/k6:/scripts:ro
+      - ./test-results/perf-secrets:/secrets:ro
+      - ./test-results/sd100:/out
+    command: [run, --quiet, /scripts/smartdesk.js]

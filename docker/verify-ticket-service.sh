@@ -162,6 +162,61 @@ probe() {
   compose exec -T -e SD100_SESSION="${session:-}" gateway node --input-type=module - "$@" < docker/verify-microservice-http.mjs
 }
 
+# SD-057: 100 synthetic users (80 employees, 18 technicians, 2 admins) for a sustained k6 run.
+# Tokens are minted by Identity with its own signing config and kept out of the evidence folder.
+perf_benchmark() {
+  psql <<'SQL'
+INSERT INTO users (email, display_name, role)
+SELECT 'perf.employee' || n || '@smartdesk.test', 'Perf Employee ' || n, 'EMPLOYEE' FROM generate_series(1, 80) n
+UNION ALL
+SELECT 'perf.tech' || n || '@smartdesk.test', 'Perf Technician ' || n, 'TECHNICIAN' FROM generate_series(1, 18) n
+UNION ALL
+SELECT 'perf.admin' || n || '@smartdesk.test', 'Perf Admin ' || n, 'ADMIN' FROM generate_series(1, 2) n;
+INSERT INTO team_members (team_id, user_id)
+SELECT t.team_id, u.user_id FROM users u
+JOIN support_teams t ON t.name = 'Network & Access'
+WHERE u.email LIKE 'perf.tech%';
+SQL
+  perf_users=$(psql -At -c "SELECT json_build_object(
+    'teamId', (SELECT team_id FROM support_teams WHERE name = 'Network & Access'),
+    'employees', (SELECT json_agg(user_id ORDER BY email) FROM users WHERE email LIKE 'perf.employee%'),
+    'technicians', (SELECT json_agg(user_id ORDER BY email) FROM users WHERE email LIKE 'perf.tech%'),
+    'admins', (SELECT json_agg(user_id ORDER BY email) FROM users WHERE email LIKE 'perf.admin%'))")
+  mkdir -p test-results/perf-secrets
+  compose exec -T -e PERF_USERS="$perf_users" identity-service node --input-type=module - > test-results/perf-secrets/perf-tokens.json <<'NODE'
+import { loadSessionConfig, TokenService } from '@smartdesk/identity';
+const users = JSON.parse(process.env.PERF_USERS);
+const tokens = new TokenService(loadSessionConfig(process.env));
+const sign = (ids) => Promise.all(ids.map((id) => tokens.sign('access', id, 0)));
+process.stdout.write(JSON.stringify({
+  teamId: users.teamId,
+  employees: await sign(users.employees),
+  technicians: await sign(users.technicians),
+  admins: await sign(users.admins),
+}));
+NODE
+  psql -At -c "SELECT json_build_object('users', (SELECT count(*) FROM users), 'tickets', (SELECT count(*) FROM tickets))" > "$evidence/perf-seed-counts.json"
+  containers=$(compose ps -q)
+  : > "$evidence/perf-resources.jsonl"
+  compose --profile microservice-perf run --rm --no-deps k6 > "$evidence/perf-k6.log" 2>&1 &
+  k6_run=$!
+  while kill -0 "$k6_run" 2>/dev/null; do
+    docker stats --no-stream --format '{{json .}}' $containers >> "$evidence/perf-resources.jsonl"
+  done
+  code=0
+  wait "$k6_run" || code=$?
+  cat "$evidence/perf-k6.log"
+  rm -rf test-results/perf-secrets
+  psql -At -c "SELECT json_build_object('tickets', (SELECT count(*) FROM tickets), 'aiJobs', (SELECT json_object_agg(state, n) FROM (SELECT state, count(*) n FROM ai_analysis_jobs GROUP BY state) s))" > "$evidence/perf-after-counts.json"
+  test -s "$evidence/perf-summary.json"
+  # 99 means a threshold was not met: that is a measured result for the report, not a broken run.
+  if [ "$code" != 0 ] && [ "$code" != 99 ]; then
+    echo "SD-057 k6 failed to run (exit $code)" >&2
+    return 1
+  fi
+  echo "SD-057 benchmark finished (k6 exit $code; 99 = a target was NOT MET)"
+}
+
 wait_for_db_value() {
   expected=$1
   shift
@@ -432,6 +487,10 @@ wait_for_gateway compose
 if [ "${SD100:-0}" = 1 ]; then
   compose up -d --wait ai-service notifications-service
   measure isolated compose
+  if [ "${SD100_PERF:-0}" = 1 ]; then
+    perf_benchmark
+    exit 0
+  fi
   session=$(probe session)
   compose stop ai-service notifications-service
 fi
