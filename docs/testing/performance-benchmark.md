@@ -28,7 +28,7 @@ The scenario is in [`tests/performance/k6/smartdesk.js`](../../tests/performance
 | Item               | Value                                                                                                                                                                 |
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Tool               | k6 1.4.2 (`grafana/k6:1.4.2`), on the stack's public network, calling the gateway directly                                                                            |
-| Stack              | Gateway with Ticket, Identity, AI, Knowledge, Analytics and Notifications on private networks; PostgreSQL 17; Redis and OpenSearch disabled; email off                |
+| Stack              | Gateway with Ticket, Identity, AI, Knowledge, Analytics and Notifications on private networks; PostgreSQL 16; Redis and OpenSearch disabled; email off                |
 | AI provider        | `fake` (deterministic, no network call). AI timings are **mock** turnaround, not model latency                                                                        |
 | Users              | 80 employees, 18 technicians (all in Network & Access) and 2 administrators, each a separate seeded account. One extra probe VU measures AI turnaround. Peak VUs: 101 |
 | Profile            | 1 min ramp to 100, 5 min hold, 20 s ramp down. Each VU waits 1–3 s between steps (administrators 3–6 s)                                                               |
