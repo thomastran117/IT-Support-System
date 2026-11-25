@@ -106,6 +106,9 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The secret scan covers every commit, not only the checked-out tree.
+          fetch-depth: 0
       - run: sh docker/verify-microservice-static.sh 2>&1 | tee ci-microservices-static.log
       - name: Upload microservice-static-analysis
         if: always()
@@ -116,6 +119,7 @@ jobs:
             ci-microservices-static.log
             test-results/sd100/npm-audit.json
             test-results/sd100/semgrep.json
+            test-results/sd100/gitleaks.json
             test-results/sd100/static-revision.txt
           if-no-files-found: ignore
           retention-days: 14
