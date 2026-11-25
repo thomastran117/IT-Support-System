@@ -4,6 +4,7 @@ import {
   applyApiSecurityHeaders,
   hashCorrelationId,
   logHttpResponse,
+  nonBlockingLookup,
   requestIdOptions,
   serviceLogger,
 } from '@smartdesk/service-runtime';
@@ -65,7 +66,8 @@ function forward(req: FastifyRequest, origin: URL, signal: AbortSignal) {
   return new Promise<IncomingMessage>((resolve, reject) => {
     const upstream = request(
       origin,
-      { method: req.method, path: req.url, headers, signal },
+      // A stopped service's name must not stall lookups for the healthy ones (SD-058 R6).
+      { method: req.method, path: req.url, headers, signal, lookup: nonBlockingLookup },
       resolve,
     );
     upstream.on('error', reject);
