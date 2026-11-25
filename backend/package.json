@@ -44,17 +44,16 @@
     "@smartdesk/db": "file:../packages/db",
     "@smartdesk/identity": "file:../packages/identity",
     "@smartdesk/knowledge": "file:../packages/knowledge",
-    "@smartdesk/service-runtime": "file:../packages/service-runtime",
     "@smartdesk/notifications": "file:../packages/notifications",
+    "@smartdesk/service-runtime": "file:../packages/service-runtime",
     "fastify": "^5.12.8",
     "jose": "^6.2.18",
-    "nodemailer": "^8.0.11",
+    "nodemailer": "^10.6.1",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^26.6.6",
-    "@types/nodemailer": "^8.0.2",
     "eslint": "^10.15.0",
     "prettier": "^3.10.1",
     "prisma": "^7.10.1",
@@ -62,5 +61,8 @@
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.73.0",
     "vitest": "^5.1.1"
+  },
+  "overrides": {
+    "effect": "3.22.5"
   }
 }
