@@ -10,7 +10,7 @@ export OPENSEARCH_ENABLED=true
 export OPENSEARCH_URL=http://opensearch:9200/
 export COOKIE_SECURE=false
 
-compose() { docker compose -p "$project" --profile search "$@"; }
+compose() { docker compose -f docker-compose.modular.yml -p "$project" --profile search "$@"; }
 cleanup() { compose down -v; }
 trap cleanup EXIT
 

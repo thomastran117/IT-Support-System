@@ -5,7 +5,7 @@ SmartDesk is a small service-oriented application packaged as one Docker Compose
 The [incremental service extraction ADR](architecture/microservices-adr.md) describes the optional
 post-MVP migration and its cutover gates.
 
-## Default Compose runtime
+## Modular fallback
 
 ```text
 Browser -> frontend (Next.js)
@@ -14,16 +14,11 @@ Browser -> gateway (Fastify) -> backend (Fastify) -> PostgreSQL <- worker
 
 - **Frontend** renders the employee, technician, and administrator portals. The browser calls the
   API at `NEXT_PUBLIC_API_URL`; the frontend does not connect to PostgreSQL.
-- **Gateway** owns the public API listener and forwards requests to the backend.
-- **Backend** owns HTTP authentication, authorization, validation, ticket workflows, database
-  migrations, and seed/documentation commands.
-- **Worker** is the host for asynchronous work: the Compose `worker` service runs the backend's
-  `src/worker.ts` entrypoint (see Analysis queue and worker). It remains functional when the
-  optional AI provider is disabled.
-- **PostgreSQL** is reachable only on Compose's internal network. Only the frontend and gateway
-  publish host ports.
-- **Redis** is an optional, internal-only cache with no persistence, disabled unless the `cache`
-  (dev) or `ci` profile starts it; PostgreSQL remains the authoritative store regardless.
+- **Gateway** forwards public API requests to the modular backend on the private API network.
+- **Backend** owns HTTP authentication, authorization, validation, ticket workflows, and migrations.
+- **Worker** runs the analysis, search, and email loops through the backend's `src/worker.ts` entrypoint.
+
+Run this layout with `docker compose -f docker-compose.modular.yml up --build`.
 
 ## Isolated Compose runtime
 
@@ -52,10 +47,11 @@ flowchart LR
     Ticket -->|Search candidates| Search
 ```
 
-The overlay keeps the frontend and gateway as the published listeners. The service HTTP
+The default Compose stack starts the isolated services after `local-bootstrap` applies
+migrations and provisions scoped PostgreSQL logins and signing keys. The service HTTP
 listeners share the private `api` network and verify delegated or system calls on receipt.
-Each data owner uses a scoped PostgreSQL login. Gateway and AI operate through HTTP.
-The PostgreSQL outbox carries committed Ticket events to Notifications.
+The frontend and gateway publish host ports. The PostgreSQL outbox carries committed Ticket
+events to Notifications, and Redis is available through the optional `cache` profile.
 [Deployment runbook](architecture/ticket-service.md) · [Database ownership](database/service-access.md)
 
 The original Deliverable 1 boundaries are mapped to code and test evidence in the
@@ -63,10 +59,9 @@ The original Deliverable 1 boundaries are mapped to code and test evidence in th
 
 ## API gateway
 
-In default Compose, the gateway forwards `/api`, `/api/*`, `/health/live` and `/health/ready`
-to the default owners over the private `api` network. The modular backend listens at
-`backend-api:4000`. The isolated overlay routes registered path groups to their current owner. The
-browser continues to use the same API base URL, origin rules, refresh-cookie path and rotation,
+In default Compose, the gateway forwards registered API route groups over the private `api`
+network and sends both health endpoints to Ticket. The modular gateway forwards to
+`backend-api:4000`. Both layouts use the same browser API base URL, origin rules, refresh cookies,
 and response envelopes. The gateway forwards authorization, cookies, idempotency keys, and
 retry headers. It passes through backend status, body, and individual `Set-Cookie` headers.
 Requests use the caller's `X-Request-Id` or a generated one across both hops.
@@ -74,22 +69,20 @@ Requests use the caller's `X-Request-Id` or a generated one across both hops.
 `GATEWAY_UPSTREAM_TIMEOUT_MS` defaults to 10000. The gateway makes one upstream attempt per
 request and returns an API error envelope with 503 when the selected service is unreachable or the
 deadline expires before headers are received. A broken upstream connection before headers
-returns 502. A deadline during streaming closes the interrupted response. Gateway health uses
-the backend in default Compose and Ticket in isolated Compose. [API reference](api.md)
+returns 502. A deadline during streaming closes the interrupted response. [API reference](api.md)
 
 The gateway replaces incoming forwarding headers with the client IP that Fastify resolved.
 `TRUST_PROXY` defaults to false at the public listener. If that listener sits behind a known
 reverse proxy, configure its trusted IPs or CIDRs. The backend trusts the gateway-supplied IP on
 the private listener so IP-based login and refresh limits continue to work. The direct API
 override applies `TRUST_PROXY` to the backend's public listener instead.
-[Direct API rollback](../README.md#switch-back-to-the-direct-api)
+[Local rollback and direct API](../README.md#upgrade-or-roll-back-a-local-stack)
 
 Internal endpoints authenticate a scoped service credential at the receiving backend. Delegated
 calls also verify the current user and resource scope.
 [Internal service authentication](authentication.md#internal-service-authentication)
 
-In Notifications service mode, only the inbox route and its subpaths target the independent
-Notifications listener. Ticket requests and gateway readiness use the backend. [Notifications service](architecture/notifications-service.md)
+The gateway sends inbox requests to the Notifications listener. [Notifications service](architecture/notifications-service.md)
 
 In Analytics service mode, the gateway sends admin report requests to the private Analytics
 listener. Analytics reads the committed Ticket facts using scoped PostgreSQL grants.
@@ -111,20 +104,19 @@ and diagnose outages. [Cross-service observability](architecture/service-observa
 
 ## AI service container
 
-`backend/services/ai` uses the Compose `services` profile to build a separate image and start
-the compiled Fastify server. Its private `api` connection reaches the modular backend or the
-standalone Ticket runtime selected by Compose. The `ai-egress` network gives the selected provider outbound
-access. The AI container uses HTTP for job and input access and has no database connection.
-The public gateway forwards only its existing API and health paths.
+`backend/services/ai` starts by default and reaches Ticket over the private `api` network. Set
+`AI_PROVIDER` to enable analysis. The modular layout starts the AI container with the `services`
+profile. The `ai-egress` network provides outbound access to a hosted provider. The AI container
+accesses jobs and inputs through HTTP.
 
-| Setting                                          | Default                              | Purpose                                                                     |
-| ------------------------------------------------ | ------------------------------------ | --------------------------------------------------------------------------- |
-| `AI_SERVICE_TICKET_ORIGIN`                       | `http://backend-api:4000` in Compose | Private Ticket origin. Use HTTPS in production.                             |
-| `AI_SERVICE_READY_TIMEOUT_MS`                    | `1500`                               | Full readiness probe deadline, from 1 through 5000 milliseconds             |
-| `HOST` and `PORT`                                | `0.0.0.0:4010` in Compose            | Container listener on the internal network                                  |
-| `AI_EXECUTION_MODE`                              | `local`                              | `service` starts independent execution and pauses the legacy analysis loop. |
-| `AI_SERVICE_KEY_ID` and `AI_SERVICE_PRIVATE_KEY` | Empty                                | Caller key ID and P-256 PKCS#8 signing key for active independent analysis. |
-| `AI_SERVICE_API_KEY`                             | Empty                                | OpenAI credential delivered to the independent container as `AI_API_KEY`.   |
+| Setting                                          | Default                                     | Purpose                                                                     |
+| ------------------------------------------------ | ------------------------------------------- | --------------------------------------------------------------------------- |
+| `AI_SERVICE_TICKET_ORIGIN`                       | `http://ticket-api:4060` in default Compose | Private Ticket origin. Use HTTPS in production.                             |
+| `AI_SERVICE_READY_TIMEOUT_MS`                    | `1500`                                      | Full readiness probe deadline, from 1 through 5000 milliseconds             |
+| `HOST` and `PORT`                                | `0.0.0.0:4010` in Compose                   | Container listener on the internal network                                  |
+| `AI_EXECUTION_MODE`                              | `service` in default Compose                | Selects the analysis runner in the modular layout.                          |
+| `AI_SERVICE_KEY_ID` and `AI_SERVICE_PRIVATE_KEY` | Generated in default Compose                | Caller key ID and P-256 PKCS#8 signing key for active independent analysis. |
+| `AI_SERVICE_API_KEY`                             | Empty                                       | OpenAI credential delivered to the independent container as `AI_API_KEY`.   |
 
 - `GET /health/live` returns `200` with `{"status":"ok"}` when the process can answer HTTP.
 - `GET /health/ready` reports `checks.ticketApi` as `ok` once the existing Ticket API reports a
@@ -135,7 +127,7 @@ Compose uses Ticket readiness as the container healthcheck. The lifecycle check 
 dependency loss and recovery, then restarts the independent runner after it saves a proposal
 using the fake provider. [Compose lifecycle check](../docker/verify-service-containers.sh)
 
-### AI service cutover and rollback
+### AI service cutover and rollback in the modular layout
 
 Provision the AI service with a P-256 private key and set `AI_SERVICE_KEY_ID`. Add its matching
 public key to Ticket's `INTERNAL_SERVICE_KEYS` registry with `service` set to `ai`. Give it
@@ -150,9 +142,9 @@ Start the independent container after Ticket is ready. The worker can continue i
 search loops. To use OpenAI, set `AI_PROVIDER=openai` and supply `AI_SERVICE_API_KEY`.
 
 ```bash
-docker compose stop -t 90 worker
-docker compose up -d --build backend worker gateway
-docker compose --profile services up -d --build --wait ai-service
+docker compose -f docker-compose.modular.yml stop -t 90 worker
+docker compose -f docker-compose.modular.yml up -d --build backend worker gateway
+docker compose -f docker-compose.modular.yml --profile services up -d --build --wait ai-service
 ```
 
 Ticket owns the queue and serves four scoped commands under `/internal/tickets/analysis-jobs`.
@@ -176,8 +168,8 @@ worker if using OpenAI. Recreate Ticket and the worker. Both runners use the sam
 attempt counts, and saved recommendations.
 
 ```bash
-docker compose --profile services stop -t 90 ai-service
-docker compose up -d --build backend worker gateway
+docker compose -f docker-compose.modular.yml --profile services stop -t 90 ai-service
+docker compose -f docker-compose.modular.yml up -d --build backend worker gateway
 ```
 
 For a package-local build from a checkout, install and build the shared packages, then install
@@ -197,7 +189,7 @@ npm --prefix backend/services/ai start
 ```
 
 Outside Compose, the listener defaults to `127.0.0.1:4010`. Set the Ticket origin to the
-backend listener for scoped commands. [Compose start commands](../README.md#opt-in-ai-service-container)
+backend listener for scoped commands. [Compose AI configuration](../README.md#configure-standalone-services)
 
 ## Package boundaries
 
@@ -340,7 +332,7 @@ The worker drains its active batch on SIGTERM. An interrupted batch becomes clai
 lease expires. To retry a failed job after resolving its cause, pass the job ID:
 
 ```bash
-docker compose exec worker npm run search:requeue -- <failed-job-id>
+docker compose run --rm --no-deps local-bootstrap npm run search:requeue -- <failed-job-id>
 ```
 
 ### Search backfill and reindex
@@ -594,8 +586,9 @@ Manual work never depends on the AI path. Ticket creation does not call the prov
 
 ## Development and validation
 
-`docker compose up --build --watch` synchronizes application source. Shared-package, manifest, and
-Prisma changes trigger image rebuilds so consumers always use compiled package output.
+`docker compose up --build --watch` syncs frontend and gateway source and rebuilds compiled
+services when their source or shared packages change. Rerun `docker compose up --build`
+after changing a migration to apply it.
 
 Compose profiles add one-shot services without affecting the normal stack:
 
@@ -609,7 +602,10 @@ GitHub Actions invokes these same services rather than maintaining a separate ho
 
 ## Employee notifications (SD-040)
 
-A ticket's requester gets an in-app notification when something they can see changes. The notification row is inserted by `appendEvent` **in the same transaction as the audit event**, so a rolled-back change leaves neither, and a committed one always has its notification. The recipient is always the ticket's requester, read from the ticket row inside the insert, never supplied by a caller.
+A ticket's requester gets an in-app notification when something they can see changes. Ticket
+commits the notification intent with the audit event. Notifications consumes committed events
+and writes the inbox row. In the modular fallback, `appendEvent` writes the inbox row in the
+Ticket transaction. [Notification outbox](architecture/service-outbox.md)
 
 | Ticket event                       | Notification type       | Notes                                              |
 | ---------------------------------- | ----------------------- | -------------------------------------------------- |
@@ -632,9 +628,12 @@ The panel is a non-modal dialog rendered into `<body>`: Escape or an outside cli
 
 ## Notification email, optional (SD-043)
 
-Email is an extra channel, off by default (`EMAIL_TRANSPORT=none`). With it off the worker starts no email loop, nothing is ever sent, and the notification centre is exactly as complete as with it on. Local development and CI never send mail.
+Email is off by default (`EMAIL_TRANSPORT=none`). The notification centre works with either
+setting. The standalone Notifications service runs the dispatcher when SMTP is configured.
 
-**Flow.** The in-app notification is written in the ticket's own transaction (SD-040) and is complete before email is considered. The worker then sweeps recent notifications into `notification_deliveries`, a queue with at most one row per notification (a unique key), claimed with `FOR UPDATE SKIP LOCKED` and a lease exactly like `ai_analysis_jobs`. The dispatcher only reads notifications and writes its own delivery rows, so a failing or unreachable mail server cannot roll back or delay a ticket change and cannot hide an in-app item.
+The dispatcher sweeps committed inbox rows into `notification_deliveries`. Each notification
+has at most one delivery record, claimed with `FOR UPDATE SKIP LOCKED` and a lease. This keeps
+SMTP failures independent of ticket updates and in-app delivery.
 
 - **No duplicates:** one delivery row per notification, so sweeping repeatedly, running several workers, or retrying never queues or sends a notification that was already delivered. Each email carries a stable `Message-ID` derived from the notification id. One unavoidable limit: if the worker dies after the mail server accepted a message but before the row is marked `SENT`, the lease expires and that one message is sent again.
 - **Retries:** each claim is an attempt (`EMAIL_JOB_MAX_ATTEMPTS`, default 5). Temporary and network failures, timeouts and Gmail's daily limit go back to `QUEUED` after `EMAIL_JOB_BACKOFF_MS * 2^(attempt-1)` (default 30 s, capped at 1 hour). A rejected login or recipient fails immediately. Stored reasons are codes (`temporary`, `unavailable`, `rate_limited`, `auth_failed`, `rejected`, ...), never server text.
@@ -656,6 +655,6 @@ Email is an extra channel, off by default (`EMAIL_TRANSPORT=none`). With it off 
 
    `SMTP_HOST` (`smtp.gmail.com`), `SMTP_PORT` (587, STARTTLS required) and `SMTP_FROM` (defaults to `SMTP_USER`) are already right for Gmail. For implicit TLS use `SMTP_PORT=465`.
 
-3. Start the worker (`docker compose up worker`). It logs `email transport: smtp` on start.
+3. Apply the settings with `docker compose up -d notifications-service`.
 
-Limits to know: a personal Gmail account allows roughly 500 messages per day (Google Workspace more), and Gmail sends from the authenticated account regardless of `SMTP_FROM` unless the alias is verified. The Compose `worker` is on the `public` network so it can reach `smtp.gmail.com`; the database stays on the internal network.
+Limits to know: a personal Gmail account allows roughly 500 messages per day (Google Workspace more), and Gmail sends from the authenticated account regardless of `SMTP_FROM` unless the alias is verified. The Notifications service reaches SMTP over its egress network while the database stays on the internal network.

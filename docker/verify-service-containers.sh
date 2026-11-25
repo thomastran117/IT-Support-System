@@ -9,11 +9,11 @@ export AI_PROVIDER=none
 export AI_EXECUTION_MODE=local
 
 project=smartdesk-service-containers-ci-$$
-compose() { docker compose -p "$project" --env-file .env.example --profile services "$@"; }
+compose() { docker compose -f docker-compose.modular.yml -p "$project" --env-file .env.example --profile services "$@"; }
 cleanup() { compose down -v; }
 trap cleanup EXIT
 
-if docker compose --env-file .env.example config --services | grep -qx ai-service; then
+if docker compose -f docker-compose.modular.yml --env-file .env.example config --services | grep -qx ai-service; then
   echo 'The AI service must require the services profile.' >&2
   exit 1
 fi

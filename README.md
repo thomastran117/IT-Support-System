@@ -1,100 +1,73 @@
 # SmartDesk
 
-SmartDesk is a role-based IT support ticketing system with a Next.js web app, Fastify API,
-PostgreSQL database, and background worker. The Fastify gateway is the public API entry point in
-Docker Compose. Each package installs its own dependencies.
+SmartDesk is a role-based IT support ticketing system with a Next.js web app, Fastify services,
+and PostgreSQL. The Fastify gateway is the public API entry point in Docker Compose.
 
 ## Start the stack
 
-Prerequisite: Docker Desktop or Docker Engine with Compose v2 and Compose Watch support.
+Use Docker Desktop or Docker Engine with Docker Compose 2.24.4 or later.
 
 ```bash
-docker compose up --build --watch
+docker compose up --build
 ```
 
-The defaults work without a `.env` file. Copy `.env.example` to `.env` only when you need to
-override ports, credentials, token lifetimes, logging, or the optional AI provider.
+Compose applies the PostgreSQL migrations and generates scoped database credentials and signing
+keys before starting Ticket, Identity, Knowledge, Analytics, Notifications, and AI. The defaults
+work without a `.env` file. Copy `.env.example` to `.env` to override ports, session settings,
+logging, or provider configuration.
 
-| Service     | Address or role                                                               |
-| ----------- | ----------------------------------------------------------------------------- |
-| Frontend    | <http://localhost:3000>                                                       |
-| API gateway | <http://localhost:4000>                                                       |
-| Liveness    | <http://localhost:4000/health/live>                                           |
-| Readiness   | <http://localhost:4000/health/ready>                                          |
-| PostgreSQL  | Internal Compose network only (`postgres:5432`)                               |
-| Worker      | Internal background process; no published endpoint                            |
-| Redis       | Optional cache, off by default (`docker compose --profile cache up -d redis`) |
+| Service             | Address or role                                         |
+| ------------------- | ------------------------------------------------------- |
+| Frontend            | <http://localhost:3000>                                 |
+| API gateway         | <http://localhost:4000>                                 |
+| Readiness           | <http://localhost:4000/health/ready>                    |
+| PostgreSQL          | Internal only (`postgres:5432`)                         |
+| Standalone services | Internal only                                           |
+| AI analysis         | Disabled by default. Set `AI_PROVIDER=fake` for a demo. |
 
-Application source changes are synchronized into the running frontend, gateway, backend, and worker.
-Changes to manifests, lockfiles, Prisma files, or shared packages rebuild the affected images.
+For a detached start that waits for readiness, use `docker compose up --build --wait`.
+Add `--watch` to the foreground command for source sync and rebuilds. After adding a migration,
+rerun `docker compose up --build` to apply it.
 
-Stop the stack while preserving database data:
+Stop the stack while preserving the database and generated service credentials.
 
 ```bash
 docker compose down
 ```
 
-## Switch back to the direct API
+## Seed demo data
 
-The gateway uses the existing `BACKEND_PORT` and forwards to the backend on a private network. To
-restore the direct backend listener on the same port and keep the current PostgreSQL data, run
-these commands in the existing Compose project.
-
-```bash
-docker compose stop gateway
-docker compose -f docker-compose.yml -f docker/compose.direct-api.yml up -d backend
-curl --fail http://localhost:4000/health/ready
-```
-
-To restore gateway mode, run `docker compose up -d backend gateway` and check readiness again.
-The [gateway architecture](docs/architecture.md#api-gateway) documents timeouts and proxy settings.
-
-## Opt-in AI service container
-
-Use the `services` profile to build and run the independent AI service. In the default
-`AI_EXECUTION_MODE=local`, the service exposes health endpoints and the existing worker runs
-analysis. Set `AI_EXECUTION_MODE=service` for Ticket, the worker, and the AI service when you
-are ready to switch. [Configuration, cutover, and rollback](docs/architecture.md#ai-service-container)
+Once the stack is ready, load the demo accounts and 300 sample tickets from a separate terminal.
+Compose runs the seed in a one-off `local-bootstrap` container. The seed is safe to rerun.
 
 ```bash
-docker compose --profile services up --build --wait ai-service
-docker compose --profile services ps ai-service
-docker compose --profile services exec ai-service node -e \
-  "fetch('http://127.0.0.1:4010/health/ready').then(async res => console.log(res.status, await res.json()))"
-docker compose --profile services logs -f ai-service
-docker compose --profile services restart ai-service
+docker compose run --rm --no-deps local-bootstrap npm run db:seed
 ```
 
-Targeting `ai-service` starts Ticket and PostgreSQL. Start the normal stack for the gateway,
-frontend, and background worker. The AI service reaches Ticket through the private `api`
-network using `backend-api`.
+See the [demo sign-in accounts](docs/authentication.md#demo-accounts).
 
-## Opt-in Notifications service
+## Upgrade or roll back a local stack
 
-The `notifications` profile runs the independent inbox and email dispatcher. The cutover
-uses the existing notification and delivery tables. [Notifications setup and rollback](docs/architecture/notifications-service.md)
+If the modular API and worker are already running, shut down that layout once with the same
+project name and environment settings you used to start it. The standalone services will
+then use its PostgreSQL volume.
 
-## Opt-in Analytics service
+```bash
+docker compose -f docker-compose.modular.yml --profile '*' down
+docker compose up --build
+```
 
-The `analytics` profile runs the independent admin report endpoints against the existing
-PostgreSQL facts using a scoped read-only login. [Analytics setup and rollback](docs/architecture/analytics-service.md)
+To roll back, run `docker compose --profile '*' down` and then
+`docker compose -f docker-compose.modular.yml up --build` with the modular execution modes set
+to `local`. For a direct API listener on the same port, add
+`-f docker/compose.direct-api.yml` after the modular file argument.
 
-## Opt-in Knowledge service
+## Configure standalone services
 
-The `knowledge` profile runs the article reader and authoring APIs plus private published
-retrieval for AI. [Knowledge setup and rollback](docs/architecture/knowledge-service.md)
-
-## Opt-in Identity service
-
-The `identity` profile runs sessions, account administration, and scoped account
-verification for Ticket and the extracted services. [Identity setup and rollback](docs/architecture/identity-service.md)
-
-## Opt-in isolated microservices
-
-The isolated Compose override runs Ticket, Identity, Knowledge, Analytics, and Notifications
-independently. Use the `services` profile with a configured provider to run the AI worker
-as a service. Both layouts use the same frontend, gateway URL, and PostgreSQL schema.
-[Isolated setup, migrations, and rollback](docs/architecture/ticket-service.md)
+Set `AI_PROVIDER=fake` for deterministic recommendations, or set `AI_PROVIDER=openai` and
+`AI_SERVICE_API_KEY` for OpenAI. The Notifications service handles the in-app inbox and can send
+email when SMTP is configured. For a deployment with externally managed credentials, use the
+[standalone deployment runbook](docs/architecture/ticket-service.md).
 
 Run the full isolated demonstration from a fresh checkout with Docker Compose, Node.js, Git,
 and a POSIX shell. The script provisions a disposable database, creates synthetic credentials,
@@ -111,42 +84,37 @@ The run records scan and benchmark evidence in `test-results/sd100/`.
 
 ```bash
 # Follow one service
-docker compose logs -f backend
-
-# Load the 300-ticket demo dataset (safe to rerun)
-docker compose exec backend npm run db:seed
+docker compose logs -f ticket-service
 
 # Open PostgreSQL directly
 docker compose exec postgres psql -U smartdesk -d smartdesk
 
-# Apply pending migrations explicitly (the backend also does this on startup)
-docker compose exec backend npm run migrate
+# Apply pending migrations and service grants explicitly
+docker compose run --rm --build local-bootstrap
 
 # Regenerate the committed ERD and data dictionary
 docker compose --profile tools run --rm docs
 
-# Start the optional Redis cache (off by default), then point the backend at it
-docker compose --profile cache up -d redis
-# set REDIS_URL=redis://redis:6379 in .env (the in-network service name, not localhost), then:
-docker compose up -d backend
-curl http://localhost:4000/health/ready   # checks.cache: "ok" | "unavailable" | "disabled"
+# Set REDIS_URL=redis://redis:6379 in .env, then start Redis and recreate its consumers
+docker compose --profile cache up -d redis ticket-service identity-service
+curl http://localhost:4000/health/ready
 
-# Stop and fully dispose of the cache -- it has no persistence, so nothing survives
-docker compose stop redis && docker compose rm -f redis
+# Stop the cache and remove its ephemeral container
+docker compose --profile cache rm --stop --force redis
 ```
 
 Resetting the database is destructive:
 
 ```bash
 docker compose down -v
-docker compose up --build --watch
-docker compose exec backend npm run db:seed
+docker compose up --build --wait
+docker compose run --rm --no-deps local-bootstrap npm run db:seed
 ```
 
 ## Optional OpenSearch profile
 
 Use the `search` profile with synthetic data for local development and CI. The single OpenSearch
-node runs on an internal Compose network shared with the API and worker. The frontend stays on
+node runs on an internal Compose network shared with Ticket and the search indexer. The frontend stays on
 the public network. The search node publishes no host ports and the application starts with search
 disabled.
 
@@ -175,7 +143,7 @@ After PostgreSQL migrations are applied and OpenSearch is healthy, build the fir
 
 ```bash
 docker compose --profile search run --rm --build --no-deps -e OPENSEARCH_ENABLED=true \
-  -e OPENSEARCH_URL=http://opensearch:9200/ backend npm run search:backfill -- --version 1
+  -e OPENSEARCH_URL=http://opensearch:9200/ local-bootstrap npm run search:backfill -- --version 1
 ```
 
 If `search:init` already created v1, backfill into version 2. Use `search:reindex` with a higher
@@ -183,9 +151,9 @@ version for later replacements. Add `--dry-run` after `--version N` to preview. 
 version after an interruption to resume. See the [rebuild runbook](docs/architecture.md#search-backfill-and-reindex).
 
 To start indexing, set `OPENSEARCH_ENABLED=true` and `OPENSEARCH_URL=http://opensearch:9200/` in
-`.env`, then run `docker compose up -d worker`. The worker consumes the PostgreSQL outbox and uses
-the knowledge read alias when AI analysis is enabled. The API uses OpenSearch for ticket and
-knowledge text search with PostgreSQL verification.
+`.env`, then run `docker compose --profile search up -d ticket-service search-indexer`. The
+indexer consumes the PostgreSQL outbox. Ticket uses OpenSearch for text search and verifies
+results against PostgreSQL. Knowledge serves standalone article search from PostgreSQL.
 
 See the [search evaluation](docs/search-evaluation.md) for the authorization matrix, benchmark
 results, and reproduction commands. The [offline hybrid knowledge experiment](docs/hybrid-knowledge-experiment.md)
@@ -207,6 +175,7 @@ docker compose --profile ci run --rm frontend-ci
 docker compose build gateway
 docker compose run --rm --no-deps gateway npm test
 sh docker/verify-service-containers.sh
+sh docker/verify-default-compose.sh
 ```
 
 `backend-ci` starts PostgreSQL, applies migrations, and runs package, API, worker, and database

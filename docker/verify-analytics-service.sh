@@ -10,10 +10,10 @@ export ANALYTICS_KEY_ID=analytics-test ANALYTICS_IDENTITY_ORIGIN=http://backend-
 export CI=true
 
 project=smartdesk-analytics-ci-$$
-compose() { docker compose -p "$project" --env-file .env.example --profile analytics "$@"; }
+compose() { docker compose -f docker-compose.modular.yml -p "$project" --env-file .env.example --profile analytics "$@"; }
 trap 'compose down -v' EXIT
 
-if docker compose --env-file .env.example config --services | grep -qx analytics-service; then
+if docker compose -f docker-compose.modular.yml --env-file .env.example config --services | grep -qx analytics-service; then
   echo 'The Analytics service must require its explicit profile.' >&2
   exit 1
 fi

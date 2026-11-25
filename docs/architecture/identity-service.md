@@ -24,6 +24,9 @@ return `401`. Ticket's health checks and system-only operations keep their own d
 
 ## Cutover
 
+The default Compose stack starts this service automatically. The steps below apply when
+cutting over from the modular API one service at a time.
+
 1. Apply the Prisma migrations and staged access scripts. Provision a login that inherits
    only `smartdesk_identity` and supply it in `IDENTITY_DATABASE_URL`.
    [Role setup](../database/service-access.md)
@@ -40,7 +43,7 @@ return `401`. Ticket's health checks and system-only operations keep their own d
 4. Start Identity while `IDENTITY_EXECUTION_MODE=local`.
 
 ```bash
-docker compose --profile identity up -d --build --wait identity-service
+docker compose -f docker-compose.modular.yml --profile identity up -d --build --wait identity-service
 ```
 
 Set `IDENTITY_EXECUTION_MODE=service`, remove the browser signing key from Ticket's
@@ -50,7 +53,7 @@ Verify an existing session, a revoked session, and a protected Ticket request th
 gateway. Coordinate the switch so account writes use one route owner.
 
 ```bash
-docker compose up -d --build backend gateway
+docker compose -f docker-compose.modular.yml up -d --build backend gateway
 ```
 
 ## Rollback
@@ -63,8 +66,8 @@ through the switch. Verify a service-issued session and an account that was revo
 before rollback.
 
 ```bash
-docker compose --profile identity stop identity-service
-docker compose up -d --build backend gateway
+docker compose -f docker-compose.modular.yml --profile identity stop identity-service
+docker compose -f docker-compose.modular.yml up -d --build backend gateway
 ```
 
 The Compose verification exercises login, refresh, logout, role and password changes,

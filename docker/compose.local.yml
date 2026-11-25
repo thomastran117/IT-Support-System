@@ -1,0 +1,244 @@
+# The default development stack provisions credentials for its own PostgreSQL instance.
+x-bootstrap-dependency: &bootstrap-dependency
+  condition: service_completed_successfully
+x-healthy-dependency: &healthy-dependency
+  condition: service_healthy
+x-node-healthcheck: &node-healthcheck
+  interval: 5s
+  timeout: 6s
+  start_period: 10s
+  retries: 12
+
+services:
+  postgres:
+    healthcheck:
+      # The temporary server used during fresh-volume initialization accepts only socket connections.
+      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+
+  local-bootstrap:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: backend
+    entrypoint: [node, scripts/bootstrap-local.mjs]
+    command: []
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-smartdesk}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-smartdesk}
+      POSTGRES_DB: ${POSTGRES_DB:-smartdesk}
+      OPENSEARCH_ENABLED: ${OPENSEARCH_ENABLED:-false}
+      OPENSEARCH_URL: ${OPENSEARCH_URL:-}
+      OPENSEARCH_USERNAME: ${OPENSEARCH_USERNAME:-}
+      OPENSEARCH_PASSWORD: ${OPENSEARCH_PASSWORD:-}
+    depends_on:
+      postgres: *healthy-dependency
+    networks: [internal, search]
+    volumes:
+      - local-bootstrap-state:/run/smartdesk/state
+      - local-ticket-config:/run/smartdesk/ticket
+      - local-identity-config:/run/smartdesk/identity
+      - local-knowledge-config:/run/smartdesk/knowledge
+      - local-analytics-config:/run/smartdesk/analytics
+      - local-notifications-config:/run/smartdesk/notifications
+      - local-ai-config:/run/smartdesk/ai
+      - local-search-config:/run/smartdesk/search
+
+  gateway:
+    healthcheck:
+      <<: *node-healthcheck
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://127.0.0.1:4000/health/ready', { signal: AbortSignal.timeout(5000) })
+          .then(response => process.exit(response.ok ? 0 : 1), () => process.exit(1))
+    depends_on: !override
+      ticket-service: *healthy-dependency
+      identity-service: *healthy-dependency
+      knowledge-service: *healthy-dependency
+      analytics-service: *healthy-dependency
+      notifications-service: *healthy-dependency
+
+  frontend:
+    healthcheck:
+      <<: *node-healthcheck
+      start_period: 60s
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://127.0.0.1:3000/login', { signal: AbortSignal.timeout(5000) })
+          .then(response => process.exit(response.ok ? 0 : 1), () => process.exit(1))
+
+  ticket-service:
+    command: [node, --env-file=/run/smartdesk/config.env, dist/ticketServer.js]
+    environment:
+      TICKET_DATABASE_URL: !reset null
+      TICKET_IDENTITY_KEY_ID: !reset null
+      TICKET_IDENTITY_PRIVATE_KEY: !reset null
+      TICKET_SEARCH_CURSOR_SECRET: !reset null
+      INTERNAL_SERVICE_KEYS: !reset null
+    depends_on: !override
+      local-bootstrap: *bootstrap-dependency
+      identity-service: *healthy-dependency
+    volumes:
+      - local-ticket-config:/run/smartdesk:ro
+    develop:
+      watch:
+        - action: rebuild
+          path: ./backend/src
+        - action: rebuild
+          path: ./backend/sql
+        - action: rebuild
+          path: ./backend/prisma
+        - action: rebuild
+          path: ./backend/package.json
+        - action: rebuild
+          path: ./backend/package-lock.json
+        - action: rebuild
+          path: ./packages
+        - action: rebuild
+          path: ./tsconfig.base.json
+
+  identity-service:
+    command: [node, --env-file=/run/smartdesk/config.env, dist/server.js]
+    environment:
+      IDENTITY_DATABASE_URL: !reset null
+      INTERNAL_SERVICE_KEYS: !reset null
+    depends_on: !override
+      local-bootstrap: *bootstrap-dependency
+    volumes:
+      - local-identity-config:/run/smartdesk:ro
+    develop:
+      watch:
+        - action: rebuild
+          path: ./backend/services/identity
+        - action: rebuild
+          path: ./packages
+        - action: rebuild
+          path: ./tsconfig.base.json
+
+  knowledge-service:
+    command: [node, --env-file=/run/smartdesk/config.env, dist/server.js]
+    environment: !override
+      HOST: 0.0.0.0
+      IDENTITY_EXECUTION_MODE: service
+      IDENTITY_SERVICE_ORIGIN: ${IDENTITY_SERVICE_ORIGIN:-http://identity-api:4050}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on: !override
+      local-bootstrap: *bootstrap-dependency
+      identity-service: *healthy-dependency
+    volumes:
+      - local-knowledge-config:/run/smartdesk:ro
+    develop:
+      watch:
+        - action: rebuild
+          path: ./backend/services/knowledge
+        - action: rebuild
+          path: ./packages
+        - action: rebuild
+          path: ./tsconfig.base.json
+
+  analytics-service:
+    command: [node, --env-file=/run/smartdesk/config.env, dist/server.js]
+    environment: !override
+      HOST: analytics-api
+      IDENTITY_EXECUTION_MODE: service
+      IDENTITY_SERVICE_ORIGIN: ${IDENTITY_SERVICE_ORIGIN:-http://identity-api:4050}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on: !override
+      local-bootstrap: *bootstrap-dependency
+      identity-service: *healthy-dependency
+    volumes:
+      - local-analytics-config:/run/smartdesk:ro
+    develop:
+      watch:
+        - action: rebuild
+          path: ./backend/services/analytics
+        - action: rebuild
+          path: ./packages
+        - action: rebuild
+          path: ./tsconfig.base.json
+
+  notifications-service:
+    command: [node, --env-file=/run/smartdesk/config.env, dist/server.js]
+    environment: !override
+      HOST: notifications-api
+      IDENTITY_EXECUTION_MODE: service
+      IDENTITY_SERVICE_ORIGIN: ${IDENTITY_SERVICE_ORIGIN:-http://identity-api:4050}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-5000}
+      EMAIL_TRANSPORT: ${EMAIL_TRANSPORT:-none}
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-}
+      SMTP_USER: ${NOTIFICATIONS_SMTP_USER:-${SMTP_USER:-}}
+      SMTP_PASSWORD: ${NOTIFICATIONS_SMTP_PASSWORD:-${SMTP_PASSWORD:-}}
+      SMTP_FROM: ${SMTP_FROM:-}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
+      EMAIL_JOB_MAX_ATTEMPTS: ${EMAIL_JOB_MAX_ATTEMPTS:-5}
+      EMAIL_JOB_BACKOFF_MS: ${EMAIL_JOB_BACKOFF_MS:-30000}
+      EMAIL_MAX_AGE_HOURS: ${EMAIL_MAX_AGE_HOURS:-24}
+    depends_on: !override
+      local-bootstrap: *bootstrap-dependency
+      identity-service: *healthy-dependency
+    volumes:
+      - local-notifications-config:/run/smartdesk:ro
+    develop:
+      watch:
+        - action: rebuild
+          path: ./backend/services/notifications
+        - action: rebuild
+          path: ./packages
+        - action: rebuild
+          path: ./tsconfig.base.json
+
+  ai-service:
+    profiles: !reset []
+    command: [node, --env-file=/run/smartdesk/config.env, dist/server.js]
+    environment: !override
+      HOST: 0.0.0.0
+      AI_SERVICE_TICKET_ORIGIN: http://ticket-api:4060
+      AI_SERVICE_READY_TIMEOUT_MS: ${AI_SERVICE_READY_TIMEOUT_MS:-1500}
+      KNOWLEDGE_EXECUTION_MODE: service
+      KNOWLEDGE_RETRIEVAL_ORIGIN: ${KNOWLEDGE_RETRIEVAL_ORIGIN:-http://knowledge-api:4040}
+      AI_EXECUTION_MODE: service
+      AI_PROVIDER: ${AI_PROVIDER:-none}
+      AI_API_KEY: ${AI_SERVICE_API_KEY:-${AI_API_KEY:-}}
+      AI_MODEL: ${AI_MODEL:-gpt-4o-mini}
+      AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-20000}
+      AI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-1000}
+      AI_MAX_INPUT_CHARS: ${AI_MAX_INPUT_CHARS:-20000}
+      AI_WORKER_CONCURRENCY: ${AI_WORKER_CONCURRENCY:-2}
+      WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-5000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on: !override
+      local-bootstrap: *bootstrap-dependency
+      ticket-service: *healthy-dependency
+    volumes:
+      - local-ai-config:/run/smartdesk:ro
+
+  search-indexer:
+    command: [node, --env-file=/run/smartdesk/config.env, dist/searchWorker.js]
+    environment:
+      SEARCH_DATABASE_URL: !reset null
+    depends_on: !override
+      local-bootstrap: *bootstrap-dependency
+      opensearch: *healthy-dependency
+    volumes:
+      - local-search-config:/run/smartdesk:ro
+
+volumes:
+  local-bootstrap-state:
+  local-ticket-config:
+  local-identity-config:
+  local-knowledge-config:
+  local-analytics-config:
+  local-notifications-config:
+  local-ai-config:
+  local-search-config:
