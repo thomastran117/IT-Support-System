@@ -27,22 +27,24 @@ fallback runs the same browser workflows.
   orchestration and transport. An external broker and Kubernetes deployment are deferred.
   Redis and OpenSearch are optional adapters. The browser tests exercise PostgreSQL fallback
   when the isolated OpenSearch dependency stops.
-- **Production and scale targets.** The recorded workload uses cloned synthetic fixtures and
-  three concurrent requests per round. The 100-user workload, production uptime window, and
-  live provider validation remain unverified by this gate.
-  [Load and latency criteria](https://github.com/thomastran117/IT-Support-System/issues/69) · [AI evaluation](../ai-evaluation.md)
+- **Production and scale targets.** A sustained synthetic benchmark of 100 concurrent users
+  meets the non-AI latency, submission and concurrency targets on one CI host. Production
+  uptime, live-model latency and accuracy remain **NOT VERIFIED**.
+  [Performance benchmark](../testing/performance-benchmark.md) · [AI evaluation](../ai-evaluation.md)
 
 ## E10 and E11 evidence
 
 The separate [static report](../testing/microservice-static-analysis.md) records the Semgrep
-reviews and open dependency advisories. The [dynamic report](../testing/microservice-dynamic-analysis.md)
-records actual test, benchmark, and passive scan outcomes, including open response-header findings.
-The merged SD-100 run published raw measurement and scan results.
-[E10 evidence artifact](https://github.com/thomastran117/IT-Support-System/actions/runs/45485914742/artifacts/14965496760)
+reviews, the secret scan and a clean dependency audit for the release candidate. The
+[dynamic report](../testing/microservice-dynamic-analysis.md) records browser, authorization,
+failure, integrity, passive scan and load outcomes, and labels each target MET, NOT MET or
+NOT VERIFIED. The response-header findings from the earlier ZAP run are fixed.
+[Integrated gate run](https://github.com/thomastran117/IT-Support-System/actions/runs/45688894263) · [Benchmark run](https://github.com/thomastran117/IT-Support-System/actions/runs/45545324951)
 
 GitHub reruns the isolated verification and static scans on independent runners. The frontend
 workflow publishes `microservice-verification` for browser, resilience, measurement, and passive
-scan evidence and `microservice-static-analysis` for source and lockfile results. The existing
+scan evidence and `microservice-static-analysis` for source, secret and lockfile results. The
+performance workflow publishes `performance-benchmark`. The existing
 required checks aggregate their parallel suites.
 [Backend workflow](../../.github/workflows/backend.yml) · [Frontend workflow](../../.github/workflows/frontend.yml)
 
