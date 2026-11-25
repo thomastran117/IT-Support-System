@@ -295,6 +295,34 @@ describe.skipIf(!testDatabaseUrl)('support teams and membership (integration)', 
       expect((await admin('DELETE', `/${TEAMS.hardware}/members/${tech.id}`)).statusCode).toBe(404);
     });
 
+    it('a removed member loses every read path to the team’s tickets with an existing token', async () => {
+      const tech = await newTechnician();
+      await admin('POST', `/${TEAMS.network}/members`, { userId: tech.id });
+      // Issued while still a member: scope must come from the server on every request.
+      const headers = await bearer(tech.id);
+      const get = (url: string) => app.inject({ url, headers });
+      const reads = ['', '/events', '/comments', '/recommendations', '/analysis'].map(
+        (suffix) => `/api/tickets/${TICKETS.vpn}${suffix}`,
+      );
+      const queue = `/api/technician/queue?teamId=${TEAMS.network}`;
+      for (const url of reads) expect((await get(url)).statusCode, url).toBe(200);
+      expect((await get('/api/tickets')).body).toContain(TICKETS.vpn);
+      expect((await get(queue)).statusCode).toBe(200);
+
+      expect((await admin('DELETE', `/${TEAMS.network}/members/${tech.id}`)).statusCode).toBe(200);
+
+      for (const url of reads) expect((await get(url)).statusCode, url).toBe(404);
+      expect((await get('/api/tickets')).body).not.toContain(TICKETS.vpn);
+      expect((await get(queue)).statusCode).toBe(403);
+      const comment = await app.inject({
+        method: 'POST',
+        url: `/api/tickets/${TICKETS.vpn}/comments`,
+        headers,
+        payload: { body: 'Still here?', isInternal: true },
+      });
+      expect(comment.statusCode).toBe(404);
+    });
+
     it('refuses to remove a member with assigned tickets and leaves history intact', async () => {
       const assigned = await prisma.ticket.findMany({
         where: { assignedTeamId: { not: null }, assigneeId: { not: null } },
