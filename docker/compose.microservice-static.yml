@@ -13,3 +13,12 @@ services:
     working_dir: /src
     volumes:
       - .:/src:ro
+
+  # SD-065: committed-secret scan over the full Git history (findings are redacted).
+  microservice-gitleaks:
+    profiles: [microservice-static]
+    image: zricethezav/gitleaks:v8.28.0
+    network_mode: none
+    working_dir: /src
+    volumes:
+      - .:/src:ro
