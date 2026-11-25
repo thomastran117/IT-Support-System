@@ -1,6 +1,7 @@
 import { request as httpRequest, type IncomingMessage } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import {
+  applyApiSecurityHeaders,
   hashCorrelationId,
   logHttpResponse,
   requestIdOptions,
@@ -134,6 +135,7 @@ export function buildGateway(opts: GatewayOptions) {
 
   app.addHook('onSend', async (req, reply) => {
     reply.header('x-request-id', req.id);
+    applyApiSecurityHeaders(reply);
   });
   app.setNotFoundHandler((req, reply) =>
     sendError(reply, 404, `Route ${req.method} ${req.url} not found`),

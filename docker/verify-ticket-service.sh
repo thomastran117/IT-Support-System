@@ -455,6 +455,15 @@ for (const endpoint of endpoints) {
 }
 assert.equal((await fetch('http://127.0.0.1:4000/health/live', { signal: AbortSignal.timeout(5000) })).status, 200);
 console.log('SD-100 the browser network can reach the gateway and has no private service route');
+// SD-056: both public HTTP boundaries of the production build send the security headers.
+for (const url of ['http://127.0.0.1:3100/login', 'http://127.0.0.1:4000/health/live', 'http://127.0.0.1:4000/api/auth/me']) {
+  const headers = (await fetch(url, { signal: AbortSignal.timeout(5000) })).headers;
+  assert.equal(headers.get('x-content-type-options'), 'nosniff', url);
+  assert.equal(headers.get('x-frame-options'), 'DENY', url);
+  assert.match(headers.get('content-security-policy') ?? '', /frame-ancestors 'none'/, url);
+  assert.equal(headers.get('x-powered-by'), null, url);
+}
+console.log('SD-056 the frontend and gateway send CSP, framing, nosniff and no X-Powered-By');
 NODE
   if [ "${SD100_PASSIVE_SCAN:-0}" = 1 ]; then
     compose --profile microservice-scan run --rm --no-deps zap > "$evidence/passive-zap.json"

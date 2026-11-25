@@ -316,3 +316,29 @@ test('closes an interrupted response when the upstream stalls after sending a bo
   assert.equal(response.status, 200);
   await assert.rejects(response.text(), TypeError);
 });
+
+test('adds API security headers to proxied and gateway-generated responses', async (t) => {
+  const upstream = await startUpstream(t, (req, res) => {
+    res.setHeader('x-powered-by', 'Express');
+    if (req.url === '/api/tickets?cached=1') res.setHeader('cache-control', 'private, max-age=5');
+    res.end('{}');
+  });
+  const app = buildGateway({ upstream, timeoutMs: 500, frontendOrigin });
+  t.after(() => app.close());
+  for (const url of ['/api/tickets', '/not-registered']) {
+    const response = await app.inject(url);
+    assert.equal(response.headers['x-content-type-options'], 'nosniff', url);
+    assert.equal(response.headers['x-frame-options'], 'DENY', url);
+    assert.equal(response.headers['referrer-policy'], 'no-referrer', url);
+    assert.equal(
+      response.headers['content-security-policy'],
+      "default-src 'none'; frame-ancestors 'none'",
+      url,
+    );
+    assert.equal(response.headers['cache-control'], 'no-store', url);
+    assert.equal(response.headers['x-powered-by'], undefined, url);
+  }
+  // A route that chose its own caching policy keeps it.
+  const cached = await app.inject('/api/tickets?cached=1');
+  assert.equal(cached.headers['cache-control'], 'private, max-age=5');
+});

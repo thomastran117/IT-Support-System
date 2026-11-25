@@ -18,7 +18,12 @@ import {
   identityLookupRoutes,
   TokenService,
 } from '@smartdesk/identity';
-import { logHttpResponse, requestIdOptions, serviceLogger } from '@smartdesk/service-runtime';
+import {
+  applyApiSecurityHeaders,
+  logHttpResponse,
+  requestIdOptions,
+  serviceLogger,
+} from '@smartdesk/service-runtime';
 import type { CacheCheck } from './cache/client.js';
 import { createNoopCache, type CacheClient } from './cache/redisCache.js';
 import type { createFallbackRateLimitStore } from './rateLimit/fallbackStore.js';
@@ -111,6 +116,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
 
   app.addHook('onSend', async (req, reply) => {
     reply.header('x-request-id', req.id);
+    applyApiSecurityHeaders(reply);
   });
 
   await app.register(healthRoutes(opts.checkDb, opts.checkCache));
