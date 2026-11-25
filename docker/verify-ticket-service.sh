@@ -469,7 +469,11 @@ NODE
     compose --profile microservice-scan run --rm --no-deps zap > "$evidence/passive-zap.json"
     test -s "$evidence/passive-zap.json"
   fi
-  compose --profile microservice-ci exec -T frontend-ci npm --prefix /app/frontend run test:e2e -- e2e/microservices.spec.ts --project=desktop --workers=1 --retries=0 --trace=off --output=/app/frontend/test-results/sd100/browser
+  compose --profile microservice-ci exec -T frontend-ci npm --prefix /app/frontend run test:e2e -- e2e/microservices.spec.ts --project=desktop --workers=1 --retries=0 --trace=retain-on-failure --output=/app/frontend/test-results/sd100/browser
+  # SD-055: the same browser completes the manual workflow while the AI service is down.
+  compose stop ai-service
+  compose --profile microservice-ci exec -T -e E2E_AI_STOPPED=true frontend-ci npm --prefix /app/frontend run test:e2e -- e2e/microservices.spec.ts --grep @ai-outage --project=desktop --workers=1 --retries=0 --trace=retain-on-failure --output=/app/frontend/test-results/sd100/browser-ai-outage
+  compose up -d --wait ai-service
   compose --profile microservice-ci stop frontend-ci
 
   for dependency in ai notifications knowledge; do
