@@ -28,6 +28,14 @@ compose() {
   fi
 }
 cleanup() {
+  status=$?
+  if [ "$status" != 0 ]; then
+    # SD-058: the structured service logs are redacted; keep their warnings so a failed drill
+    # shows which dependency failed and how (timeout, unreachable or upstream error).
+    echo '--- service warnings (failure diagnostics) ---' >&2
+    compose logs --no-color --tail 400 gateway ticket-service identity-service 2>&1 |
+      grep -E '"level":(40|50|60)|dependency_failure' | tail -80 >&2 || true
+  fi
   if [ "${analytics_paused:-0}" = 1 ]; then compose unpause analytics-service || true; fi
   compose --profile legacy --profile search --profile microservice-ci --profile microservice-scan down --remove-orphans -v
 }
@@ -160,6 +168,52 @@ measure() {
 
 probe() {
   compose exec -T -e SD100_SESSION="${session:-}" gateway node --input-type=module - "$@" < docker/verify-microservice-http.mjs
+}
+
+# SD-058: persisted-state invariants that no outage, replay or rollback may break. Each value is a
+# count of violations except the totals; the totals let "before" and "after" be compared.
+integrity() {
+  psql -At <<'SQL'
+SELECT json_build_object(
+  'tickets', (SELECT count(*) FROM tickets),
+  'ticketEvents', (SELECT count(*) FROM ticket_events),
+  'notifications', (SELECT count(*) FROM notifications),
+  'acceptedRecommendations', (SELECT count(*) FROM ai_recommendations WHERE review_status = 'ACCEPTED'),
+  'ticketsWithSeveralAccepted', (SELECT count(*) FROM (SELECT ticket_id FROM ai_recommendations
+    WHERE review_status = 'ACCEPTED' GROUP BY ticket_id HAVING count(*) > 1) d),
+  'duplicateReviewEvents', (SELECT count(*) FROM (SELECT details->>'recommendationId' FROM ticket_events
+    WHERE event_type = 'AI_REVIEWED' GROUP BY 1 HAVING count(*) > 1) d),
+  'reviewedWithoutEvent', (SELECT count(*) FROM ai_recommendations r WHERE r.review_status <> 'PENDING'
+    AND NOT EXISTS (SELECT 1 FROM ticket_events e WHERE e.event_type = 'AI_REVIEWED'
+      AND e.details->>'recommendationId' = r.recommendation_id::text)),
+  'duplicateNotifications', (SELECT count(*) FROM (SELECT 1 FROM notifications
+    GROUP BY recipient_id, event_id, type HAVING count(*) > 1) d),
+  'notificationsNotToRequester', (SELECT count(*) FROM notifications n JOIN tickets t USING (ticket_id)
+    WHERE n.recipient_id <> t.requester_id),
+  'notificationsForInternalNotes', (SELECT count(*) FROM notifications n JOIN ticket_events e USING (event_id)
+    WHERE e.event_type = 'COMMENT_ADDED' AND (e.details->>'isInternal') IS DISTINCT FROM 'false'),
+  'expiredRunningAiJobs', (SELECT count(*) FROM ai_analysis_jobs
+    WHERE state = 'RUNNING' AND locked_until < clock_timestamp() - interval '5 minutes'),
+  'expiredRunningDeliveries', (SELECT count(*) FROM service_outbox_deliveries
+    WHERE state = 'RUNNING' AND locked_until < clock_timestamp() - interval '5 minutes')
+)
+SQL
+}
+
+check_integrity() {
+  node -e '
+    const assert = require("node:assert/strict");
+    const [before, after] = process.argv.slice(1).map((file) => JSON.parse(require("node:fs").readFileSync(file, "utf8")));
+    for (const [name, value] of Object.entries(after)) {
+      if (["tickets", "ticketEvents", "notifications", "acceptedRecommendations"].includes(name)) {
+        assert.ok(value >= before[name], name + " decreased from " + before[name] + " to " + value);
+      } else {
+        assert.equal(value, 0, name);
+      }
+    }
+  ' "$evidence/drill-integrity-before.json" "$evidence/drill-integrity-after.json"
+  echo 'SD-058 no ticket, audit, recommendation or inbox record was lost or duplicated by the drills'
+  cat "$evidence/drill-integrity-before.json" "$evidence/drill-integrity-after.json"
 }
 
 # SD-057: 100 synthetic users (80 employees, 18 technicians, 2 admins) for a sustained k6 run.
@@ -502,6 +556,7 @@ compose up -d --wait ai-service notifications-service
 snapshot=$(journey compose assisted ticket-service)
 echo 'AI completed and Ticket reviewed a recommendation. Notifications delivered its backlog.'
 if [ "${SD100:-0}" = 1 ]; then
+  integrity > "$evidence/drill-integrity-before.json"
   probe roles
   worker_drills
   compose --profile microservice-ci build frontend-ci
@@ -602,3 +657,7 @@ legacy up -d --wait gateway
 wait_for_gateway legacy
 journey legacy rollback backend
 echo 'Legacy rollback preserved the isolated Ticket and recommendation responses.'
+if [ "${SD100:-0}" = 1 ]; then
+  integrity > "$evidence/drill-integrity-after.json"
+  check_integrity
+fi
