@@ -18,4 +18,6 @@ npm --prefix backend run build
 npm --prefix backend run test:unit
 
 npm --prefix backend run migrate
+# SD-054: the migrated database must match schema.prisma exactly (exit 2 on any drift).
+npm --prefix backend run check:drift
 npm --prefix backend run test:integration
