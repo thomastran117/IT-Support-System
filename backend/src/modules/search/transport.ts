@@ -1,3 +1,5 @@
+import { nonBlockingLookup } from '@smartdesk/service-runtime';
+import { Agent, fetch as undiciFetch } from 'undici';
 import type { OpenSearchConfig } from '../../config/env.js';
 
 type SearchErrorCode =
@@ -43,9 +45,25 @@ export const isTransientSearchStatus = (status: number) => RETRYABLE_STATUS.has(
 const FAILURES_TO_OPEN = 3;
 const COOLDOWN_MS = 10_000;
 
+let dispatcher: Agent | undefined;
+
+/**
+ * Connections to OpenSearch resolve its name off the libuv threadpool. When the OpenSearch
+ * container stops, its name takes seconds to fail; through the default lookup, those failures
+ * occupied the threadpool and stalled Ticket's unrelated lookups (Identity, the database) until
+ * the gateway timed out (SD-058 risk R6).
+ */
+const searchFetch: typeof fetch = (input, init) => {
+  dispatcher ??= new Agent({ connect: { lookup: nonBlockingLookup } });
+  return undiciFetch(input as Parameters<typeof undiciFetch>[0], {
+    ...(init as Parameters<typeof undiciFetch>[1]),
+    dispatcher,
+  }) as unknown as Promise<Response>;
+};
+
 export function createSearchTransport(
   config: Extract<OpenSearchConfig, { enabled: true }>,
-  { fetch: send = fetch, timeoutMs = 750, now = Date.now }: SearchTransportOptions = {},
+  { fetch: send = searchFetch, timeoutMs = 750, now = Date.now }: SearchTransportOptions = {},
 ): SearchTransport {
   const endpoint = new URL(config.url);
   if (!endpoint.pathname.endsWith('/')) endpoint.pathname += '/';

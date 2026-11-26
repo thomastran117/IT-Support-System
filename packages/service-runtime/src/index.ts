@@ -5,6 +5,7 @@ export {
   serviceLogger,
 } from './observability.js';
 export { apiSecurityHeaders, applyApiSecurityHeaders } from './securityHeaders.js';
+export { nonBlockingLookup } from './dnsLookup.js';
 
 export function parseHttpOrigin(name: string, value: string): URL {
   const message = `${name} must be an HTTP(S) origin without credentials`;
