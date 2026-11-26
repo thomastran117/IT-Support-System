@@ -11,6 +11,20 @@ type LookupCallback = (
 const resolver = new Resolver({ timeout: 1000, tries: 1 });
 
 /**
+ * c-ares reports its own codes (ESERVFAIL, ETIMEOUT, ENODATA, ...). Callers classify failures by
+ * the `getaddrinfo` codes, so a missing name stays ENOTFOUND and any other failure EAI_AGAIN.
+ */
+function asLookupError(error: NodeJS.ErrnoException, hostname: string): NodeJS.ErrnoException {
+  const code = error.code === 'ENOTFOUND' || error.code === 'ENODATA' ? 'ENOTFOUND' : 'EAI_AGAIN';
+  return Object.assign(new Error(`getaddrinfo ${code} ${hostname}`), {
+    code,
+    syscall: 'getaddrinfo',
+    hostname,
+    cause: error,
+  });
+}
+
+/**
  * A `lookup` for outbound connections to dependencies that may disappear.
  *
  * Node's default `dns.lookup` calls getaddrinfo on the libuv threadpool (four threads). On an
@@ -48,6 +62,6 @@ export function nonBlockingLookup(
       } else if (opts.all) done(null, addresses);
       else done(null, addresses[0]!.address, addresses[0]!.family);
     },
-    (error: NodeJS.ErrnoException) => done(error, ''),
+    (error: NodeJS.ErrnoException) => done(asLookupError(error, hostname), ''),
   );
 }

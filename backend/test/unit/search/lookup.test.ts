@@ -30,6 +30,14 @@ describe('nonBlockingLookup', () => {
     expect(Array.isArray(all.address)).toBe(true);
   });
 
+  it('fails an unresolvable name quickly with a getaddrinfo code callers already classify', async () => {
+    const started = Date.now();
+    const { error } = await lookup('smartdesk-missing-dependency.invalid', {});
+    expect(Date.now() - started).toBeLessThan(3000);
+    expect(['ENOTFOUND', 'EAI_AGAIN']).toContain(error?.code);
+    expect(error?.syscall).toBe('getaddrinfo');
+  });
+
   it('accepts the legacy family-number and callback-only signatures', async () => {
     await new Promise<void>((resolve) =>
       nonBlockingLookup('127.0.0.1', 4, (error, address) => {
